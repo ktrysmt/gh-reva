@@ -1,0 +1,114 @@
+{
+  "pr": {
+    "owner": "octocat",
+    "repo": "hello-world",
+    "number": 42,
+    "title": "Add greeting feature",
+    "base_sha": "aaa1111aaaa",
+    "head_sha": "ccc3333cccc"
+  },
+  "commits": [
+    {
+      "sha": "aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "short_sha": "aaa1111",
+      "message": "Add greeting.go skeleton",
+      "author": "alice",
+      "date": "2026-04-01T10:00:00Z",
+      "changed_files": {"src/greeting.go": 0}
+    },
+    {
+      "sha": "bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "short_sha": "bbb2222",
+      "message": "Implement Hello function",
+      "author": "alice",
+      "date": "2026-04-02T11:30:00Z",
+      "changed_files": {"src/greeting.go": 1, "src/main.go": 1}
+    },
+    {
+      "sha": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "short_sha": "ccc3333",
+      "message": "Add tests and docs",
+      "author": "bob",
+      "date": "2026-04-03T09:15:00Z",
+      "changed_files": {"src/greeting_test.go": 0, "docs/api.md": 0, "go.mod": 1}
+    }
+  ],
+  "files": [
+    {"path": "src/greeting.go", "status": 1, "additions": 30, "deletions": 5, "comment_count": 2},
+    {"path": "src/greeting_test.go", "status": 0, "additions": 50, "deletions": 0, "comment_count": 1},
+    {"path": "src/main.go", "status": 1, "additions": 3, "deletions": 1, "comment_count": 0},
+    {"path": "docs/api.md", "status": 0, "additions": 10, "deletions": 0, "comment_count": 0},
+    {"path": "go.mod", "status": 1, "additions": 1, "deletions": 0, "comment_count": 0}
+  ],
+  "comments": [
+    {
+      "id": 1001,
+      "path": "src/greeting.go",
+      "commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "original_commit_id": "bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "line": 3,
+      "original_line": 3,
+      "diff_hunk": "@@ -1,5 +1,12 @@",
+      "in_reply_to": 0,
+      "user": "carol",
+      "created_at": "2026-04-02T13:00:00Z",
+      "body": "Consider extracting this into a helper function",
+      "outdated": false
+    },
+    {
+      "id": 1002,
+      "path": "src/greeting.go",
+      "commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "original_commit_id": "bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "line": 13,
+      "original_line": 11,
+      "diff_hunk": "@@ -1,5 +1,12 @@",
+      "in_reply_to": 1001,
+      "user": "alice",
+      "created_at": "2026-04-02T14:30:00Z",
+      "body": "Good point, will refactor in a follow-up",
+      "outdated": false
+    },
+    {
+      "id": 1003,
+      "path": "src/greeting.go",
+      "commit_id": "",
+      "original_commit_id": "aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "line": 0,
+      "original_line": 5,
+      "diff_hunk": "@@ -1,3 +1,5 @@",
+      "in_reply_to": 0,
+      "user": "dave",
+      "created_at": "2026-04-01T15:00:00Z",
+      "body": "This was the old struct definition - no longer relevant",
+      "outdated": true
+    },
+    {
+      "id": 1004,
+      "path": "src/greeting_test.go",
+      "commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "original_commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "line": 25,
+      "original_line": 25,
+      "diff_hunk": "@@ -0,0 +1,50 @@",
+      "in_reply_to": 0,
+      "user": "carol",
+      "created_at": "2026-04-03T10:00:00Z",
+      "body": "Add a test for the empty input case",
+      "outdated": false
+    }
+  ],
+  "diffs": {
+    "pr/src/greeting.go": "--- a/src/greeting.go\n+++ b/src/greeting.go\n@@ -1,5 +1,12 @@\n package src\n+\n+// Hello returns a greeting for the given name.\n+func Hello(name string) string {\n+\tif name == \"\" {\n+\t\treturn \"Hello, world!\"\n+\t}\n+\treturn \"Hello, \" + name + \"!\"\n+}\n",
+    "pr/src/greeting_test.go": "--- /dev/null\n+++ b/src/greeting_test.go\n@@ -0,0 +1,50 @@\n+package src\n+\n+import \"testing\"\n+\n+func TestHello(t *testing.T) {\n+\tgot := Hello(\"world\")\n+\twant := \"Hello, world\"\n+\tif got != want {\n+\t\tt.Errorf(\"got %q, want %q\", got, want)\n+\t}\n+}\n",
+    "pr/src/main.go": "--- a/src/main.go\n+++ b/src/main.go\n@@ -1,3 +1,5 @@\n package main\n-import \"fmt\"\n+import (\n+\t\"fmt\"\n+)\n",
+    "pr/docs/api.md": "--- /dev/null\n+++ b/docs/api.md\n@@ -0,0 +1,10 @@\n+# API\n+\n+## Hello(name string) string\n+\n+Greets the given name.\n",
+    "pr/go.mod": "--- a/go.mod\n+++ b/go.mod\n@@ -1,1 +1,2 @@\n module example.com/hello\n+go 1.22\n",
+    "aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/greeting.go": "--- /dev/null\n+++ b/src/greeting.go\n@@ -0,0 +1,5 @@\n+package src\n+\n+type Greeter struct {\n+\tname string\n+}\n",
+    "bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/src/greeting.go": "--- a/src/greeting.go\n+++ b/src/greeting.go\n@@ -1,5 +1,12 @@\n package src\n-\n-type Greeter struct {\n-\tname string\n-}\n+\n+func Hello(name string) string {\n+\treturn \"Hello, \" + name\n+}\n",
+    "bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/src/main.go": "--- a/src/main.go\n+++ b/src/main.go\n@@ -1,3 +1,5 @@\n package main\n-import \"fmt\"\n+import (\n+\t\"fmt\"\n+)\n",
+    "ccc3333ccccccccccccccccccccccccccccccccc/src/greeting_test.go": "--- /dev/null\n+++ b/src/greeting_test.go\n@@ -0,0 +1,50 @@\n+package src\n+\n+import \"testing\"\n+\n+func TestHello(t *testing.T) {\n+\tgot := Hello(\"world\")\n+\twant := \"Hello, world\"\n+\tif got != want {\n+\t\tt.Errorf(\"got %q, want %q\", got, want)\n+\t}\n+}\n",
+    "ccc3333ccccccccccccccccccccccccccccccccc/docs/api.md": "--- /dev/null\n+++ b/docs/api.md\n@@ -0,0 +1,10 @@\n+# API\n+\n+## Hello(name string) string\n+\n+Greets the given name.\n",
+    "ccc3333ccccccccccccccccccccccccccccccccc/go.mod": "--- a/go.mod\n+++ b/go.mod\n@@ -1,1 +1,2 @@\n module example.com/hello\n+go 1.22\n"
+  }
+}

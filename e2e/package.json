@@ -1,0 +1,20 @@
+{
+  "name": "gh-rv-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "build": "cd .. && go build -o gh-rv .",
+    "pretest": "cd .. && go build -o gh-rv .",
+    "test": "node --test --test-concurrency=1 --test-force-exit --test-timeout=15000 tests/*.test.mjs",
+    "test:smoke": "node --test --test-force-exit --test-timeout=15000 tests/00_smoke.test.mjs",
+    "tuistory": "tuistory"
+  },
+  "dependencies": {
+    "tuistory": "^0.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

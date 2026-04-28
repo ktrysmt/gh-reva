@@ -1,0 +1,8 @@
+/gh-rv
+/gh-rv.exe
+/dist/
+/e2e/node_modules/
+/e2e/dist/
+/tmp/
+*.log
+.DS_Store

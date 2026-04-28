@@ -1,0 +1,1800 @@
+{
+  "pr": {
+    "owner": "stress",
+    "repo": "test",
+    "number": 1,
+    "title": "Stress fixture",
+    "base_sha": "0000001000000000000000000000000000000000",
+    "head_sha": "000003c000000000000000000000000000000000"
+  },
+  "commits": [
+    {
+      "sha": "0000001000000000000000000000000000000000",
+      "short_sha": "0000001",
+      "message": "commit 00: refactor module",
+      "author": "alice",
+      "date": "2026-01-01T09:00:00Z",
+      "changed_files": {
+        "api/sub0/file_001.go": 1,
+        "core/sub0/file_000.go": 0,
+        "store/sub0/file_003.go": 3,
+        "ui/sub0/file_002.go": 2
+      }
+    },
+    {
+      "sha": "0000002000000000000000000000000000000000",
+      "short_sha": "0000002",
+      "message": "commit 01: refactor module",
+      "author": "bob",
+      "date": "2026-01-01T10:00:00Z",
+      "changed_files": {
+        "api/sub1/file_008.go": 2,
+        "core/sub1/file_007.go": 1,
+        "store/sub1/file_010.go": 0,
+        "ui/sub1/file_009.go": 3
+      }
+    },
+    {
+      "sha": "0000003000000000000000000000000000000000",
+      "short_sha": "0000003",
+      "message": "commit 02: refactor module",
+      "author": "carol",
+      "date": "2026-01-01T11:00:00Z",
+      "changed_files": {
+        "api/sub2/file_015.go": 3,
+        "core/sub2/file_014.go": 2,
+        "store/sub2/file_017.go": 1,
+        "ui/sub2/file_016.go": 0
+      }
+    },
+    {
+      "sha": "0000004000000000000000000000000000000000",
+      "short_sha": "0000004",
+      "message": "commit 03: refactor module",
+      "author": "dave",
+      "date": "2026-01-01T12:00:00Z",
+      "changed_files": {
+        "api/sub3/file_022.go": 0,
+        "core/sub3/file_021.go": 3,
+        "store/sub3/file_024.go": 2,
+        "ui/sub3/file_023.go": 1
+      }
+    },
+    {
+      "sha": "0000005000000000000000000000000000000000",
+      "short_sha": "0000005",
+      "message": "commit 04: refactor module",
+      "author": "alice",
+      "date": "2026-01-01T13:00:00Z",
+      "changed_files": {
+        "api/sub0/file_029.go": 1,
+        "core/sub0/file_028.go": 0,
+        "store/sub0/file_031.go": 3,
+        "ui/sub0/file_030.go": 2
+      }
+    },
+    {
+      "sha": "0000006000000000000000000000000000000000",
+      "short_sha": "0000006",
+      "message": "commit 05: refactor module",
+      "author": "bob",
+      "date": "2026-01-01T14:00:00Z",
+      "changed_files": {
+        "api/sub1/file_036.go": 2,
+        "core/sub1/file_035.go": 1,
+        "store/sub1/file_038.go": 0,
+        "ui/sub1/file_037.go": 3
+      }
+    },
+    {
+      "sha": "0000007000000000000000000000000000000000",
+      "short_sha": "0000007",
+      "message": "commit 06: refactor module",
+      "author": "carol",
+      "date": "2026-01-01T15:00:00Z",
+      "changed_files": {
+        "api/sub2/file_043.go": 3,
+        "core/sub2/file_042.go": 2,
+        "store/sub2/file_045.go": 1,
+        "ui/sub2/file_044.go": 0
+      }
+    },
+    {
+      "sha": "0000008000000000000000000000000000000000",
+      "short_sha": "0000008",
+      "message": "commit 07: refactor module",
+      "author": "dave",
+      "date": "2026-01-01T16:00:00Z",
+      "changed_files": {
+        "api/sub3/file_050.go": 0,
+        "core/sub3/file_049.go": 3,
+        "store/sub3/file_052.go": 2,
+        "ui/sub3/file_051.go": 1
+      }
+    },
+    {
+      "sha": "0000009000000000000000000000000000000000",
+      "short_sha": "0000009",
+      "message": "commit 08: refactor module",
+      "author": "alice",
+      "date": "2026-01-01T17:00:00Z",
+      "changed_files": {
+        "api/sub0/file_057.go": 1,
+        "core/sub0/file_056.go": 0,
+        "store/sub0/file_059.go": 3,
+        "ui/sub0/file_058.go": 2
+      }
+    },
+    {
+      "sha": "000000a000000000000000000000000000000000",
+      "short_sha": "000000a",
+      "message": "commit 09: refactor module",
+      "author": "bob",
+      "date": "2026-01-01T18:00:00Z",
+      "changed_files": {
+        "api/sub1/file_064.go": 2,
+        "core/sub1/file_063.go": 1,
+        "store/sub1/file_066.go": 0,
+        "ui/sub1/file_065.go": 3
+      }
+    },
+    {
+      "sha": "000000b000000000000000000000000000000000",
+      "short_sha": "000000b",
+      "message": "commit 10: refactor module",
+      "author": "carol",
+      "date": "2026-01-01T19:00:00Z",
+      "changed_files": {
+        "api/sub2/file_071.go": 3,
+        "core/sub2/file_070.go": 2,
+        "store/sub2/file_073.go": 1,
+        "ui/sub2/file_072.go": 0
+      }
+    },
+    {
+      "sha": "000000c000000000000000000000000000000000",
+      "short_sha": "000000c",
+      "message": "commit 11: refactor module",
+      "author": "dave",
+      "date": "2026-01-01T20:00:00Z",
+      "changed_files": {
+        "api/sub3/file_078.go": 0,
+        "core/sub3/file_077.go": 3,
+        "store/sub3/file_080.go": 2,
+        "ui/sub3/file_079.go": 1
+      }
+    },
+    {
+      "sha": "000000d000000000000000000000000000000000",
+      "short_sha": "000000d",
+      "message": "commit 12: refactor module",
+      "author": "alice",
+      "date": "2026-01-01T21:00:00Z",
+      "changed_files": {
+        "api/sub0/file_085.go": 1,
+        "core/sub0/file_084.go": 0,
+        "store/sub0/file_087.go": 3,
+        "ui/sub0/file_086.go": 2
+      }
+    },
+    {
+      "sha": "000000e000000000000000000000000000000000",
+      "short_sha": "000000e",
+      "message": "commit 13: refactor module",
+      "author": "bob",
+      "date": "2026-01-01T22:00:00Z",
+      "changed_files": {
+        "api/sub1/file_092.go": 2,
+        "core/sub1/file_091.go": 1,
+        "store/sub1/file_094.go": 0,
+        "ui/sub1/file_093.go": 3
+      }
+    },
+    {
+      "sha": "000000f000000000000000000000000000000000",
+      "short_sha": "000000f",
+      "message": "commit 14: refactor module",
+      "author": "carol",
+      "date": "2026-01-01T23:00:00Z",
+      "changed_files": {
+        "api/sub2/file_099.go": 3,
+        "core/sub2/file_098.go": 2,
+        "store/sub2/file_101.go": 1,
+        "ui/sub2/file_100.go": 0
+      }
+    },
+    {
+      "sha": "0000010000000000000000000000000000000000",
+      "short_sha": "0000010",
+      "message": "commit 15: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T00:00:00Z",
+      "changed_files": {
+        "api/sub3/file_106.go": 0,
+        "core/sub3/file_105.go": 3,
+        "store/sub3/file_108.go": 2,
+        "ui/sub3/file_107.go": 1
+      }
+    },
+    {
+      "sha": "0000011000000000000000000000000000000000",
+      "short_sha": "0000011",
+      "message": "commit 16: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T01:00:00Z",
+      "changed_files": {
+        "api/sub0/file_113.go": 1,
+        "core/sub0/file_112.go": 0,
+        "store/sub0/file_115.go": 3,
+        "ui/sub0/file_114.go": 2
+      }
+    },
+    {
+      "sha": "0000012000000000000000000000000000000000",
+      "short_sha": "0000012",
+      "message": "commit 17: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T02:00:00Z",
+      "changed_files": {
+        "api/sub0/file_001.go": 3,
+        "core/sub0/file_000.go": 2,
+        "core/sub1/file_119.go": 1,
+        "ui/sub0/file_002.go": 0
+      }
+    },
+    {
+      "sha": "0000013000000000000000000000000000000000",
+      "short_sha": "0000013",
+      "message": "commit 18: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T03:00:00Z",
+      "changed_files": {
+        "api/sub1/file_008.go": 0,
+        "core/sub1/file_007.go": 3,
+        "docs/sub0/file_006.go": 2,
+        "ui/sub1/file_009.go": 1
+      }
+    },
+    {
+      "sha": "0000014000000000000000000000000000000000",
+      "short_sha": "0000014",
+      "message": "commit 19: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T04:00:00Z",
+      "changed_files": {
+        "api/sub2/file_015.go": 1,
+        "core/sub2/file_014.go": 0,
+        "docs/sub1/file_013.go": 3,
+        "ui/sub2/file_016.go": 2
+      }
+    },
+    {
+      "sha": "0000015000000000000000000000000000000000",
+      "short_sha": "0000015",
+      "message": "commit 20: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T05:00:00Z",
+      "changed_files": {
+        "api/sub3/file_022.go": 2,
+        "core/sub3/file_021.go": 1,
+        "docs/sub2/file_020.go": 0,
+        "ui/sub3/file_023.go": 3
+      }
+    },
+    {
+      "sha": "0000016000000000000000000000000000000000",
+      "short_sha": "0000016",
+      "message": "commit 21: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T06:00:00Z",
+      "changed_files": {
+        "api/sub0/file_029.go": 3,
+        "core/sub0/file_028.go": 2,
+        "docs/sub3/file_027.go": 1,
+        "ui/sub0/file_030.go": 0
+      }
+    },
+    {
+      "sha": "0000017000000000000000000000000000000000",
+      "short_sha": "0000017",
+      "message": "commit 22: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T07:00:00Z",
+      "changed_files": {
+        "api/sub1/file_036.go": 0,
+        "core/sub1/file_035.go": 3,
+        "docs/sub0/file_034.go": 2,
+        "ui/sub1/file_037.go": 1
+      }
+    },
+    {
+      "sha": "0000018000000000000000000000000000000000",
+      "short_sha": "0000018",
+      "message": "commit 23: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T08:00:00Z",
+      "changed_files": {
+        "api/sub2/file_043.go": 1,
+        "core/sub2/file_042.go": 0,
+        "docs/sub1/file_041.go": 3,
+        "ui/sub2/file_044.go": 2
+      }
+    },
+    {
+      "sha": "0000019000000000000000000000000000000000",
+      "short_sha": "0000019",
+      "message": "commit 24: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T09:00:00Z",
+      "changed_files": {
+        "api/sub3/file_050.go": 2,
+        "core/sub3/file_049.go": 1,
+        "docs/sub2/file_048.go": 0,
+        "ui/sub3/file_051.go": 3
+      }
+    },
+    {
+      "sha": "000001a000000000000000000000000000000000",
+      "short_sha": "000001a",
+      "message": "commit 25: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T10:00:00Z",
+      "changed_files": {
+        "api/sub0/file_057.go": 3,
+        "core/sub0/file_056.go": 2,
+        "docs/sub3/file_055.go": 1,
+        "ui/sub0/file_058.go": 0
+      }
+    },
+    {
+      "sha": "000001b000000000000000000000000000000000",
+      "short_sha": "000001b",
+      "message": "commit 26: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T11:00:00Z",
+      "changed_files": {
+        "api/sub1/file_064.go": 0,
+        "core/sub1/file_063.go": 3,
+        "docs/sub0/file_062.go": 2,
+        "ui/sub1/file_065.go": 1
+      }
+    },
+    {
+      "sha": "000001c000000000000000000000000000000000",
+      "short_sha": "000001c",
+      "message": "commit 27: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T12:00:00Z",
+      "changed_files": {
+        "api/sub2/file_071.go": 1,
+        "core/sub2/file_070.go": 0,
+        "docs/sub1/file_069.go": 3,
+        "ui/sub2/file_072.go": 2
+      }
+    },
+    {
+      "sha": "000001d000000000000000000000000000000000",
+      "short_sha": "000001d",
+      "message": "commit 28: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T13:00:00Z",
+      "changed_files": {
+        "api/sub3/file_078.go": 2,
+        "core/sub3/file_077.go": 1,
+        "docs/sub2/file_076.go": 0,
+        "ui/sub3/file_079.go": 3
+      }
+    },
+    {
+      "sha": "000001e000000000000000000000000000000000",
+      "short_sha": "000001e",
+      "message": "commit 29: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T14:00:00Z",
+      "changed_files": {
+        "api/sub0/file_085.go": 3,
+        "core/sub0/file_084.go": 2,
+        "docs/sub3/file_083.go": 1,
+        "ui/sub0/file_086.go": 0
+      }
+    },
+    {
+      "sha": "000001f000000000000000000000000000000000",
+      "short_sha": "000001f",
+      "message": "commit 30: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T15:00:00Z",
+      "changed_files": {
+        "api/sub1/file_092.go": 0,
+        "core/sub1/file_091.go": 3,
+        "docs/sub0/file_090.go": 2,
+        "ui/sub1/file_093.go": 1
+      }
+    },
+    {
+      "sha": "0000020000000000000000000000000000000000",
+      "short_sha": "0000020",
+      "message": "commit 31: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T16:00:00Z",
+      "changed_files": {
+        "api/sub2/file_099.go": 1,
+        "core/sub2/file_098.go": 0,
+        "docs/sub1/file_097.go": 3,
+        "ui/sub2/file_100.go": 2
+      }
+    },
+    {
+      "sha": "0000021000000000000000000000000000000000",
+      "short_sha": "0000021",
+      "message": "commit 32: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T17:00:00Z",
+      "changed_files": {
+        "api/sub3/file_106.go": 2,
+        "core/sub3/file_105.go": 1,
+        "docs/sub2/file_104.go": 0,
+        "ui/sub3/file_107.go": 3
+      }
+    },
+    {
+      "sha": "0000022000000000000000000000000000000000",
+      "short_sha": "0000022",
+      "message": "commit 33: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T18:00:00Z",
+      "changed_files": {
+        "api/sub0/file_113.go": 3,
+        "core/sub0/file_112.go": 2,
+        "docs/sub3/file_111.go": 1,
+        "ui/sub0/file_114.go": 0
+      }
+    },
+    {
+      "sha": "0000023000000000000000000000000000000000",
+      "short_sha": "0000023",
+      "message": "commit 34: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T19:00:00Z",
+      "changed_files": {
+        "api/sub0/file_001.go": 1,
+        "core/sub0/file_000.go": 0,
+        "core/sub1/file_119.go": 3,
+        "docs/sub0/file_118.go": 2
+      }
+    },
+    {
+      "sha": "0000024000000000000000000000000000000000",
+      "short_sha": "0000024",
+      "message": "commit 35: refactor module",
+      "author": "dave",
+      "date": "2026-01-02T20:00:00Z",
+      "changed_files": {
+        "api/sub1/file_008.go": 2,
+        "core/sub1/file_007.go": 1,
+        "docs/sub0/file_006.go": 0,
+        "tests/sub0/file_005.go": 3
+      }
+    },
+    {
+      "sha": "0000025000000000000000000000000000000000",
+      "short_sha": "0000025",
+      "message": "commit 36: refactor module",
+      "author": "alice",
+      "date": "2026-01-02T21:00:00Z",
+      "changed_files": {
+        "api/sub2/file_015.go": 3,
+        "core/sub2/file_014.go": 2,
+        "docs/sub1/file_013.go": 1,
+        "tests/sub1/file_012.go": 0
+      }
+    },
+    {
+      "sha": "0000026000000000000000000000000000000000",
+      "short_sha": "0000026",
+      "message": "commit 37: refactor module",
+      "author": "bob",
+      "date": "2026-01-02T22:00:00Z",
+      "changed_files": {
+        "api/sub3/file_022.go": 0,
+        "core/sub3/file_021.go": 3,
+        "docs/sub2/file_020.go": 2,
+        "tests/sub2/file_019.go": 1
+      }
+    },
+    {
+      "sha": "0000027000000000000000000000000000000000",
+      "short_sha": "0000027",
+      "message": "commit 38: refactor module",
+      "author": "carol",
+      "date": "2026-01-02T23:00:00Z",
+      "changed_files": {
+        "api/sub0/file_029.go": 1,
+        "core/sub0/file_028.go": 0,
+        "docs/sub3/file_027.go": 3,
+        "tests/sub3/file_026.go": 2
+      }
+    },
+    {
+      "sha": "0000028000000000000000000000000000000000",
+      "short_sha": "0000028",
+      "message": "commit 39: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T00:00:00Z",
+      "changed_files": {
+        "api/sub1/file_036.go": 2,
+        "core/sub1/file_035.go": 1,
+        "docs/sub0/file_034.go": 0,
+        "tests/sub0/file_033.go": 3
+      }
+    },
+    {
+      "sha": "0000029000000000000000000000000000000000",
+      "short_sha": "0000029",
+      "message": "commit 40: refactor module",
+      "author": "alice",
+      "date": "2026-01-03T01:00:00Z",
+      "changed_files": {
+        "api/sub2/file_043.go": 3,
+        "core/sub2/file_042.go": 2,
+        "docs/sub1/file_041.go": 1,
+        "tests/sub1/file_040.go": 0
+      }
+    },
+    {
+      "sha": "000002a000000000000000000000000000000000",
+      "short_sha": "000002a",
+      "message": "commit 41: refactor module",
+      "author": "bob",
+      "date": "2026-01-03T02:00:00Z",
+      "changed_files": {
+        "api/sub3/file_050.go": 0,
+        "core/sub3/file_049.go": 3,
+        "docs/sub2/file_048.go": 2,
+        "tests/sub2/file_047.go": 1
+      }
+    },
+    {
+      "sha": "000002b000000000000000000000000000000000",
+      "short_sha": "000002b",
+      "message": "commit 42: refactor module",
+      "author": "carol",
+      "date": "2026-01-03T03:00:00Z",
+      "changed_files": {
+        "api/sub0/file_057.go": 1,
+        "core/sub0/file_056.go": 0,
+        "docs/sub3/file_055.go": 3,
+        "tests/sub3/file_054.go": 2
+      }
+    },
+    {
+      "sha": "000002c000000000000000000000000000000000",
+      "short_sha": "000002c",
+      "message": "commit 43: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T04:00:00Z",
+      "changed_files": {
+        "api/sub1/file_064.go": 2,
+        "core/sub1/file_063.go": 1,
+        "docs/sub0/file_062.go": 0,
+        "tests/sub0/file_061.go": 3
+      }
+    },
+    {
+      "sha": "000002d000000000000000000000000000000000",
+      "short_sha": "000002d",
+      "message": "commit 44: refactor module",
+      "author": "alice",
+      "date": "2026-01-03T05:00:00Z",
+      "changed_files": {
+        "api/sub2/file_071.go": 3,
+        "core/sub2/file_070.go": 2,
+        "docs/sub1/file_069.go": 1,
+        "tests/sub1/file_068.go": 0
+      }
+    },
+    {
+      "sha": "000002e000000000000000000000000000000000",
+      "short_sha": "000002e",
+      "message": "commit 45: refactor module",
+      "author": "bob",
+      "date": "2026-01-03T06:00:00Z",
+      "changed_files": {
+        "api/sub3/file_078.go": 0,
+        "core/sub3/file_077.go": 3,
+        "docs/sub2/file_076.go": 2,
+        "tests/sub2/file_075.go": 1
+      }
+    },
+    {
+      "sha": "000002f000000000000000000000000000000000",
+      "short_sha": "000002f",
+      "message": "commit 46: refactor module",
+      "author": "carol",
+      "date": "2026-01-03T07:00:00Z",
+      "changed_files": {
+        "api/sub0/file_085.go": 1,
+        "core/sub0/file_084.go": 0,
+        "docs/sub3/file_083.go": 3,
+        "tests/sub3/file_082.go": 2
+      }
+    },
+    {
+      "sha": "0000030000000000000000000000000000000000",
+      "short_sha": "0000030",
+      "message": "commit 47: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T08:00:00Z",
+      "changed_files": {
+        "api/sub1/file_092.go": 2,
+        "core/sub1/file_091.go": 1,
+        "docs/sub0/file_090.go": 0,
+        "tests/sub0/file_089.go": 3
+      }
+    },
+    {
+      "sha": "0000031000000000000000000000000000000000",
+      "short_sha": "0000031",
+      "message": "commit 48: refactor module",
+      "author": "alice",
+      "date": "2026-01-03T09:00:00Z",
+      "changed_files": {
+        "api/sub2/file_099.go": 3,
+        "core/sub2/file_098.go": 2,
+        "docs/sub1/file_097.go": 1,
+        "tests/sub1/file_096.go": 0
+      }
+    },
+    {
+      "sha": "0000032000000000000000000000000000000000",
+      "short_sha": "0000032",
+      "message": "commit 49: refactor module",
+      "author": "bob",
+      "date": "2026-01-03T10:00:00Z",
+      "changed_files": {
+        "api/sub3/file_106.go": 0,
+        "core/sub3/file_105.go": 3,
+        "docs/sub2/file_104.go": 2,
+        "tests/sub2/file_103.go": 1
+      }
+    },
+    {
+      "sha": "0000033000000000000000000000000000000000",
+      "short_sha": "0000033",
+      "message": "commit 50: refactor module",
+      "author": "carol",
+      "date": "2026-01-03T11:00:00Z",
+      "changed_files": {
+        "api/sub0/file_113.go": 1,
+        "core/sub0/file_112.go": 0,
+        "docs/sub3/file_111.go": 3,
+        "tests/sub3/file_110.go": 2
+      }
+    },
+    {
+      "sha": "0000034000000000000000000000000000000000",
+      "short_sha": "0000034",
+      "message": "commit 51: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T12:00:00Z",
+      "changed_files": {
+        "core/sub0/file_000.go": 2,
+        "core/sub1/file_119.go": 1,
+        "docs/sub0/file_118.go": 0,
+        "tests/sub0/file_117.go": 3
+      }
+    },
+    {
+      "sha": "0000035000000000000000000000000000000000",
+      "short_sha": "0000035",
+      "message": "commit 52: refactor module",
+      "author": "alice",
+      "date": "2026-01-03T13:00:00Z",
+      "changed_files": {
+        "core/sub1/file_007.go": 3,
+        "docs/sub0/file_006.go": 2,
+        "infra/sub0/file_004.go": 0,
+        "tests/sub0/file_005.go": 1
+      }
+    },
+    {
+      "sha": "0000036000000000000000000000000000000000",
+      "short_sha": "0000036",
+      "message": "commit 53: refactor module",
+      "author": "bob",
+      "date": "2026-01-03T14:00:00Z",
+      "changed_files": {
+        "core/sub2/file_014.go": 0,
+        "docs/sub1/file_013.go": 3,
+        "infra/sub1/file_011.go": 1,
+        "tests/sub1/file_012.go": 2
+      }
+    },
+    {
+      "sha": "0000037000000000000000000000000000000000",
+      "short_sha": "0000037",
+      "message": "commit 54: refactor module",
+      "author": "carol",
+      "date": "2026-01-03T15:00:00Z",
+      "changed_files": {
+        "core/sub3/file_021.go": 1,
+        "docs/sub2/file_020.go": 0,
+        "infra/sub2/file_018.go": 2,
+        "tests/sub2/file_019.go": 3
+      }
+    },
+    {
+      "sha": "0000038000000000000000000000000000000000",
+      "short_sha": "0000038",
+      "message": "commit 55: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T16:00:00Z",
+      "changed_files": {
+        "core/sub0/file_028.go": 2,
+        "docs/sub3/file_027.go": 1,
+        "infra/sub3/file_025.go": 3,
+        "tests/sub3/file_026.go": 0
+      }
+    },
+    {
+      "sha": "0000039000000000000000000000000000000000",
+      "short_sha": "0000039",
+      "message": "commit 56: refactor module",
+      "author": "alice",
+      "date": "2026-01-03T17:00:00Z",
+      "changed_files": {
+        "core/sub1/file_035.go": 3,
+        "docs/sub0/file_034.go": 2,
+        "infra/sub0/file_032.go": 0,
+        "tests/sub0/file_033.go": 1
+      }
+    },
+    {
+      "sha": "000003a000000000000000000000000000000000",
+      "short_sha": "000003a",
+      "message": "commit 57: refactor module",
+      "author": "bob",
+      "date": "2026-01-03T18:00:00Z",
+      "changed_files": {
+        "core/sub2/file_042.go": 0,
+        "docs/sub1/file_041.go": 3,
+        "infra/sub1/file_039.go": 1,
+        "tests/sub1/file_040.go": 2
+      }
+    },
+    {
+      "sha": "000003b000000000000000000000000000000000",
+      "short_sha": "000003b",
+      "message": "commit 58: refactor module",
+      "author": "carol",
+      "date": "2026-01-03T19:00:00Z",
+      "changed_files": {
+        "core/sub3/file_049.go": 1,
+        "docs/sub2/file_048.go": 0,
+        "infra/sub2/file_046.go": 2,
+        "tests/sub2/file_047.go": 3
+      }
+    },
+    {
+      "sha": "000003c000000000000000000000000000000000",
+      "short_sha": "000003c",
+      "message": "commit 59: refactor module",
+      "author": "dave",
+      "date": "2026-01-03T20:00:00Z",
+      "changed_files": {
+        "core/sub0/file_056.go": 2,
+        "docs/sub3/file_055.go": 1,
+        "infra/sub3/file_053.go": 3,
+        "tests/sub3/file_054.go": 0
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "core/sub0/file_000.go",
+      "status": 0,
+      "additions": 5,
+      "deletions": 0,
+      "comment_count": 2
+    },
+    {
+      "path": "api/sub0/file_001.go",
+      "status": 1,
+      "additions": 6,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub0/file_002.go",
+      "status": 2,
+      "additions": 7,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub0/file_003.go",
+      "status": 3,
+      "additions": 8,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub0/file_004.go",
+      "status": 0,
+      "additions": 9,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub0/file_005.go",
+      "status": 1,
+      "additions": 10,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub0/file_006.go",
+      "status": 2,
+      "additions": 11,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub1/file_007.go",
+      "status": 3,
+      "additions": 12,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub1/file_008.go",
+      "status": 0,
+      "additions": 13,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub1/file_009.go",
+      "status": 1,
+      "additions": 14,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub1/file_010.go",
+      "status": 2,
+      "additions": 15,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub1/file_011.go",
+      "status": 3,
+      "additions": 16,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub1/file_012.go",
+      "status": 0,
+      "additions": 17,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub1/file_013.go",
+      "status": 1,
+      "additions": 18,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub2/file_014.go",
+      "status": 2,
+      "additions": 19,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub2/file_015.go",
+      "status": 3,
+      "additions": 20,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub2/file_016.go",
+      "status": 0,
+      "additions": 21,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub2/file_017.go",
+      "status": 1,
+      "additions": 22,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub2/file_018.go",
+      "status": 2,
+      "additions": 23,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub2/file_019.go",
+      "status": 3,
+      "additions": 24,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub2/file_020.go",
+      "status": 0,
+      "additions": 25,
+      "deletions": 6,
+      "comment_count": 1
+    },
+    {
+      "path": "core/sub3/file_021.go",
+      "status": 1,
+      "additions": 26,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub3/file_022.go",
+      "status": 2,
+      "additions": 27,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub3/file_023.go",
+      "status": 3,
+      "additions": 28,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub3/file_024.go",
+      "status": 0,
+      "additions": 29,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub3/file_025.go",
+      "status": 1,
+      "additions": 30,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub3/file_026.go",
+      "status": 2,
+      "additions": 31,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub3/file_027.go",
+      "status": 3,
+      "additions": 32,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub0/file_028.go",
+      "status": 0,
+      "additions": 33,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub0/file_029.go",
+      "status": 1,
+      "additions": 34,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub0/file_030.go",
+      "status": 2,
+      "additions": 5,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub0/file_031.go",
+      "status": 3,
+      "additions": 6,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub0/file_032.go",
+      "status": 0,
+      "additions": 7,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub0/file_033.go",
+      "status": 1,
+      "additions": 8,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub0/file_034.go",
+      "status": 2,
+      "additions": 9,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub1/file_035.go",
+      "status": 3,
+      "additions": 10,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub1/file_036.go",
+      "status": 0,
+      "additions": 11,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub1/file_037.go",
+      "status": 1,
+      "additions": 12,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub1/file_038.go",
+      "status": 2,
+      "additions": 13,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub1/file_039.go",
+      "status": 3,
+      "additions": 14,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub1/file_040.go",
+      "status": 0,
+      "additions": 15,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub1/file_041.go",
+      "status": 1,
+      "additions": 16,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub2/file_042.go",
+      "status": 2,
+      "additions": 17,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub2/file_043.go",
+      "status": 3,
+      "additions": 18,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub2/file_044.go",
+      "status": 0,
+      "additions": 19,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub2/file_045.go",
+      "status": 1,
+      "additions": 20,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub2/file_046.go",
+      "status": 2,
+      "additions": 21,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub2/file_047.go",
+      "status": 3,
+      "additions": 22,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub2/file_048.go",
+      "status": 0,
+      "additions": 23,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub3/file_049.go",
+      "status": 1,
+      "additions": 24,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub3/file_050.go",
+      "status": 2,
+      "additions": 25,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub3/file_051.go",
+      "status": 3,
+      "additions": 26,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub3/file_052.go",
+      "status": 0,
+      "additions": 27,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub3/file_053.go",
+      "status": 1,
+      "additions": 28,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub3/file_054.go",
+      "status": 2,
+      "additions": 29,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub3/file_055.go",
+      "status": 3,
+      "additions": 30,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub0/file_056.go",
+      "status": 0,
+      "additions": 31,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub0/file_057.go",
+      "status": 1,
+      "additions": 32,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub0/file_058.go",
+      "status": 2,
+      "additions": 33,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub0/file_059.go",
+      "status": 3,
+      "additions": 34,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub0/file_060.go",
+      "status": 0,
+      "additions": 5,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub0/file_061.go",
+      "status": 1,
+      "additions": 6,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub0/file_062.go",
+      "status": 2,
+      "additions": 7,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub1/file_063.go",
+      "status": 3,
+      "additions": 8,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub1/file_064.go",
+      "status": 0,
+      "additions": 9,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub1/file_065.go",
+      "status": 1,
+      "additions": 10,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub1/file_066.go",
+      "status": 2,
+      "additions": 11,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub1/file_067.go",
+      "status": 3,
+      "additions": 12,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub1/file_068.go",
+      "status": 0,
+      "additions": 13,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub1/file_069.go",
+      "status": 1,
+      "additions": 14,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub2/file_070.go",
+      "status": 2,
+      "additions": 15,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub2/file_071.go",
+      "status": 3,
+      "additions": 16,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub2/file_072.go",
+      "status": 0,
+      "additions": 17,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub2/file_073.go",
+      "status": 1,
+      "additions": 18,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub2/file_074.go",
+      "status": 2,
+      "additions": 19,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub2/file_075.go",
+      "status": 3,
+      "additions": 20,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub2/file_076.go",
+      "status": 0,
+      "additions": 21,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub3/file_077.go",
+      "status": 1,
+      "additions": 22,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub3/file_078.go",
+      "status": 2,
+      "additions": 23,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub3/file_079.go",
+      "status": 3,
+      "additions": 24,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub3/file_080.go",
+      "status": 0,
+      "additions": 25,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub3/file_081.go",
+      "status": 1,
+      "additions": 26,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub3/file_082.go",
+      "status": 2,
+      "additions": 27,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub3/file_083.go",
+      "status": 3,
+      "additions": 28,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub0/file_084.go",
+      "status": 0,
+      "additions": 29,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub0/file_085.go",
+      "status": 1,
+      "additions": 30,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub0/file_086.go",
+      "status": 2,
+      "additions": 31,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub0/file_087.go",
+      "status": 3,
+      "additions": 32,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub0/file_088.go",
+      "status": 0,
+      "additions": 33,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub0/file_089.go",
+      "status": 1,
+      "additions": 34,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub0/file_090.go",
+      "status": 2,
+      "additions": 5,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub1/file_091.go",
+      "status": 3,
+      "additions": 6,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub1/file_092.go",
+      "status": 0,
+      "additions": 7,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub1/file_093.go",
+      "status": 1,
+      "additions": 8,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub1/file_094.go",
+      "status": 2,
+      "additions": 9,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub1/file_095.go",
+      "status": 3,
+      "additions": 10,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub1/file_096.go",
+      "status": 0,
+      "additions": 11,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub1/file_097.go",
+      "status": 1,
+      "additions": 12,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub2/file_098.go",
+      "status": 2,
+      "additions": 13,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub2/file_099.go",
+      "status": 3,
+      "additions": 14,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub2/file_100.go",
+      "status": 0,
+      "additions": 15,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub2/file_101.go",
+      "status": 1,
+      "additions": 16,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub2/file_102.go",
+      "status": 2,
+      "additions": 17,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub2/file_103.go",
+      "status": 3,
+      "additions": 18,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub2/file_104.go",
+      "status": 0,
+      "additions": 19,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub3/file_105.go",
+      "status": 1,
+      "additions": 20,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub3/file_106.go",
+      "status": 2,
+      "additions": 21,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub3/file_107.go",
+      "status": 3,
+      "additions": 22,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub3/file_108.go",
+      "status": 0,
+      "additions": 23,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub3/file_109.go",
+      "status": 1,
+      "additions": 24,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub3/file_110.go",
+      "status": 2,
+      "additions": 25,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub3/file_111.go",
+      "status": 3,
+      "additions": 26,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub0/file_112.go",
+      "status": 0,
+      "additions": 27,
+      "deletions": 0,
+      "comment_count": 0
+    },
+    {
+      "path": "api/sub0/file_113.go",
+      "status": 1,
+      "additions": 28,
+      "deletions": 1,
+      "comment_count": 0
+    },
+    {
+      "path": "ui/sub0/file_114.go",
+      "status": 2,
+      "additions": 29,
+      "deletions": 2,
+      "comment_count": 0
+    },
+    {
+      "path": "store/sub0/file_115.go",
+      "status": 3,
+      "additions": 30,
+      "deletions": 3,
+      "comment_count": 0
+    },
+    {
+      "path": "infra/sub0/file_116.go",
+      "status": 0,
+      "additions": 31,
+      "deletions": 4,
+      "comment_count": 0
+    },
+    {
+      "path": "tests/sub0/file_117.go",
+      "status": 1,
+      "additions": 32,
+      "deletions": 5,
+      "comment_count": 0
+    },
+    {
+      "path": "docs/sub0/file_118.go",
+      "status": 2,
+      "additions": 33,
+      "deletions": 6,
+      "comment_count": 0
+    },
+    {
+      "path": "core/sub1/file_119.go",
+      "status": 3,
+      "additions": 34,
+      "deletions": 0,
+      "comment_count": 0
+    }
+  ],
+  "comments": [
+    {
+      "id": 9001,
+      "path": "core/sub0/file_000.go",
+      "commit_id": "000003c000000000000000000000000000000000",
+      "original_commit_id": "000003c000000000000000000000000000000000",
+      "line": 5,
+      "original_line": 5,
+      "diff_hunk": "",
+      "in_reply_to": 0,
+      "user": "alice",
+      "created_at": "2026-01-01T11:00:00Z",
+      "body": "Consider extracting this into a helper.",
+      "outdated": false
+    },
+    {
+      "id": 9002,
+      "path": "core/sub0/file_000.go",
+      "commit_id": "000003c000000000000000000000000000000000",
+      "original_commit_id": "000003c000000000000000000000000000000000",
+      "line": 8,
+      "original_line": 8,
+      "diff_hunk": "",
+      "in_reply_to": 9001,
+      "user": "bob",
+      "created_at": "2026-01-01T12:00:00Z",
+      "body": "Agreed — will follow up.",
+      "outdated": false
+    },
+    {
+      "id": 9003,
+      "path": "docs/sub2/file_020.go",
+      "commit_id": "000003c000000000000000000000000000000000",
+      "original_commit_id": "000003c000000000000000000000000000000000",
+      "line": 12,
+      "original_line": 12,
+      "diff_hunk": "",
+      "in_reply_to": 0,
+      "user": "carol",
+      "created_at": "2026-01-01T13:00:00Z",
+      "body": "Tests for this branch?",
+      "outdated": false
+    }
+  ],
+  "diffs": {
+    "pr/api/sub0/file_001.go": "--- a/api/sub0/file_001.go\n+++ b/api/sub0/file_001.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub0/file_001.go\n+// stress line 1 for api/sub0/file_001.go\n+// stress line 2 for api/sub0/file_001.go\n+// stress line 3 for api/sub0/file_001.go\n+// stress line 4 for api/sub0/file_001.go\n+// stress line 5 for api/sub0/file_001.go\n+// stress line 6 for api/sub0/file_001.go\n+// stress line 7 for api/sub0/file_001.go\n+// stress line 8 for api/sub0/file_001.go\n+// stress line 9 for api/sub0/file_001.go\n+// stress line 10 for api/sub0/file_001.go\n+// stress line 11 for api/sub0/file_001.go\n",
+    "pr/api/sub0/file_029.go": "--- a/api/sub0/file_029.go\n+++ b/api/sub0/file_029.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub0/file_029.go\n+// stress line 1 for api/sub0/file_029.go\n+// stress line 2 for api/sub0/file_029.go\n+// stress line 3 for api/sub0/file_029.go\n+// stress line 4 for api/sub0/file_029.go\n+// stress line 5 for api/sub0/file_029.go\n+// stress line 6 for api/sub0/file_029.go\n+// stress line 7 for api/sub0/file_029.go\n+// stress line 8 for api/sub0/file_029.go\n+// stress line 9 for api/sub0/file_029.go\n+// stress line 10 for api/sub0/file_029.go\n+// stress line 11 for api/sub0/file_029.go\n",
+    "pr/api/sub0/file_057.go": "--- a/api/sub0/file_057.go\n+++ b/api/sub0/file_057.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub0/file_057.go\n+// stress line 1 for api/sub0/file_057.go\n+// stress line 2 for api/sub0/file_057.go\n+// stress line 3 for api/sub0/file_057.go\n+// stress line 4 for api/sub0/file_057.go\n+// stress line 5 for api/sub0/file_057.go\n+// stress line 6 for api/sub0/file_057.go\n+// stress line 7 for api/sub0/file_057.go\n+// stress line 8 for api/sub0/file_057.go\n+// stress line 9 for api/sub0/file_057.go\n+// stress line 10 for api/sub0/file_057.go\n+// stress line 11 for api/sub0/file_057.go\n",
+    "pr/api/sub0/file_085.go": "--- a/api/sub0/file_085.go\n+++ b/api/sub0/file_085.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub0/file_085.go\n+// stress line 1 for api/sub0/file_085.go\n+// stress line 2 for api/sub0/file_085.go\n+// stress line 3 for api/sub0/file_085.go\n+// stress line 4 for api/sub0/file_085.go\n+// stress line 5 for api/sub0/file_085.go\n+// stress line 6 for api/sub0/file_085.go\n+// stress line 7 for api/sub0/file_085.go\n+// stress line 8 for api/sub0/file_085.go\n+// stress line 9 for api/sub0/file_085.go\n+// stress line 10 for api/sub0/file_085.go\n+// stress line 11 for api/sub0/file_085.go\n",
+    "pr/api/sub0/file_113.go": "--- a/api/sub0/file_113.go\n+++ b/api/sub0/file_113.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub0/file_113.go\n+// stress line 1 for api/sub0/file_113.go\n+// stress line 2 for api/sub0/file_113.go\n+// stress line 3 for api/sub0/file_113.go\n+// stress line 4 for api/sub0/file_113.go\n+// stress line 5 for api/sub0/file_113.go\n+// stress line 6 for api/sub0/file_113.go\n+// stress line 7 for api/sub0/file_113.go\n+// stress line 8 for api/sub0/file_113.go\n+// stress line 9 for api/sub0/file_113.go\n+// stress line 10 for api/sub0/file_113.go\n+// stress line 11 for api/sub0/file_113.go\n",
+    "pr/api/sub1/file_008.go": "--- a/api/sub1/file_008.go\n+++ b/api/sub1/file_008.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub1/file_008.go\n+// stress line 1 for api/sub1/file_008.go\n+// stress line 2 for api/sub1/file_008.go\n+// stress line 3 for api/sub1/file_008.go\n+// stress line 4 for api/sub1/file_008.go\n+// stress line 5 for api/sub1/file_008.go\n+// stress line 6 for api/sub1/file_008.go\n+// stress line 7 for api/sub1/file_008.go\n+// stress line 8 for api/sub1/file_008.go\n+// stress line 9 for api/sub1/file_008.go\n+// stress line 10 for api/sub1/file_008.go\n+// stress line 11 for api/sub1/file_008.go\n",
+    "pr/api/sub1/file_036.go": "--- a/api/sub1/file_036.go\n+++ b/api/sub1/file_036.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub1/file_036.go\n+// stress line 1 for api/sub1/file_036.go\n+// stress line 2 for api/sub1/file_036.go\n+// stress line 3 for api/sub1/file_036.go\n+// stress line 4 for api/sub1/file_036.go\n+// stress line 5 for api/sub1/file_036.go\n+// stress line 6 for api/sub1/file_036.go\n+// stress line 7 for api/sub1/file_036.go\n+// stress line 8 for api/sub1/file_036.go\n+// stress line 9 for api/sub1/file_036.go\n+// stress line 10 for api/sub1/file_036.go\n+// stress line 11 for api/sub1/file_036.go\n",
+    "pr/api/sub1/file_064.go": "--- a/api/sub1/file_064.go\n+++ b/api/sub1/file_064.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub1/file_064.go\n+// stress line 1 for api/sub1/file_064.go\n+// stress line 2 for api/sub1/file_064.go\n+// stress line 3 for api/sub1/file_064.go\n+// stress line 4 for api/sub1/file_064.go\n+// stress line 5 for api/sub1/file_064.go\n+// stress line 6 for api/sub1/file_064.go\n+// stress line 7 for api/sub1/file_064.go\n+// stress line 8 for api/sub1/file_064.go\n+// stress line 9 for api/sub1/file_064.go\n+// stress line 10 for api/sub1/file_064.go\n+// stress line 11 for api/sub1/file_064.go\n",
+    "pr/api/sub1/file_092.go": "--- a/api/sub1/file_092.go\n+++ b/api/sub1/file_092.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub1/file_092.go\n+// stress line 1 for api/sub1/file_092.go\n+// stress line 2 for api/sub1/file_092.go\n+// stress line 3 for api/sub1/file_092.go\n+// stress line 4 for api/sub1/file_092.go\n+// stress line 5 for api/sub1/file_092.go\n+// stress line 6 for api/sub1/file_092.go\n+// stress line 7 for api/sub1/file_092.go\n+// stress line 8 for api/sub1/file_092.go\n+// stress line 9 for api/sub1/file_092.go\n+// stress line 10 for api/sub1/file_092.go\n+// stress line 11 for api/sub1/file_092.go\n",
+    "pr/api/sub2/file_015.go": "--- a/api/sub2/file_015.go\n+++ b/api/sub2/file_015.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub2/file_015.go\n+// stress line 1 for api/sub2/file_015.go\n+// stress line 2 for api/sub2/file_015.go\n+// stress line 3 for api/sub2/file_015.go\n+// stress line 4 for api/sub2/file_015.go\n+// stress line 5 for api/sub2/file_015.go\n+// stress line 6 for api/sub2/file_015.go\n+// stress line 7 for api/sub2/file_015.go\n+// stress line 8 for api/sub2/file_015.go\n+// stress line 9 for api/sub2/file_015.go\n+// stress line 10 for api/sub2/file_015.go\n+// stress line 11 for api/sub2/file_015.go\n",
+    "pr/api/sub2/file_043.go": "--- a/api/sub2/file_043.go\n+++ b/api/sub2/file_043.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub2/file_043.go\n+// stress line 1 for api/sub2/file_043.go\n+// stress line 2 for api/sub2/file_043.go\n+// stress line 3 for api/sub2/file_043.go\n+// stress line 4 for api/sub2/file_043.go\n+// stress line 5 for api/sub2/file_043.go\n+// stress line 6 for api/sub2/file_043.go\n+// stress line 7 for api/sub2/file_043.go\n+// stress line 8 for api/sub2/file_043.go\n+// stress line 9 for api/sub2/file_043.go\n+// stress line 10 for api/sub2/file_043.go\n+// stress line 11 for api/sub2/file_043.go\n",
+    "pr/api/sub2/file_071.go": "--- a/api/sub2/file_071.go\n+++ b/api/sub2/file_071.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub2/file_071.go\n+// stress line 1 for api/sub2/file_071.go\n+// stress line 2 for api/sub2/file_071.go\n+// stress line 3 for api/sub2/file_071.go\n+// stress line 4 for api/sub2/file_071.go\n+// stress line 5 for api/sub2/file_071.go\n+// stress line 6 for api/sub2/file_071.go\n+// stress line 7 for api/sub2/file_071.go\n+// stress line 8 for api/sub2/file_071.go\n+// stress line 9 for api/sub2/file_071.go\n+// stress line 10 for api/sub2/file_071.go\n+// stress line 11 for api/sub2/file_071.go\n",
+    "pr/api/sub2/file_099.go": "--- a/api/sub2/file_099.go\n+++ b/api/sub2/file_099.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub2/file_099.go\n+// stress line 1 for api/sub2/file_099.go\n+// stress line 2 for api/sub2/file_099.go\n+// stress line 3 for api/sub2/file_099.go\n+// stress line 4 for api/sub2/file_099.go\n+// stress line 5 for api/sub2/file_099.go\n+// stress line 6 for api/sub2/file_099.go\n+// stress line 7 for api/sub2/file_099.go\n+// stress line 8 for api/sub2/file_099.go\n+// stress line 9 for api/sub2/file_099.go\n+// stress line 10 for api/sub2/file_099.go\n+// stress line 11 for api/sub2/file_099.go\n",
+    "pr/api/sub3/file_022.go": "--- a/api/sub3/file_022.go\n+++ b/api/sub3/file_022.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub3/file_022.go\n+// stress line 1 for api/sub3/file_022.go\n+// stress line 2 for api/sub3/file_022.go\n+// stress line 3 for api/sub3/file_022.go\n+// stress line 4 for api/sub3/file_022.go\n+// stress line 5 for api/sub3/file_022.go\n+// stress line 6 for api/sub3/file_022.go\n+// stress line 7 for api/sub3/file_022.go\n+// stress line 8 for api/sub3/file_022.go\n+// stress line 9 for api/sub3/file_022.go\n+// stress line 10 for api/sub3/file_022.go\n+// stress line 11 for api/sub3/file_022.go\n",
+    "pr/api/sub3/file_050.go": "--- a/api/sub3/file_050.go\n+++ b/api/sub3/file_050.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub3/file_050.go\n+// stress line 1 for api/sub3/file_050.go\n+// stress line 2 for api/sub3/file_050.go\n+// stress line 3 for api/sub3/file_050.go\n+// stress line 4 for api/sub3/file_050.go\n+// stress line 5 for api/sub3/file_050.go\n+// stress line 6 for api/sub3/file_050.go\n+// stress line 7 for api/sub3/file_050.go\n+// stress line 8 for api/sub3/file_050.go\n+// stress line 9 for api/sub3/file_050.go\n+// stress line 10 for api/sub3/file_050.go\n+// stress line 11 for api/sub3/file_050.go\n",
+    "pr/api/sub3/file_078.go": "--- a/api/sub3/file_078.go\n+++ b/api/sub3/file_078.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub3/file_078.go\n+// stress line 1 for api/sub3/file_078.go\n+// stress line 2 for api/sub3/file_078.go\n+// stress line 3 for api/sub3/file_078.go\n+// stress line 4 for api/sub3/file_078.go\n+// stress line 5 for api/sub3/file_078.go\n+// stress line 6 for api/sub3/file_078.go\n+// stress line 7 for api/sub3/file_078.go\n+// stress line 8 for api/sub3/file_078.go\n+// stress line 9 for api/sub3/file_078.go\n+// stress line 10 for api/sub3/file_078.go\n+// stress line 11 for api/sub3/file_078.go\n",
+    "pr/api/sub3/file_106.go": "--- a/api/sub3/file_106.go\n+++ b/api/sub3/file_106.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for api/sub3/file_106.go\n+// stress line 1 for api/sub3/file_106.go\n+// stress line 2 for api/sub3/file_106.go\n+// stress line 3 for api/sub3/file_106.go\n+// stress line 4 for api/sub3/file_106.go\n+// stress line 5 for api/sub3/file_106.go\n+// stress line 6 for api/sub3/file_106.go\n+// stress line 7 for api/sub3/file_106.go\n+// stress line 8 for api/sub3/file_106.go\n+// stress line 9 for api/sub3/file_106.go\n+// stress line 10 for api/sub3/file_106.go\n+// stress line 11 for api/sub3/file_106.go\n",
+    "pr/core/sub0/file_000.go": "--- a/core/sub0/file_000.go\n+++ b/core/sub0/file_000.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub0/file_000.go\n+// stress line 1 for core/sub0/file_000.go\n+// stress line 2 for core/sub0/file_000.go\n+// stress line 3 for core/sub0/file_000.go\n+// stress line 4 for core/sub0/file_000.go\n+// stress line 5 for core/sub0/file_000.go\n+// stress line 6 for core/sub0/file_000.go\n+// stress line 7 for core/sub0/file_000.go\n+// stress line 8 for core/sub0/file_000.go\n+// stress line 9 for core/sub0/file_000.go\n+// stress line 10 for core/sub0/file_000.go\n+// stress line 11 for core/sub0/file_000.go\n",
+    "pr/core/sub0/file_028.go": "--- a/core/sub0/file_028.go\n+++ b/core/sub0/file_028.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub0/file_028.go\n+// stress line 1 for core/sub0/file_028.go\n+// stress line 2 for core/sub0/file_028.go\n+// stress line 3 for core/sub0/file_028.go\n+// stress line 4 for core/sub0/file_028.go\n+// stress line 5 for core/sub0/file_028.go\n+// stress line 6 for core/sub0/file_028.go\n+// stress line 7 for core/sub0/file_028.go\n+// stress line 8 for core/sub0/file_028.go\n+// stress line 9 for core/sub0/file_028.go\n+// stress line 10 for core/sub0/file_028.go\n+// stress line 11 for core/sub0/file_028.go\n",
+    "pr/core/sub0/file_056.go": "--- a/core/sub0/file_056.go\n+++ b/core/sub0/file_056.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub0/file_056.go\n+// stress line 1 for core/sub0/file_056.go\n+// stress line 2 for core/sub0/file_056.go\n+// stress line 3 for core/sub0/file_056.go\n+// stress line 4 for core/sub0/file_056.go\n+// stress line 5 for core/sub0/file_056.go\n+// stress line 6 for core/sub0/file_056.go\n+// stress line 7 for core/sub0/file_056.go\n+// stress line 8 for core/sub0/file_056.go\n+// stress line 9 for core/sub0/file_056.go\n+// stress line 10 for core/sub0/file_056.go\n+// stress line 11 for core/sub0/file_056.go\n",
+    "pr/core/sub0/file_084.go": "--- a/core/sub0/file_084.go\n+++ b/core/sub0/file_084.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub0/file_084.go\n+// stress line 1 for core/sub0/file_084.go\n+// stress line 2 for core/sub0/file_084.go\n+// stress line 3 for core/sub0/file_084.go\n+// stress line 4 for core/sub0/file_084.go\n+// stress line 5 for core/sub0/file_084.go\n+// stress line 6 for core/sub0/file_084.go\n+// stress line 7 for core/sub0/file_084.go\n+// stress line 8 for core/sub0/file_084.go\n+// stress line 9 for core/sub0/file_084.go\n+// stress line 10 for core/sub0/file_084.go\n+// stress line 11 for core/sub0/file_084.go\n",
+    "pr/core/sub0/file_112.go": "--- a/core/sub0/file_112.go\n+++ b/core/sub0/file_112.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub0/file_112.go\n+// stress line 1 for core/sub0/file_112.go\n+// stress line 2 for core/sub0/file_112.go\n+// stress line 3 for core/sub0/file_112.go\n+// stress line 4 for core/sub0/file_112.go\n+// stress line 5 for core/sub0/file_112.go\n+// stress line 6 for core/sub0/file_112.go\n+// stress line 7 for core/sub0/file_112.go\n+// stress line 8 for core/sub0/file_112.go\n+// stress line 9 for core/sub0/file_112.go\n+// stress line 10 for core/sub0/file_112.go\n+// stress line 11 for core/sub0/file_112.go\n",
+    "pr/core/sub1/file_007.go": "--- a/core/sub1/file_007.go\n+++ b/core/sub1/file_007.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub1/file_007.go\n+// stress line 1 for core/sub1/file_007.go\n+// stress line 2 for core/sub1/file_007.go\n+// stress line 3 for core/sub1/file_007.go\n+// stress line 4 for core/sub1/file_007.go\n+// stress line 5 for core/sub1/file_007.go\n+// stress line 6 for core/sub1/file_007.go\n+// stress line 7 for core/sub1/file_007.go\n+// stress line 8 for core/sub1/file_007.go\n+// stress line 9 for core/sub1/file_007.go\n+// stress line 10 for core/sub1/file_007.go\n+// stress line 11 for core/sub1/file_007.go\n",
+    "pr/core/sub1/file_035.go": "--- a/core/sub1/file_035.go\n+++ b/core/sub1/file_035.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub1/file_035.go\n+// stress line 1 for core/sub1/file_035.go\n+// stress line 2 for core/sub1/file_035.go\n+// stress line 3 for core/sub1/file_035.go\n+// stress line 4 for core/sub1/file_035.go\n+// stress line 5 for core/sub1/file_035.go\n+// stress line 6 for core/sub1/file_035.go\n+// stress line 7 for core/sub1/file_035.go\n+// stress line 8 for core/sub1/file_035.go\n+// stress line 9 for core/sub1/file_035.go\n+// stress line 10 for core/sub1/file_035.go\n+// stress line 11 for core/sub1/file_035.go\n",
+    "pr/core/sub1/file_063.go": "--- a/core/sub1/file_063.go\n+++ b/core/sub1/file_063.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub1/file_063.go\n+// stress line 1 for core/sub1/file_063.go\n+// stress line 2 for core/sub1/file_063.go\n+// stress line 3 for core/sub1/file_063.go\n+// stress line 4 for core/sub1/file_063.go\n+// stress line 5 for core/sub1/file_063.go\n+// stress line 6 for core/sub1/file_063.go\n+// stress line 7 for core/sub1/file_063.go\n+// stress line 8 for core/sub1/file_063.go\n+// stress line 9 for core/sub1/file_063.go\n+// stress line 10 for core/sub1/file_063.go\n+// stress line 11 for core/sub1/file_063.go\n",
+    "pr/core/sub1/file_091.go": "--- a/core/sub1/file_091.go\n+++ b/core/sub1/file_091.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub1/file_091.go\n+// stress line 1 for core/sub1/file_091.go\n+// stress line 2 for core/sub1/file_091.go\n+// stress line 3 for core/sub1/file_091.go\n+// stress line 4 for core/sub1/file_091.go\n+// stress line 5 for core/sub1/file_091.go\n+// stress line 6 for core/sub1/file_091.go\n+// stress line 7 for core/sub1/file_091.go\n+// stress line 8 for core/sub1/file_091.go\n+// stress line 9 for core/sub1/file_091.go\n+// stress line 10 for core/sub1/file_091.go\n+// stress line 11 for core/sub1/file_091.go\n",
+    "pr/core/sub1/file_119.go": "--- a/core/sub1/file_119.go\n+++ b/core/sub1/file_119.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub1/file_119.go\n+// stress line 1 for core/sub1/file_119.go\n+// stress line 2 for core/sub1/file_119.go\n+// stress line 3 for core/sub1/file_119.go\n+// stress line 4 for core/sub1/file_119.go\n+// stress line 5 for core/sub1/file_119.go\n+// stress line 6 for core/sub1/file_119.go\n+// stress line 7 for core/sub1/file_119.go\n+// stress line 8 for core/sub1/file_119.go\n+// stress line 9 for core/sub1/file_119.go\n+// stress line 10 for core/sub1/file_119.go\n+// stress line 11 for core/sub1/file_119.go\n",
+    "pr/core/sub2/file_014.go": "--- a/core/sub2/file_014.go\n+++ b/core/sub2/file_014.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub2/file_014.go\n+// stress line 1 for core/sub2/file_014.go\n+// stress line 2 for core/sub2/file_014.go\n+// stress line 3 for core/sub2/file_014.go\n+// stress line 4 for core/sub2/file_014.go\n+// stress line 5 for core/sub2/file_014.go\n+// stress line 6 for core/sub2/file_014.go\n+// stress line 7 for core/sub2/file_014.go\n+// stress line 8 for core/sub2/file_014.go\n+// stress line 9 for core/sub2/file_014.go\n+// stress line 10 for core/sub2/file_014.go\n+// stress line 11 for core/sub2/file_014.go\n",
+    "pr/core/sub2/file_042.go": "--- a/core/sub2/file_042.go\n+++ b/core/sub2/file_042.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub2/file_042.go\n+// stress line 1 for core/sub2/file_042.go\n+// stress line 2 for core/sub2/file_042.go\n+// stress line 3 for core/sub2/file_042.go\n+// stress line 4 for core/sub2/file_042.go\n+// stress line 5 for core/sub2/file_042.go\n+// stress line 6 for core/sub2/file_042.go\n+// stress line 7 for core/sub2/file_042.go\n+// stress line 8 for core/sub2/file_042.go\n+// stress line 9 for core/sub2/file_042.go\n+// stress line 10 for core/sub2/file_042.go\n+// stress line 11 for core/sub2/file_042.go\n",
+    "pr/core/sub2/file_070.go": "--- a/core/sub2/file_070.go\n+++ b/core/sub2/file_070.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub2/file_070.go\n+// stress line 1 for core/sub2/file_070.go\n+// stress line 2 for core/sub2/file_070.go\n+// stress line 3 for core/sub2/file_070.go\n+// stress line 4 for core/sub2/file_070.go\n+// stress line 5 for core/sub2/file_070.go\n+// stress line 6 for core/sub2/file_070.go\n+// stress line 7 for core/sub2/file_070.go\n+// stress line 8 for core/sub2/file_070.go\n+// stress line 9 for core/sub2/file_070.go\n+// stress line 10 for core/sub2/file_070.go\n+// stress line 11 for core/sub2/file_070.go\n",
+    "pr/core/sub2/file_098.go": "--- a/core/sub2/file_098.go\n+++ b/core/sub2/file_098.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub2/file_098.go\n+// stress line 1 for core/sub2/file_098.go\n+// stress line 2 for core/sub2/file_098.go\n+// stress line 3 for core/sub2/file_098.go\n+// stress line 4 for core/sub2/file_098.go\n+// stress line 5 for core/sub2/file_098.go\n+// stress line 6 for core/sub2/file_098.go\n+// stress line 7 for core/sub2/file_098.go\n+// stress line 8 for core/sub2/file_098.go\n+// stress line 9 for core/sub2/file_098.go\n+// stress line 10 for core/sub2/file_098.go\n+// stress line 11 for core/sub2/file_098.go\n",
+    "pr/core/sub3/file_021.go": "--- a/core/sub3/file_021.go\n+++ b/core/sub3/file_021.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub3/file_021.go\n+// stress line 1 for core/sub3/file_021.go\n+// stress line 2 for core/sub3/file_021.go\n+// stress line 3 for core/sub3/file_021.go\n+// stress line 4 for core/sub3/file_021.go\n+// stress line 5 for core/sub3/file_021.go\n+// stress line 6 for core/sub3/file_021.go\n+// stress line 7 for core/sub3/file_021.go\n+// stress line 8 for core/sub3/file_021.go\n+// stress line 9 for core/sub3/file_021.go\n+// stress line 10 for core/sub3/file_021.go\n+// stress line 11 for core/sub3/file_021.go\n",
+    "pr/core/sub3/file_049.go": "--- a/core/sub3/file_049.go\n+++ b/core/sub3/file_049.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub3/file_049.go\n+// stress line 1 for core/sub3/file_049.go\n+// stress line 2 for core/sub3/file_049.go\n+// stress line 3 for core/sub3/file_049.go\n+// stress line 4 for core/sub3/file_049.go\n+// stress line 5 for core/sub3/file_049.go\n+// stress line 6 for core/sub3/file_049.go\n+// stress line 7 for core/sub3/file_049.go\n+// stress line 8 for core/sub3/file_049.go\n+// stress line 9 for core/sub3/file_049.go\n+// stress line 10 for core/sub3/file_049.go\n+// stress line 11 for core/sub3/file_049.go\n",
+    "pr/core/sub3/file_077.go": "--- a/core/sub3/file_077.go\n+++ b/core/sub3/file_077.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub3/file_077.go\n+// stress line 1 for core/sub3/file_077.go\n+// stress line 2 for core/sub3/file_077.go\n+// stress line 3 for core/sub3/file_077.go\n+// stress line 4 for core/sub3/file_077.go\n+// stress line 5 for core/sub3/file_077.go\n+// stress line 6 for core/sub3/file_077.go\n+// stress line 7 for core/sub3/file_077.go\n+// stress line 8 for core/sub3/file_077.go\n+// stress line 9 for core/sub3/file_077.go\n+// stress line 10 for core/sub3/file_077.go\n+// stress line 11 for core/sub3/file_077.go\n",
+    "pr/core/sub3/file_105.go": "--- a/core/sub3/file_105.go\n+++ b/core/sub3/file_105.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for core/sub3/file_105.go\n+// stress line 1 for core/sub3/file_105.go\n+// stress line 2 for core/sub3/file_105.go\n+// stress line 3 for core/sub3/file_105.go\n+// stress line 4 for core/sub3/file_105.go\n+// stress line 5 for core/sub3/file_105.go\n+// stress line 6 for core/sub3/file_105.go\n+// stress line 7 for core/sub3/file_105.go\n+// stress line 8 for core/sub3/file_105.go\n+// stress line 9 for core/sub3/file_105.go\n+// stress line 10 for core/sub3/file_105.go\n+// stress line 11 for core/sub3/file_105.go\n",
+    "pr/docs/sub0/file_006.go": "--- a/docs/sub0/file_006.go\n+++ b/docs/sub0/file_006.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub0/file_006.go\n+// stress line 1 for docs/sub0/file_006.go\n+// stress line 2 for docs/sub0/file_006.go\n+// stress line 3 for docs/sub0/file_006.go\n+// stress line 4 for docs/sub0/file_006.go\n+// stress line 5 for docs/sub0/file_006.go\n+// stress line 6 for docs/sub0/file_006.go\n+// stress line 7 for docs/sub0/file_006.go\n+// stress line 8 for docs/sub0/file_006.go\n+// stress line 9 for docs/sub0/file_006.go\n+// stress line 10 for docs/sub0/file_006.go\n+// stress line 11 for docs/sub0/file_006.go\n",
+    "pr/docs/sub0/file_034.go": "--- a/docs/sub0/file_034.go\n+++ b/docs/sub0/file_034.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub0/file_034.go\n+// stress line 1 for docs/sub0/file_034.go\n+// stress line 2 for docs/sub0/file_034.go\n+// stress line 3 for docs/sub0/file_034.go\n+// stress line 4 for docs/sub0/file_034.go\n+// stress line 5 for docs/sub0/file_034.go\n+// stress line 6 for docs/sub0/file_034.go\n+// stress line 7 for docs/sub0/file_034.go\n+// stress line 8 for docs/sub0/file_034.go\n+// stress line 9 for docs/sub0/file_034.go\n+// stress line 10 for docs/sub0/file_034.go\n+// stress line 11 for docs/sub0/file_034.go\n",
+    "pr/docs/sub0/file_062.go": "--- a/docs/sub0/file_062.go\n+++ b/docs/sub0/file_062.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub0/file_062.go\n+// stress line 1 for docs/sub0/file_062.go\n+// stress line 2 for docs/sub0/file_062.go\n+// stress line 3 for docs/sub0/file_062.go\n+// stress line 4 for docs/sub0/file_062.go\n+// stress line 5 for docs/sub0/file_062.go\n+// stress line 6 for docs/sub0/file_062.go\n+// stress line 7 for docs/sub0/file_062.go\n+// stress line 8 for docs/sub0/file_062.go\n+// stress line 9 for docs/sub0/file_062.go\n+// stress line 10 for docs/sub0/file_062.go\n+// stress line 11 for docs/sub0/file_062.go\n",
+    "pr/docs/sub0/file_090.go": "--- a/docs/sub0/file_090.go\n+++ b/docs/sub0/file_090.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub0/file_090.go\n+// stress line 1 for docs/sub0/file_090.go\n+// stress line 2 for docs/sub0/file_090.go\n+// stress line 3 for docs/sub0/file_090.go\n+// stress line 4 for docs/sub0/file_090.go\n+// stress line 5 for docs/sub0/file_090.go\n+// stress line 6 for docs/sub0/file_090.go\n+// stress line 7 for docs/sub0/file_090.go\n+// stress line 8 for docs/sub0/file_090.go\n+// stress line 9 for docs/sub0/file_090.go\n+// stress line 10 for docs/sub0/file_090.go\n+// stress line 11 for docs/sub0/file_090.go\n",
+    "pr/docs/sub0/file_118.go": "--- a/docs/sub0/file_118.go\n+++ b/docs/sub0/file_118.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub0/file_118.go\n+// stress line 1 for docs/sub0/file_118.go\n+// stress line 2 for docs/sub0/file_118.go\n+// stress line 3 for docs/sub0/file_118.go\n+// stress line 4 for docs/sub0/file_118.go\n+// stress line 5 for docs/sub0/file_118.go\n+// stress line 6 for docs/sub0/file_118.go\n+// stress line 7 for docs/sub0/file_118.go\n+// stress line 8 for docs/sub0/file_118.go\n+// stress line 9 for docs/sub0/file_118.go\n+// stress line 10 for docs/sub0/file_118.go\n+// stress line 11 for docs/sub0/file_118.go\n",
+    "pr/docs/sub1/file_013.go": "--- a/docs/sub1/file_013.go\n+++ b/docs/sub1/file_013.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub1/file_013.go\n+// stress line 1 for docs/sub1/file_013.go\n+// stress line 2 for docs/sub1/file_013.go\n+// stress line 3 for docs/sub1/file_013.go\n+// stress line 4 for docs/sub1/file_013.go\n+// stress line 5 for docs/sub1/file_013.go\n+// stress line 6 for docs/sub1/file_013.go\n+// stress line 7 for docs/sub1/file_013.go\n+// stress line 8 for docs/sub1/file_013.go\n+// stress line 9 for docs/sub1/file_013.go\n+// stress line 10 for docs/sub1/file_013.go\n+// stress line 11 for docs/sub1/file_013.go\n",
+    "pr/docs/sub1/file_041.go": "--- a/docs/sub1/file_041.go\n+++ b/docs/sub1/file_041.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub1/file_041.go\n+// stress line 1 for docs/sub1/file_041.go\n+// stress line 2 for docs/sub1/file_041.go\n+// stress line 3 for docs/sub1/file_041.go\n+// stress line 4 for docs/sub1/file_041.go\n+// stress line 5 for docs/sub1/file_041.go\n+// stress line 6 for docs/sub1/file_041.go\n+// stress line 7 for docs/sub1/file_041.go\n+// stress line 8 for docs/sub1/file_041.go\n+// stress line 9 for docs/sub1/file_041.go\n+// stress line 10 for docs/sub1/file_041.go\n+// stress line 11 for docs/sub1/file_041.go\n",
+    "pr/docs/sub1/file_069.go": "--- a/docs/sub1/file_069.go\n+++ b/docs/sub1/file_069.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub1/file_069.go\n+// stress line 1 for docs/sub1/file_069.go\n+// stress line 2 for docs/sub1/file_069.go\n+// stress line 3 for docs/sub1/file_069.go\n+// stress line 4 for docs/sub1/file_069.go\n+// stress line 5 for docs/sub1/file_069.go\n+// stress line 6 for docs/sub1/file_069.go\n+// stress line 7 for docs/sub1/file_069.go\n+// stress line 8 for docs/sub1/file_069.go\n+// stress line 9 for docs/sub1/file_069.go\n+// stress line 10 for docs/sub1/file_069.go\n+// stress line 11 for docs/sub1/file_069.go\n",
+    "pr/docs/sub1/file_097.go": "--- a/docs/sub1/file_097.go\n+++ b/docs/sub1/file_097.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub1/file_097.go\n+// stress line 1 for docs/sub1/file_097.go\n+// stress line 2 for docs/sub1/file_097.go\n+// stress line 3 for docs/sub1/file_097.go\n+// stress line 4 for docs/sub1/file_097.go\n+// stress line 5 for docs/sub1/file_097.go\n+// stress line 6 for docs/sub1/file_097.go\n+// stress line 7 for docs/sub1/file_097.go\n+// stress line 8 for docs/sub1/file_097.go\n+// stress line 9 for docs/sub1/file_097.go\n+// stress line 10 for docs/sub1/file_097.go\n+// stress line 11 for docs/sub1/file_097.go\n",
+    "pr/docs/sub2/file_020.go": "--- a/docs/sub2/file_020.go\n+++ b/docs/sub2/file_020.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub2/file_020.go\n+// stress line 1 for docs/sub2/file_020.go\n+// stress line 2 for docs/sub2/file_020.go\n+// stress line 3 for docs/sub2/file_020.go\n+// stress line 4 for docs/sub2/file_020.go\n+// stress line 5 for docs/sub2/file_020.go\n+// stress line 6 for docs/sub2/file_020.go\n+// stress line 7 for docs/sub2/file_020.go\n+// stress line 8 for docs/sub2/file_020.go\n+// stress line 9 for docs/sub2/file_020.go\n+// stress line 10 for docs/sub2/file_020.go\n+// stress line 11 for docs/sub2/file_020.go\n",
+    "pr/docs/sub2/file_048.go": "--- a/docs/sub2/file_048.go\n+++ b/docs/sub2/file_048.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub2/file_048.go\n+// stress line 1 for docs/sub2/file_048.go\n+// stress line 2 for docs/sub2/file_048.go\n+// stress line 3 for docs/sub2/file_048.go\n+// stress line 4 for docs/sub2/file_048.go\n+// stress line 5 for docs/sub2/file_048.go\n+// stress line 6 for docs/sub2/file_048.go\n+// stress line 7 for docs/sub2/file_048.go\n+// stress line 8 for docs/sub2/file_048.go\n+// stress line 9 for docs/sub2/file_048.go\n+// stress line 10 for docs/sub2/file_048.go\n+// stress line 11 for docs/sub2/file_048.go\n",
+    "pr/docs/sub2/file_076.go": "--- a/docs/sub2/file_076.go\n+++ b/docs/sub2/file_076.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub2/file_076.go\n+// stress line 1 for docs/sub2/file_076.go\n+// stress line 2 for docs/sub2/file_076.go\n+// stress line 3 for docs/sub2/file_076.go\n+// stress line 4 for docs/sub2/file_076.go\n+// stress line 5 for docs/sub2/file_076.go\n+// stress line 6 for docs/sub2/file_076.go\n+// stress line 7 for docs/sub2/file_076.go\n+// stress line 8 for docs/sub2/file_076.go\n+// stress line 9 for docs/sub2/file_076.go\n+// stress line 10 for docs/sub2/file_076.go\n+// stress line 11 for docs/sub2/file_076.go\n",
+    "pr/docs/sub2/file_104.go": "--- a/docs/sub2/file_104.go\n+++ b/docs/sub2/file_104.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub2/file_104.go\n+// stress line 1 for docs/sub2/file_104.go\n+// stress line 2 for docs/sub2/file_104.go\n+// stress line 3 for docs/sub2/file_104.go\n+// stress line 4 for docs/sub2/file_104.go\n+// stress line 5 for docs/sub2/file_104.go\n+// stress line 6 for docs/sub2/file_104.go\n+// stress line 7 for docs/sub2/file_104.go\n+// stress line 8 for docs/sub2/file_104.go\n+// stress line 9 for docs/sub2/file_104.go\n+// stress line 10 for docs/sub2/file_104.go\n+// stress line 11 for docs/sub2/file_104.go\n",
+    "pr/docs/sub3/file_027.go": "--- a/docs/sub3/file_027.go\n+++ b/docs/sub3/file_027.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub3/file_027.go\n+// stress line 1 for docs/sub3/file_027.go\n+// stress line 2 for docs/sub3/file_027.go\n+// stress line 3 for docs/sub3/file_027.go\n+// stress line 4 for docs/sub3/file_027.go\n+// stress line 5 for docs/sub3/file_027.go\n+// stress line 6 for docs/sub3/file_027.go\n+// stress line 7 for docs/sub3/file_027.go\n+// stress line 8 for docs/sub3/file_027.go\n+// stress line 9 for docs/sub3/file_027.go\n+// stress line 10 for docs/sub3/file_027.go\n+// stress line 11 for docs/sub3/file_027.go\n",
+    "pr/docs/sub3/file_055.go": "--- a/docs/sub3/file_055.go\n+++ b/docs/sub3/file_055.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub3/file_055.go\n+// stress line 1 for docs/sub3/file_055.go\n+// stress line 2 for docs/sub3/file_055.go\n+// stress line 3 for docs/sub3/file_055.go\n+// stress line 4 for docs/sub3/file_055.go\n+// stress line 5 for docs/sub3/file_055.go\n+// stress line 6 for docs/sub3/file_055.go\n+// stress line 7 for docs/sub3/file_055.go\n+// stress line 8 for docs/sub3/file_055.go\n+// stress line 9 for docs/sub3/file_055.go\n+// stress line 10 for docs/sub3/file_055.go\n+// stress line 11 for docs/sub3/file_055.go\n",
+    "pr/docs/sub3/file_083.go": "--- a/docs/sub3/file_083.go\n+++ b/docs/sub3/file_083.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub3/file_083.go\n+// stress line 1 for docs/sub3/file_083.go\n+// stress line 2 for docs/sub3/file_083.go\n+// stress line 3 for docs/sub3/file_083.go\n+// stress line 4 for docs/sub3/file_083.go\n+// stress line 5 for docs/sub3/file_083.go\n+// stress line 6 for docs/sub3/file_083.go\n+// stress line 7 for docs/sub3/file_083.go\n+// stress line 8 for docs/sub3/file_083.go\n+// stress line 9 for docs/sub3/file_083.go\n+// stress line 10 for docs/sub3/file_083.go\n+// stress line 11 for docs/sub3/file_083.go\n",
+    "pr/docs/sub3/file_111.go": "--- a/docs/sub3/file_111.go\n+++ b/docs/sub3/file_111.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for docs/sub3/file_111.go\n+// stress line 1 for docs/sub3/file_111.go\n+// stress line 2 for docs/sub3/file_111.go\n+// stress line 3 for docs/sub3/file_111.go\n+// stress line 4 for docs/sub3/file_111.go\n+// stress line 5 for docs/sub3/file_111.go\n+// stress line 6 for docs/sub3/file_111.go\n+// stress line 7 for docs/sub3/file_111.go\n+// stress line 8 for docs/sub3/file_111.go\n+// stress line 9 for docs/sub3/file_111.go\n+// stress line 10 for docs/sub3/file_111.go\n+// stress line 11 for docs/sub3/file_111.go\n",
+    "pr/infra/sub0/file_004.go": "--- a/infra/sub0/file_004.go\n+++ b/infra/sub0/file_004.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub0/file_004.go\n+// stress line 1 for infra/sub0/file_004.go\n+// stress line 2 for infra/sub0/file_004.go\n+// stress line 3 for infra/sub0/file_004.go\n+// stress line 4 for infra/sub0/file_004.go\n+// stress line 5 for infra/sub0/file_004.go\n+// stress line 6 for infra/sub0/file_004.go\n+// stress line 7 for infra/sub0/file_004.go\n+// stress line 8 for infra/sub0/file_004.go\n+// stress line 9 for infra/sub0/file_004.go\n+// stress line 10 for infra/sub0/file_004.go\n+// stress line 11 for infra/sub0/file_004.go\n",
+    "pr/infra/sub0/file_032.go": "--- a/infra/sub0/file_032.go\n+++ b/infra/sub0/file_032.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub0/file_032.go\n+// stress line 1 for infra/sub0/file_032.go\n+// stress line 2 for infra/sub0/file_032.go\n+// stress line 3 for infra/sub0/file_032.go\n+// stress line 4 for infra/sub0/file_032.go\n+// stress line 5 for infra/sub0/file_032.go\n+// stress line 6 for infra/sub0/file_032.go\n+// stress line 7 for infra/sub0/file_032.go\n+// stress line 8 for infra/sub0/file_032.go\n+// stress line 9 for infra/sub0/file_032.go\n+// stress line 10 for infra/sub0/file_032.go\n+// stress line 11 for infra/sub0/file_032.go\n",
+    "pr/infra/sub0/file_060.go": "--- a/infra/sub0/file_060.go\n+++ b/infra/sub0/file_060.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub0/file_060.go\n+// stress line 1 for infra/sub0/file_060.go\n+// stress line 2 for infra/sub0/file_060.go\n+// stress line 3 for infra/sub0/file_060.go\n+// stress line 4 for infra/sub0/file_060.go\n+// stress line 5 for infra/sub0/file_060.go\n+// stress line 6 for infra/sub0/file_060.go\n+// stress line 7 for infra/sub0/file_060.go\n+// stress line 8 for infra/sub0/file_060.go\n+// stress line 9 for infra/sub0/file_060.go\n+// stress line 10 for infra/sub0/file_060.go\n+// stress line 11 for infra/sub0/file_060.go\n",
+    "pr/infra/sub0/file_088.go": "--- a/infra/sub0/file_088.go\n+++ b/infra/sub0/file_088.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub0/file_088.go\n+// stress line 1 for infra/sub0/file_088.go\n+// stress line 2 for infra/sub0/file_088.go\n+// stress line 3 for infra/sub0/file_088.go\n+// stress line 4 for infra/sub0/file_088.go\n+// stress line 5 for infra/sub0/file_088.go\n+// stress line 6 for infra/sub0/file_088.go\n+// stress line 7 for infra/sub0/file_088.go\n+// stress line 8 for infra/sub0/file_088.go\n+// stress line 9 for infra/sub0/file_088.go\n+// stress line 10 for infra/sub0/file_088.go\n+// stress line 11 for infra/sub0/file_088.go\n",
+    "pr/infra/sub0/file_116.go": "--- a/infra/sub0/file_116.go\n+++ b/infra/sub0/file_116.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub0/file_116.go\n+// stress line 1 for infra/sub0/file_116.go\n+// stress line 2 for infra/sub0/file_116.go\n+// stress line 3 for infra/sub0/file_116.go\n+// stress line 4 for infra/sub0/file_116.go\n+// stress line 5 for infra/sub0/file_116.go\n+// stress line 6 for infra/sub0/file_116.go\n+// stress line 7 for infra/sub0/file_116.go\n+// stress line 8 for infra/sub0/file_116.go\n+// stress line 9 for infra/sub0/file_116.go\n+// stress line 10 for infra/sub0/file_116.go\n+// stress line 11 for infra/sub0/file_116.go\n",
+    "pr/infra/sub1/file_011.go": "--- a/infra/sub1/file_011.go\n+++ b/infra/sub1/file_011.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub1/file_011.go\n+// stress line 1 for infra/sub1/file_011.go\n+// stress line 2 for infra/sub1/file_011.go\n+// stress line 3 for infra/sub1/file_011.go\n+// stress line 4 for infra/sub1/file_011.go\n+// stress line 5 for infra/sub1/file_011.go\n+// stress line 6 for infra/sub1/file_011.go\n+// stress line 7 for infra/sub1/file_011.go\n+// stress line 8 for infra/sub1/file_011.go\n+// stress line 9 for infra/sub1/file_011.go\n+// stress line 10 for infra/sub1/file_011.go\n+// stress line 11 for infra/sub1/file_011.go\n",
+    "pr/infra/sub1/file_039.go": "--- a/infra/sub1/file_039.go\n+++ b/infra/sub1/file_039.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub1/file_039.go\n+// stress line 1 for infra/sub1/file_039.go\n+// stress line 2 for infra/sub1/file_039.go\n+// stress line 3 for infra/sub1/file_039.go\n+// stress line 4 for infra/sub1/file_039.go\n+// stress line 5 for infra/sub1/file_039.go\n+// stress line 6 for infra/sub1/file_039.go\n+// stress line 7 for infra/sub1/file_039.go\n+// stress line 8 for infra/sub1/file_039.go\n+// stress line 9 for infra/sub1/file_039.go\n+// stress line 10 for infra/sub1/file_039.go\n+// stress line 11 for infra/sub1/file_039.go\n",
+    "pr/infra/sub1/file_067.go": "--- a/infra/sub1/file_067.go\n+++ b/infra/sub1/file_067.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub1/file_067.go\n+// stress line 1 for infra/sub1/file_067.go\n+// stress line 2 for infra/sub1/file_067.go\n+// stress line 3 for infra/sub1/file_067.go\n+// stress line 4 for infra/sub1/file_067.go\n+// stress line 5 for infra/sub1/file_067.go\n+// stress line 6 for infra/sub1/file_067.go\n+// stress line 7 for infra/sub1/file_067.go\n+// stress line 8 for infra/sub1/file_067.go\n+// stress line 9 for infra/sub1/file_067.go\n+// stress line 10 for infra/sub1/file_067.go\n+// stress line 11 for infra/sub1/file_067.go\n",
+    "pr/infra/sub1/file_095.go": "--- a/infra/sub1/file_095.go\n+++ b/infra/sub1/file_095.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub1/file_095.go\n+// stress line 1 for infra/sub1/file_095.go\n+// stress line 2 for infra/sub1/file_095.go\n+// stress line 3 for infra/sub1/file_095.go\n+// stress line 4 for infra/sub1/file_095.go\n+// stress line 5 for infra/sub1/file_095.go\n+// stress line 6 for infra/sub1/file_095.go\n+// stress line 7 for infra/sub1/file_095.go\n+// stress line 8 for infra/sub1/file_095.go\n+// stress line 9 for infra/sub1/file_095.go\n+// stress line 10 for infra/sub1/file_095.go\n+// stress line 11 for infra/sub1/file_095.go\n",
+    "pr/infra/sub2/file_018.go": "--- a/infra/sub2/file_018.go\n+++ b/infra/sub2/file_018.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub2/file_018.go\n+// stress line 1 for infra/sub2/file_018.go\n+// stress line 2 for infra/sub2/file_018.go\n+// stress line 3 for infra/sub2/file_018.go\n+// stress line 4 for infra/sub2/file_018.go\n+// stress line 5 for infra/sub2/file_018.go\n+// stress line 6 for infra/sub2/file_018.go\n+// stress line 7 for infra/sub2/file_018.go\n+// stress line 8 for infra/sub2/file_018.go\n+// stress line 9 for infra/sub2/file_018.go\n+// stress line 10 for infra/sub2/file_018.go\n+// stress line 11 for infra/sub2/file_018.go\n",
+    "pr/infra/sub2/file_046.go": "--- a/infra/sub2/file_046.go\n+++ b/infra/sub2/file_046.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub2/file_046.go\n+// stress line 1 for infra/sub2/file_046.go\n+// stress line 2 for infra/sub2/file_046.go\n+// stress line 3 for infra/sub2/file_046.go\n+// stress line 4 for infra/sub2/file_046.go\n+// stress line 5 for infra/sub2/file_046.go\n+// stress line 6 for infra/sub2/file_046.go\n+// stress line 7 for infra/sub2/file_046.go\n+// stress line 8 for infra/sub2/file_046.go\n+// stress line 9 for infra/sub2/file_046.go\n+// stress line 10 for infra/sub2/file_046.go\n+// stress line 11 for infra/sub2/file_046.go\n",
+    "pr/infra/sub2/file_074.go": "--- a/infra/sub2/file_074.go\n+++ b/infra/sub2/file_074.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub2/file_074.go\n+// stress line 1 for infra/sub2/file_074.go\n+// stress line 2 for infra/sub2/file_074.go\n+// stress line 3 for infra/sub2/file_074.go\n+// stress line 4 for infra/sub2/file_074.go\n+// stress line 5 for infra/sub2/file_074.go\n+// stress line 6 for infra/sub2/file_074.go\n+// stress line 7 for infra/sub2/file_074.go\n+// stress line 8 for infra/sub2/file_074.go\n+// stress line 9 for infra/sub2/file_074.go\n+// stress line 10 for infra/sub2/file_074.go\n+// stress line 11 for infra/sub2/file_074.go\n",
+    "pr/infra/sub2/file_102.go": "--- a/infra/sub2/file_102.go\n+++ b/infra/sub2/file_102.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub2/file_102.go\n+// stress line 1 for infra/sub2/file_102.go\n+// stress line 2 for infra/sub2/file_102.go\n+// stress line 3 for infra/sub2/file_102.go\n+// stress line 4 for infra/sub2/file_102.go\n+// stress line 5 for infra/sub2/file_102.go\n+// stress line 6 for infra/sub2/file_102.go\n+// stress line 7 for infra/sub2/file_102.go\n+// stress line 8 for infra/sub2/file_102.go\n+// stress line 9 for infra/sub2/file_102.go\n+// stress line 10 for infra/sub2/file_102.go\n+// stress line 11 for infra/sub2/file_102.go\n",
+    "pr/infra/sub3/file_025.go": "--- a/infra/sub3/file_025.go\n+++ b/infra/sub3/file_025.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub3/file_025.go\n+// stress line 1 for infra/sub3/file_025.go\n+// stress line 2 for infra/sub3/file_025.go\n+// stress line 3 for infra/sub3/file_025.go\n+// stress line 4 for infra/sub3/file_025.go\n+// stress line 5 for infra/sub3/file_025.go\n+// stress line 6 for infra/sub3/file_025.go\n+// stress line 7 for infra/sub3/file_025.go\n+// stress line 8 for infra/sub3/file_025.go\n+// stress line 9 for infra/sub3/file_025.go\n+// stress line 10 for infra/sub3/file_025.go\n+// stress line 11 for infra/sub3/file_025.go\n",
+    "pr/infra/sub3/file_053.go": "--- a/infra/sub3/file_053.go\n+++ b/infra/sub3/file_053.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub3/file_053.go\n+// stress line 1 for infra/sub3/file_053.go\n+// stress line 2 for infra/sub3/file_053.go\n+// stress line 3 for infra/sub3/file_053.go\n+// stress line 4 for infra/sub3/file_053.go\n+// stress line 5 for infra/sub3/file_053.go\n+// stress line 6 for infra/sub3/file_053.go\n+// stress line 7 for infra/sub3/file_053.go\n+// stress line 8 for infra/sub3/file_053.go\n+// stress line 9 for infra/sub3/file_053.go\n+// stress line 10 for infra/sub3/file_053.go\n+// stress line 11 for infra/sub3/file_053.go\n",
+    "pr/infra/sub3/file_081.go": "--- a/infra/sub3/file_081.go\n+++ b/infra/sub3/file_081.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub3/file_081.go\n+// stress line 1 for infra/sub3/file_081.go\n+// stress line 2 for infra/sub3/file_081.go\n+// stress line 3 for infra/sub3/file_081.go\n+// stress line 4 for infra/sub3/file_081.go\n+// stress line 5 for infra/sub3/file_081.go\n+// stress line 6 for infra/sub3/file_081.go\n+// stress line 7 for infra/sub3/file_081.go\n+// stress line 8 for infra/sub3/file_081.go\n+// stress line 9 for infra/sub3/file_081.go\n+// stress line 10 for infra/sub3/file_081.go\n+// stress line 11 for infra/sub3/file_081.go\n",
+    "pr/infra/sub3/file_109.go": "--- a/infra/sub3/file_109.go\n+++ b/infra/sub3/file_109.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for infra/sub3/file_109.go\n+// stress line 1 for infra/sub3/file_109.go\n+// stress line 2 for infra/sub3/file_109.go\n+// stress line 3 for infra/sub3/file_109.go\n+// stress line 4 for infra/sub3/file_109.go\n+// stress line 5 for infra/sub3/file_109.go\n+// stress line 6 for infra/sub3/file_109.go\n+// stress line 7 for infra/sub3/file_109.go\n+// stress line 8 for infra/sub3/file_109.go\n+// stress line 9 for infra/sub3/file_109.go\n+// stress line 10 for infra/sub3/file_109.go\n+// stress line 11 for infra/sub3/file_109.go\n",
+    "pr/store/sub0/file_003.go": "--- a/store/sub0/file_003.go\n+++ b/store/sub0/file_003.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub0/file_003.go\n+// stress line 1 for store/sub0/file_003.go\n+// stress line 2 for store/sub0/file_003.go\n+// stress line 3 for store/sub0/file_003.go\n+// stress line 4 for store/sub0/file_003.go\n+// stress line 5 for store/sub0/file_003.go\n+// stress line 6 for store/sub0/file_003.go\n+// stress line 7 for store/sub0/file_003.go\n+// stress line 8 for store/sub0/file_003.go\n+// stress line 9 for store/sub0/file_003.go\n+// stress line 10 for store/sub0/file_003.go\n+// stress line 11 for store/sub0/file_003.go\n",
+    "pr/store/sub0/file_031.go": "--- a/store/sub0/file_031.go\n+++ b/store/sub0/file_031.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub0/file_031.go\n+// stress line 1 for store/sub0/file_031.go\n+// stress line 2 for store/sub0/file_031.go\n+// stress line 3 for store/sub0/file_031.go\n+// stress line 4 for store/sub0/file_031.go\n+// stress line 5 for store/sub0/file_031.go\n+// stress line 6 for store/sub0/file_031.go\n+// stress line 7 for store/sub0/file_031.go\n+// stress line 8 for store/sub0/file_031.go\n+// stress line 9 for store/sub0/file_031.go\n+// stress line 10 for store/sub0/file_031.go\n+// stress line 11 for store/sub0/file_031.go\n",
+    "pr/store/sub0/file_059.go": "--- a/store/sub0/file_059.go\n+++ b/store/sub0/file_059.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub0/file_059.go\n+// stress line 1 for store/sub0/file_059.go\n+// stress line 2 for store/sub0/file_059.go\n+// stress line 3 for store/sub0/file_059.go\n+// stress line 4 for store/sub0/file_059.go\n+// stress line 5 for store/sub0/file_059.go\n+// stress line 6 for store/sub0/file_059.go\n+// stress line 7 for store/sub0/file_059.go\n+// stress line 8 for store/sub0/file_059.go\n+// stress line 9 for store/sub0/file_059.go\n+// stress line 10 for store/sub0/file_059.go\n+// stress line 11 for store/sub0/file_059.go\n",
+    "pr/store/sub0/file_087.go": "--- a/store/sub0/file_087.go\n+++ b/store/sub0/file_087.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub0/file_087.go\n+// stress line 1 for store/sub0/file_087.go\n+// stress line 2 for store/sub0/file_087.go\n+// stress line 3 for store/sub0/file_087.go\n+// stress line 4 for store/sub0/file_087.go\n+// stress line 5 for store/sub0/file_087.go\n+// stress line 6 for store/sub0/file_087.go\n+// stress line 7 for store/sub0/file_087.go\n+// stress line 8 for store/sub0/file_087.go\n+// stress line 9 for store/sub0/file_087.go\n+// stress line 10 for store/sub0/file_087.go\n+// stress line 11 for store/sub0/file_087.go\n",
+    "pr/store/sub0/file_115.go": "--- a/store/sub0/file_115.go\n+++ b/store/sub0/file_115.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub0/file_115.go\n+// stress line 1 for store/sub0/file_115.go\n+// stress line 2 for store/sub0/file_115.go\n+// stress line 3 for store/sub0/file_115.go\n+// stress line 4 for store/sub0/file_115.go\n+// stress line 5 for store/sub0/file_115.go\n+// stress line 6 for store/sub0/file_115.go\n+// stress line 7 for store/sub0/file_115.go\n+// stress line 8 for store/sub0/file_115.go\n+// stress line 9 for store/sub0/file_115.go\n+// stress line 10 for store/sub0/file_115.go\n+// stress line 11 for store/sub0/file_115.go\n",
+    "pr/store/sub1/file_010.go": "--- a/store/sub1/file_010.go\n+++ b/store/sub1/file_010.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub1/file_010.go\n+// stress line 1 for store/sub1/file_010.go\n+// stress line 2 for store/sub1/file_010.go\n+// stress line 3 for store/sub1/file_010.go\n+// stress line 4 for store/sub1/file_010.go\n+// stress line 5 for store/sub1/file_010.go\n+// stress line 6 for store/sub1/file_010.go\n+// stress line 7 for store/sub1/file_010.go\n+// stress line 8 for store/sub1/file_010.go\n+// stress line 9 for store/sub1/file_010.go\n+// stress line 10 for store/sub1/file_010.go\n+// stress line 11 for store/sub1/file_010.go\n",
+    "pr/store/sub1/file_038.go": "--- a/store/sub1/file_038.go\n+++ b/store/sub1/file_038.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub1/file_038.go\n+// stress line 1 for store/sub1/file_038.go\n+// stress line 2 for store/sub1/file_038.go\n+// stress line 3 for store/sub1/file_038.go\n+// stress line 4 for store/sub1/file_038.go\n+// stress line 5 for store/sub1/file_038.go\n+// stress line 6 for store/sub1/file_038.go\n+// stress line 7 for store/sub1/file_038.go\n+// stress line 8 for store/sub1/file_038.go\n+// stress line 9 for store/sub1/file_038.go\n+// stress line 10 for store/sub1/file_038.go\n+// stress line 11 for store/sub1/file_038.go\n",
+    "pr/store/sub1/file_066.go": "--- a/store/sub1/file_066.go\n+++ b/store/sub1/file_066.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub1/file_066.go\n+// stress line 1 for store/sub1/file_066.go\n+// stress line 2 for store/sub1/file_066.go\n+// stress line 3 for store/sub1/file_066.go\n+// stress line 4 for store/sub1/file_066.go\n+// stress line 5 for store/sub1/file_066.go\n+// stress line 6 for store/sub1/file_066.go\n+// stress line 7 for store/sub1/file_066.go\n+// stress line 8 for store/sub1/file_066.go\n+// stress line 9 for store/sub1/file_066.go\n+// stress line 10 for store/sub1/file_066.go\n+// stress line 11 for store/sub1/file_066.go\n",
+    "pr/store/sub1/file_094.go": "--- a/store/sub1/file_094.go\n+++ b/store/sub1/file_094.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub1/file_094.go\n+// stress line 1 for store/sub1/file_094.go\n+// stress line 2 for store/sub1/file_094.go\n+// stress line 3 for store/sub1/file_094.go\n+// stress line 4 for store/sub1/file_094.go\n+// stress line 5 for store/sub1/file_094.go\n+// stress line 6 for store/sub1/file_094.go\n+// stress line 7 for store/sub1/file_094.go\n+// stress line 8 for store/sub1/file_094.go\n+// stress line 9 for store/sub1/file_094.go\n+// stress line 10 for store/sub1/file_094.go\n+// stress line 11 for store/sub1/file_094.go\n",
+    "pr/store/sub2/file_017.go": "--- a/store/sub2/file_017.go\n+++ b/store/sub2/file_017.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub2/file_017.go\n+// stress line 1 for store/sub2/file_017.go\n+// stress line 2 for store/sub2/file_017.go\n+// stress line 3 for store/sub2/file_017.go\n+// stress line 4 for store/sub2/file_017.go\n+// stress line 5 for store/sub2/file_017.go\n+// stress line 6 for store/sub2/file_017.go\n+// stress line 7 for store/sub2/file_017.go\n+// stress line 8 for store/sub2/file_017.go\n+// stress line 9 for store/sub2/file_017.go\n+// stress line 10 for store/sub2/file_017.go\n+// stress line 11 for store/sub2/file_017.go\n",
+    "pr/store/sub2/file_045.go": "--- a/store/sub2/file_045.go\n+++ b/store/sub2/file_045.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub2/file_045.go\n+// stress line 1 for store/sub2/file_045.go\n+// stress line 2 for store/sub2/file_045.go\n+// stress line 3 for store/sub2/file_045.go\n+// stress line 4 for store/sub2/file_045.go\n+// stress line 5 for store/sub2/file_045.go\n+// stress line 6 for store/sub2/file_045.go\n+// stress line 7 for store/sub2/file_045.go\n+// stress line 8 for store/sub2/file_045.go\n+// stress line 9 for store/sub2/file_045.go\n+// stress line 10 for store/sub2/file_045.go\n+// stress line 11 for store/sub2/file_045.go\n",
+    "pr/store/sub2/file_073.go": "--- a/store/sub2/file_073.go\n+++ b/store/sub2/file_073.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub2/file_073.go\n+// stress line 1 for store/sub2/file_073.go\n+// stress line 2 for store/sub2/file_073.go\n+// stress line 3 for store/sub2/file_073.go\n+// stress line 4 for store/sub2/file_073.go\n+// stress line 5 for store/sub2/file_073.go\n+// stress line 6 for store/sub2/file_073.go\n+// stress line 7 for store/sub2/file_073.go\n+// stress line 8 for store/sub2/file_073.go\n+// stress line 9 for store/sub2/file_073.go\n+// stress line 10 for store/sub2/file_073.go\n+// stress line 11 for store/sub2/file_073.go\n",
+    "pr/store/sub2/file_101.go": "--- a/store/sub2/file_101.go\n+++ b/store/sub2/file_101.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub2/file_101.go\n+// stress line 1 for store/sub2/file_101.go\n+// stress line 2 for store/sub2/file_101.go\n+// stress line 3 for store/sub2/file_101.go\n+// stress line 4 for store/sub2/file_101.go\n+// stress line 5 for store/sub2/file_101.go\n+// stress line 6 for store/sub2/file_101.go\n+// stress line 7 for store/sub2/file_101.go\n+// stress line 8 for store/sub2/file_101.go\n+// stress line 9 for store/sub2/file_101.go\n+// stress line 10 for store/sub2/file_101.go\n+// stress line 11 for store/sub2/file_101.go\n",
+    "pr/store/sub3/file_024.go": "--- a/store/sub3/file_024.go\n+++ b/store/sub3/file_024.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub3/file_024.go\n+// stress line 1 for store/sub3/file_024.go\n+// stress line 2 for store/sub3/file_024.go\n+// stress line 3 for store/sub3/file_024.go\n+// stress line 4 for store/sub3/file_024.go\n+// stress line 5 for store/sub3/file_024.go\n+// stress line 6 for store/sub3/file_024.go\n+// stress line 7 for store/sub3/file_024.go\n+// stress line 8 for store/sub3/file_024.go\n+// stress line 9 for store/sub3/file_024.go\n+// stress line 10 for store/sub3/file_024.go\n+// stress line 11 for store/sub3/file_024.go\n",
+    "pr/store/sub3/file_052.go": "--- a/store/sub3/file_052.go\n+++ b/store/sub3/file_052.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub3/file_052.go\n+// stress line 1 for store/sub3/file_052.go\n+// stress line 2 for store/sub3/file_052.go\n+// stress line 3 for store/sub3/file_052.go\n+// stress line 4 for store/sub3/file_052.go\n+// stress line 5 for store/sub3/file_052.go\n+// stress line 6 for store/sub3/file_052.go\n+// stress line 7 for store/sub3/file_052.go\n+// stress line 8 for store/sub3/file_052.go\n+// stress line 9 for store/sub3/file_052.go\n+// stress line 10 for store/sub3/file_052.go\n+// stress line 11 for store/sub3/file_052.go\n",
+    "pr/store/sub3/file_080.go": "--- a/store/sub3/file_080.go\n+++ b/store/sub3/file_080.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub3/file_080.go\n+// stress line 1 for store/sub3/file_080.go\n+// stress line 2 for store/sub3/file_080.go\n+// stress line 3 for store/sub3/file_080.go\n+// stress line 4 for store/sub3/file_080.go\n+// stress line 5 for store/sub3/file_080.go\n+// stress line 6 for store/sub3/file_080.go\n+// stress line 7 for store/sub3/file_080.go\n+// stress line 8 for store/sub3/file_080.go\n+// stress line 9 for store/sub3/file_080.go\n+// stress line 10 for store/sub3/file_080.go\n+// stress line 11 for store/sub3/file_080.go\n",
+    "pr/store/sub3/file_108.go": "--- a/store/sub3/file_108.go\n+++ b/store/sub3/file_108.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for store/sub3/file_108.go\n+// stress line 1 for store/sub3/file_108.go\n+// stress line 2 for store/sub3/file_108.go\n+// stress line 3 for store/sub3/file_108.go\n+// stress line 4 for store/sub3/file_108.go\n+// stress line 5 for store/sub3/file_108.go\n+// stress line 6 for store/sub3/file_108.go\n+// stress line 7 for store/sub3/file_108.go\n+// stress line 8 for store/sub3/file_108.go\n+// stress line 9 for store/sub3/file_108.go\n+// stress line 10 for store/sub3/file_108.go\n+// stress line 11 for store/sub3/file_108.go\n",
+    "pr/tests/sub0/file_005.go": "--- a/tests/sub0/file_005.go\n+++ b/tests/sub0/file_005.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub0/file_005.go\n+// stress line 1 for tests/sub0/file_005.go\n+// stress line 2 for tests/sub0/file_005.go\n+// stress line 3 for tests/sub0/file_005.go\n+// stress line 4 for tests/sub0/file_005.go\n+// stress line 5 for tests/sub0/file_005.go\n+// stress line 6 for tests/sub0/file_005.go\n+// stress line 7 for tests/sub0/file_005.go\n+// stress line 8 for tests/sub0/file_005.go\n+// stress line 9 for tests/sub0/file_005.go\n+// stress line 10 for tests/sub0/file_005.go\n+// stress line 11 for tests/sub0/file_005.go\n",
+    "pr/tests/sub0/file_033.go": "--- a/tests/sub0/file_033.go\n+++ b/tests/sub0/file_033.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub0/file_033.go\n+// stress line 1 for tests/sub0/file_033.go\n+// stress line 2 for tests/sub0/file_033.go\n+// stress line 3 for tests/sub0/file_033.go\n+// stress line 4 for tests/sub0/file_033.go\n+// stress line 5 for tests/sub0/file_033.go\n+// stress line 6 for tests/sub0/file_033.go\n+// stress line 7 for tests/sub0/file_033.go\n+// stress line 8 for tests/sub0/file_033.go\n+// stress line 9 for tests/sub0/file_033.go\n+// stress line 10 for tests/sub0/file_033.go\n+// stress line 11 for tests/sub0/file_033.go\n",
+    "pr/tests/sub0/file_061.go": "--- a/tests/sub0/file_061.go\n+++ b/tests/sub0/file_061.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub0/file_061.go\n+// stress line 1 for tests/sub0/file_061.go\n+// stress line 2 for tests/sub0/file_061.go\n+// stress line 3 for tests/sub0/file_061.go\n+// stress line 4 for tests/sub0/file_061.go\n+// stress line 5 for tests/sub0/file_061.go\n+// stress line 6 for tests/sub0/file_061.go\n+// stress line 7 for tests/sub0/file_061.go\n+// stress line 8 for tests/sub0/file_061.go\n+// stress line 9 for tests/sub0/file_061.go\n+// stress line 10 for tests/sub0/file_061.go\n+// stress line 11 for tests/sub0/file_061.go\n",
+    "pr/tests/sub0/file_089.go": "--- a/tests/sub0/file_089.go\n+++ b/tests/sub0/file_089.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub0/file_089.go\n+// stress line 1 for tests/sub0/file_089.go\n+// stress line 2 for tests/sub0/file_089.go\n+// stress line 3 for tests/sub0/file_089.go\n+// stress line 4 for tests/sub0/file_089.go\n+// stress line 5 for tests/sub0/file_089.go\n+// stress line 6 for tests/sub0/file_089.go\n+// stress line 7 for tests/sub0/file_089.go\n+// stress line 8 for tests/sub0/file_089.go\n+// stress line 9 for tests/sub0/file_089.go\n+// stress line 10 for tests/sub0/file_089.go\n+// stress line 11 for tests/sub0/file_089.go\n",
+    "pr/tests/sub0/file_117.go": "--- a/tests/sub0/file_117.go\n+++ b/tests/sub0/file_117.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub0/file_117.go\n+// stress line 1 for tests/sub0/file_117.go\n+// stress line 2 for tests/sub0/file_117.go\n+// stress line 3 for tests/sub0/file_117.go\n+// stress line 4 for tests/sub0/file_117.go\n+// stress line 5 for tests/sub0/file_117.go\n+// stress line 6 for tests/sub0/file_117.go\n+// stress line 7 for tests/sub0/file_117.go\n+// stress line 8 for tests/sub0/file_117.go\n+// stress line 9 for tests/sub0/file_117.go\n+// stress line 10 for tests/sub0/file_117.go\n+// stress line 11 for tests/sub0/file_117.go\n",
+    "pr/tests/sub1/file_012.go": "--- a/tests/sub1/file_012.go\n+++ b/tests/sub1/file_012.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub1/file_012.go\n+// stress line 1 for tests/sub1/file_012.go\n+// stress line 2 for tests/sub1/file_012.go\n+// stress line 3 for tests/sub1/file_012.go\n+// stress line 4 for tests/sub1/file_012.go\n+// stress line 5 for tests/sub1/file_012.go\n+// stress line 6 for tests/sub1/file_012.go\n+// stress line 7 for tests/sub1/file_012.go\n+// stress line 8 for tests/sub1/file_012.go\n+// stress line 9 for tests/sub1/file_012.go\n+// stress line 10 for tests/sub1/file_012.go\n+// stress line 11 for tests/sub1/file_012.go\n",
+    "pr/tests/sub1/file_040.go": "--- a/tests/sub1/file_040.go\n+++ b/tests/sub1/file_040.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub1/file_040.go\n+// stress line 1 for tests/sub1/file_040.go\n+// stress line 2 for tests/sub1/file_040.go\n+// stress line 3 for tests/sub1/file_040.go\n+// stress line 4 for tests/sub1/file_040.go\n+// stress line 5 for tests/sub1/file_040.go\n+// stress line 6 for tests/sub1/file_040.go\n+// stress line 7 for tests/sub1/file_040.go\n+// stress line 8 for tests/sub1/file_040.go\n+// stress line 9 for tests/sub1/file_040.go\n+// stress line 10 for tests/sub1/file_040.go\n+// stress line 11 for tests/sub1/file_040.go\n",
+    "pr/tests/sub1/file_068.go": "--- a/tests/sub1/file_068.go\n+++ b/tests/sub1/file_068.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub1/file_068.go\n+// stress line 1 for tests/sub1/file_068.go\n+// stress line 2 for tests/sub1/file_068.go\n+// stress line 3 for tests/sub1/file_068.go\n+// stress line 4 for tests/sub1/file_068.go\n+// stress line 5 for tests/sub1/file_068.go\n+// stress line 6 for tests/sub1/file_068.go\n+// stress line 7 for tests/sub1/file_068.go\n+// stress line 8 for tests/sub1/file_068.go\n+// stress line 9 for tests/sub1/file_068.go\n+// stress line 10 for tests/sub1/file_068.go\n+// stress line 11 for tests/sub1/file_068.go\n",
+    "pr/tests/sub1/file_096.go": "--- a/tests/sub1/file_096.go\n+++ b/tests/sub1/file_096.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub1/file_096.go\n+// stress line 1 for tests/sub1/file_096.go\n+// stress line 2 for tests/sub1/file_096.go\n+// stress line 3 for tests/sub1/file_096.go\n+// stress line 4 for tests/sub1/file_096.go\n+// stress line 5 for tests/sub1/file_096.go\n+// stress line 6 for tests/sub1/file_096.go\n+// stress line 7 for tests/sub1/file_096.go\n+// stress line 8 for tests/sub1/file_096.go\n+// stress line 9 for tests/sub1/file_096.go\n+// stress line 10 for tests/sub1/file_096.go\n+// stress line 11 for tests/sub1/file_096.go\n",
+    "pr/tests/sub2/file_019.go": "--- a/tests/sub2/file_019.go\n+++ b/tests/sub2/file_019.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub2/file_019.go\n+// stress line 1 for tests/sub2/file_019.go\n+// stress line 2 for tests/sub2/file_019.go\n+// stress line 3 for tests/sub2/file_019.go\n+// stress line 4 for tests/sub2/file_019.go\n+// stress line 5 for tests/sub2/file_019.go\n+// stress line 6 for tests/sub2/file_019.go\n+// stress line 7 for tests/sub2/file_019.go\n+// stress line 8 for tests/sub2/file_019.go\n+// stress line 9 for tests/sub2/file_019.go\n+// stress line 10 for tests/sub2/file_019.go\n+// stress line 11 for tests/sub2/file_019.go\n",
+    "pr/tests/sub2/file_047.go": "--- a/tests/sub2/file_047.go\n+++ b/tests/sub2/file_047.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub2/file_047.go\n+// stress line 1 for tests/sub2/file_047.go\n+// stress line 2 for tests/sub2/file_047.go\n+// stress line 3 for tests/sub2/file_047.go\n+// stress line 4 for tests/sub2/file_047.go\n+// stress line 5 for tests/sub2/file_047.go\n+// stress line 6 for tests/sub2/file_047.go\n+// stress line 7 for tests/sub2/file_047.go\n+// stress line 8 for tests/sub2/file_047.go\n+// stress line 9 for tests/sub2/file_047.go\n+// stress line 10 for tests/sub2/file_047.go\n+// stress line 11 for tests/sub2/file_047.go\n",
+    "pr/tests/sub2/file_075.go": "--- a/tests/sub2/file_075.go\n+++ b/tests/sub2/file_075.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub2/file_075.go\n+// stress line 1 for tests/sub2/file_075.go\n+// stress line 2 for tests/sub2/file_075.go\n+// stress line 3 for tests/sub2/file_075.go\n+// stress line 4 for tests/sub2/file_075.go\n+// stress line 5 for tests/sub2/file_075.go\n+// stress line 6 for tests/sub2/file_075.go\n+// stress line 7 for tests/sub2/file_075.go\n+// stress line 8 for tests/sub2/file_075.go\n+// stress line 9 for tests/sub2/file_075.go\n+// stress line 10 for tests/sub2/file_075.go\n+// stress line 11 for tests/sub2/file_075.go\n",
+    "pr/tests/sub2/file_103.go": "--- a/tests/sub2/file_103.go\n+++ b/tests/sub2/file_103.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub2/file_103.go\n+// stress line 1 for tests/sub2/file_103.go\n+// stress line 2 for tests/sub2/file_103.go\n+// stress line 3 for tests/sub2/file_103.go\n+// stress line 4 for tests/sub2/file_103.go\n+// stress line 5 for tests/sub2/file_103.go\n+// stress line 6 for tests/sub2/file_103.go\n+// stress line 7 for tests/sub2/file_103.go\n+// stress line 8 for tests/sub2/file_103.go\n+// stress line 9 for tests/sub2/file_103.go\n+// stress line 10 for tests/sub2/file_103.go\n+// stress line 11 for tests/sub2/file_103.go\n",
+    "pr/tests/sub3/file_026.go": "--- a/tests/sub3/file_026.go\n+++ b/tests/sub3/file_026.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub3/file_026.go\n+// stress line 1 for tests/sub3/file_026.go\n+// stress line 2 for tests/sub3/file_026.go\n+// stress line 3 for tests/sub3/file_026.go\n+// stress line 4 for tests/sub3/file_026.go\n+// stress line 5 for tests/sub3/file_026.go\n+// stress line 6 for tests/sub3/file_026.go\n+// stress line 7 for tests/sub3/file_026.go\n+// stress line 8 for tests/sub3/file_026.go\n+// stress line 9 for tests/sub3/file_026.go\n+// stress line 10 for tests/sub3/file_026.go\n+// stress line 11 for tests/sub3/file_026.go\n",
+    "pr/tests/sub3/file_054.go": "--- a/tests/sub3/file_054.go\n+++ b/tests/sub3/file_054.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub3/file_054.go\n+// stress line 1 for tests/sub3/file_054.go\n+// stress line 2 for tests/sub3/file_054.go\n+// stress line 3 for tests/sub3/file_054.go\n+// stress line 4 for tests/sub3/file_054.go\n+// stress line 5 for tests/sub3/file_054.go\n+// stress line 6 for tests/sub3/file_054.go\n+// stress line 7 for tests/sub3/file_054.go\n+// stress line 8 for tests/sub3/file_054.go\n+// stress line 9 for tests/sub3/file_054.go\n+// stress line 10 for tests/sub3/file_054.go\n+// stress line 11 for tests/sub3/file_054.go\n",
+    "pr/tests/sub3/file_082.go": "--- a/tests/sub3/file_082.go\n+++ b/tests/sub3/file_082.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub3/file_082.go\n+// stress line 1 for tests/sub3/file_082.go\n+// stress line 2 for tests/sub3/file_082.go\n+// stress line 3 for tests/sub3/file_082.go\n+// stress line 4 for tests/sub3/file_082.go\n+// stress line 5 for tests/sub3/file_082.go\n+// stress line 6 for tests/sub3/file_082.go\n+// stress line 7 for tests/sub3/file_082.go\n+// stress line 8 for tests/sub3/file_082.go\n+// stress line 9 for tests/sub3/file_082.go\n+// stress line 10 for tests/sub3/file_082.go\n+// stress line 11 for tests/sub3/file_082.go\n",
+    "pr/tests/sub3/file_110.go": "--- a/tests/sub3/file_110.go\n+++ b/tests/sub3/file_110.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for tests/sub3/file_110.go\n+// stress line 1 for tests/sub3/file_110.go\n+// stress line 2 for tests/sub3/file_110.go\n+// stress line 3 for tests/sub3/file_110.go\n+// stress line 4 for tests/sub3/file_110.go\n+// stress line 5 for tests/sub3/file_110.go\n+// stress line 6 for tests/sub3/file_110.go\n+// stress line 7 for tests/sub3/file_110.go\n+// stress line 8 for tests/sub3/file_110.go\n+// stress line 9 for tests/sub3/file_110.go\n+// stress line 10 for tests/sub3/file_110.go\n+// stress line 11 for tests/sub3/file_110.go\n",
+    "pr/ui/sub0/file_002.go": "--- a/ui/sub0/file_002.go\n+++ b/ui/sub0/file_002.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub0/file_002.go\n+// stress line 1 for ui/sub0/file_002.go\n+// stress line 2 for ui/sub0/file_002.go\n+// stress line 3 for ui/sub0/file_002.go\n+// stress line 4 for ui/sub0/file_002.go\n+// stress line 5 for ui/sub0/file_002.go\n+// stress line 6 for ui/sub0/file_002.go\n+// stress line 7 for ui/sub0/file_002.go\n+// stress line 8 for ui/sub0/file_002.go\n+// stress line 9 for ui/sub0/file_002.go\n+// stress line 10 for ui/sub0/file_002.go\n+// stress line 11 for ui/sub0/file_002.go\n",
+    "pr/ui/sub0/file_030.go": "--- a/ui/sub0/file_030.go\n+++ b/ui/sub0/file_030.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub0/file_030.go\n+// stress line 1 for ui/sub0/file_030.go\n+// stress line 2 for ui/sub0/file_030.go\n+// stress line 3 for ui/sub0/file_030.go\n+// stress line 4 for ui/sub0/file_030.go\n+// stress line 5 for ui/sub0/file_030.go\n+// stress line 6 for ui/sub0/file_030.go\n+// stress line 7 for ui/sub0/file_030.go\n+// stress line 8 for ui/sub0/file_030.go\n+// stress line 9 for ui/sub0/file_030.go\n+// stress line 10 for ui/sub0/file_030.go\n+// stress line 11 for ui/sub0/file_030.go\n",
+    "pr/ui/sub0/file_058.go": "--- a/ui/sub0/file_058.go\n+++ b/ui/sub0/file_058.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub0/file_058.go\n+// stress line 1 for ui/sub0/file_058.go\n+// stress line 2 for ui/sub0/file_058.go\n+// stress line 3 for ui/sub0/file_058.go\n+// stress line 4 for ui/sub0/file_058.go\n+// stress line 5 for ui/sub0/file_058.go\n+// stress line 6 for ui/sub0/file_058.go\n+// stress line 7 for ui/sub0/file_058.go\n+// stress line 8 for ui/sub0/file_058.go\n+// stress line 9 for ui/sub0/file_058.go\n+// stress line 10 for ui/sub0/file_058.go\n+// stress line 11 for ui/sub0/file_058.go\n",
+    "pr/ui/sub0/file_086.go": "--- a/ui/sub0/file_086.go\n+++ b/ui/sub0/file_086.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub0/file_086.go\n+// stress line 1 for ui/sub0/file_086.go\n+// stress line 2 for ui/sub0/file_086.go\n+// stress line 3 for ui/sub0/file_086.go\n+// stress line 4 for ui/sub0/file_086.go\n+// stress line 5 for ui/sub0/file_086.go\n+// stress line 6 for ui/sub0/file_086.go\n+// stress line 7 for ui/sub0/file_086.go\n+// stress line 8 for ui/sub0/file_086.go\n+// stress line 9 for ui/sub0/file_086.go\n+// stress line 10 for ui/sub0/file_086.go\n+// stress line 11 for ui/sub0/file_086.go\n",
+    "pr/ui/sub0/file_114.go": "--- a/ui/sub0/file_114.go\n+++ b/ui/sub0/file_114.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub0/file_114.go\n+// stress line 1 for ui/sub0/file_114.go\n+// stress line 2 for ui/sub0/file_114.go\n+// stress line 3 for ui/sub0/file_114.go\n+// stress line 4 for ui/sub0/file_114.go\n+// stress line 5 for ui/sub0/file_114.go\n+// stress line 6 for ui/sub0/file_114.go\n+// stress line 7 for ui/sub0/file_114.go\n+// stress line 8 for ui/sub0/file_114.go\n+// stress line 9 for ui/sub0/file_114.go\n+// stress line 10 for ui/sub0/file_114.go\n+// stress line 11 for ui/sub0/file_114.go\n",
+    "pr/ui/sub1/file_009.go": "--- a/ui/sub1/file_009.go\n+++ b/ui/sub1/file_009.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub1/file_009.go\n+// stress line 1 for ui/sub1/file_009.go\n+// stress line 2 for ui/sub1/file_009.go\n+// stress line 3 for ui/sub1/file_009.go\n+// stress line 4 for ui/sub1/file_009.go\n+// stress line 5 for ui/sub1/file_009.go\n+// stress line 6 for ui/sub1/file_009.go\n+// stress line 7 for ui/sub1/file_009.go\n+// stress line 8 for ui/sub1/file_009.go\n+// stress line 9 for ui/sub1/file_009.go\n+// stress line 10 for ui/sub1/file_009.go\n+// stress line 11 for ui/sub1/file_009.go\n",
+    "pr/ui/sub1/file_037.go": "--- a/ui/sub1/file_037.go\n+++ b/ui/sub1/file_037.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub1/file_037.go\n+// stress line 1 for ui/sub1/file_037.go\n+// stress line 2 for ui/sub1/file_037.go\n+// stress line 3 for ui/sub1/file_037.go\n+// stress line 4 for ui/sub1/file_037.go\n+// stress line 5 for ui/sub1/file_037.go\n+// stress line 6 for ui/sub1/file_037.go\n+// stress line 7 for ui/sub1/file_037.go\n+// stress line 8 for ui/sub1/file_037.go\n+// stress line 9 for ui/sub1/file_037.go\n+// stress line 10 for ui/sub1/file_037.go\n+// stress line 11 for ui/sub1/file_037.go\n",
+    "pr/ui/sub1/file_065.go": "--- a/ui/sub1/file_065.go\n+++ b/ui/sub1/file_065.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub1/file_065.go\n+// stress line 1 for ui/sub1/file_065.go\n+// stress line 2 for ui/sub1/file_065.go\n+// stress line 3 for ui/sub1/file_065.go\n+// stress line 4 for ui/sub1/file_065.go\n+// stress line 5 for ui/sub1/file_065.go\n+// stress line 6 for ui/sub1/file_065.go\n+// stress line 7 for ui/sub1/file_065.go\n+// stress line 8 for ui/sub1/file_065.go\n+// stress line 9 for ui/sub1/file_065.go\n+// stress line 10 for ui/sub1/file_065.go\n+// stress line 11 for ui/sub1/file_065.go\n",
+    "pr/ui/sub1/file_093.go": "--- a/ui/sub1/file_093.go\n+++ b/ui/sub1/file_093.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub1/file_093.go\n+// stress line 1 for ui/sub1/file_093.go\n+// stress line 2 for ui/sub1/file_093.go\n+// stress line 3 for ui/sub1/file_093.go\n+// stress line 4 for ui/sub1/file_093.go\n+// stress line 5 for ui/sub1/file_093.go\n+// stress line 6 for ui/sub1/file_093.go\n+// stress line 7 for ui/sub1/file_093.go\n+// stress line 8 for ui/sub1/file_093.go\n+// stress line 9 for ui/sub1/file_093.go\n+// stress line 10 for ui/sub1/file_093.go\n+// stress line 11 for ui/sub1/file_093.go\n",
+    "pr/ui/sub2/file_016.go": "--- a/ui/sub2/file_016.go\n+++ b/ui/sub2/file_016.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub2/file_016.go\n+// stress line 1 for ui/sub2/file_016.go\n+// stress line 2 for ui/sub2/file_016.go\n+// stress line 3 for ui/sub2/file_016.go\n+// stress line 4 for ui/sub2/file_016.go\n+// stress line 5 for ui/sub2/file_016.go\n+// stress line 6 for ui/sub2/file_016.go\n+// stress line 7 for ui/sub2/file_016.go\n+// stress line 8 for ui/sub2/file_016.go\n+// stress line 9 for ui/sub2/file_016.go\n+// stress line 10 for ui/sub2/file_016.go\n+// stress line 11 for ui/sub2/file_016.go\n",
+    "pr/ui/sub2/file_044.go": "--- a/ui/sub2/file_044.go\n+++ b/ui/sub2/file_044.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub2/file_044.go\n+// stress line 1 for ui/sub2/file_044.go\n+// stress line 2 for ui/sub2/file_044.go\n+// stress line 3 for ui/sub2/file_044.go\n+// stress line 4 for ui/sub2/file_044.go\n+// stress line 5 for ui/sub2/file_044.go\n+// stress line 6 for ui/sub2/file_044.go\n+// stress line 7 for ui/sub2/file_044.go\n+// stress line 8 for ui/sub2/file_044.go\n+// stress line 9 for ui/sub2/file_044.go\n+// stress line 10 for ui/sub2/file_044.go\n+// stress line 11 for ui/sub2/file_044.go\n",
+    "pr/ui/sub2/file_072.go": "--- a/ui/sub2/file_072.go\n+++ b/ui/sub2/file_072.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub2/file_072.go\n+// stress line 1 for ui/sub2/file_072.go\n+// stress line 2 for ui/sub2/file_072.go\n+// stress line 3 for ui/sub2/file_072.go\n+// stress line 4 for ui/sub2/file_072.go\n+// stress line 5 for ui/sub2/file_072.go\n+// stress line 6 for ui/sub2/file_072.go\n+// stress line 7 for ui/sub2/file_072.go\n+// stress line 8 for ui/sub2/file_072.go\n+// stress line 9 for ui/sub2/file_072.go\n+// stress line 10 for ui/sub2/file_072.go\n+// stress line 11 for ui/sub2/file_072.go\n",
+    "pr/ui/sub2/file_100.go": "--- a/ui/sub2/file_100.go\n+++ b/ui/sub2/file_100.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub2/file_100.go\n+// stress line 1 for ui/sub2/file_100.go\n+// stress line 2 for ui/sub2/file_100.go\n+// stress line 3 for ui/sub2/file_100.go\n+// stress line 4 for ui/sub2/file_100.go\n+// stress line 5 for ui/sub2/file_100.go\n+// stress line 6 for ui/sub2/file_100.go\n+// stress line 7 for ui/sub2/file_100.go\n+// stress line 8 for ui/sub2/file_100.go\n+// stress line 9 for ui/sub2/file_100.go\n+// stress line 10 for ui/sub2/file_100.go\n+// stress line 11 for ui/sub2/file_100.go\n",
+    "pr/ui/sub3/file_023.go": "--- a/ui/sub3/file_023.go\n+++ b/ui/sub3/file_023.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub3/file_023.go\n+// stress line 1 for ui/sub3/file_023.go\n+// stress line 2 for ui/sub3/file_023.go\n+// stress line 3 for ui/sub3/file_023.go\n+// stress line 4 for ui/sub3/file_023.go\n+// stress line 5 for ui/sub3/file_023.go\n+// stress line 6 for ui/sub3/file_023.go\n+// stress line 7 for ui/sub3/file_023.go\n+// stress line 8 for ui/sub3/file_023.go\n+// stress line 9 for ui/sub3/file_023.go\n+// stress line 10 for ui/sub3/file_023.go\n+// stress line 11 for ui/sub3/file_023.go\n",
+    "pr/ui/sub3/file_051.go": "--- a/ui/sub3/file_051.go\n+++ b/ui/sub3/file_051.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub3/file_051.go\n+// stress line 1 for ui/sub3/file_051.go\n+// stress line 2 for ui/sub3/file_051.go\n+// stress line 3 for ui/sub3/file_051.go\n+// stress line 4 for ui/sub3/file_051.go\n+// stress line 5 for ui/sub3/file_051.go\n+// stress line 6 for ui/sub3/file_051.go\n+// stress line 7 for ui/sub3/file_051.go\n+// stress line 8 for ui/sub3/file_051.go\n+// stress line 9 for ui/sub3/file_051.go\n+// stress line 10 for ui/sub3/file_051.go\n+// stress line 11 for ui/sub3/file_051.go\n",
+    "pr/ui/sub3/file_079.go": "--- a/ui/sub3/file_079.go\n+++ b/ui/sub3/file_079.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub3/file_079.go\n+// stress line 1 for ui/sub3/file_079.go\n+// stress line 2 for ui/sub3/file_079.go\n+// stress line 3 for ui/sub3/file_079.go\n+// stress line 4 for ui/sub3/file_079.go\n+// stress line 5 for ui/sub3/file_079.go\n+// stress line 6 for ui/sub3/file_079.go\n+// stress line 7 for ui/sub3/file_079.go\n+// stress line 8 for ui/sub3/file_079.go\n+// stress line 9 for ui/sub3/file_079.go\n+// stress line 10 for ui/sub3/file_079.go\n+// stress line 11 for ui/sub3/file_079.go\n",
+    "pr/ui/sub3/file_107.go": "--- a/ui/sub3/file_107.go\n+++ b/ui/sub3/file_107.go\n@@ -1,5 +1,15 @@\n package main\n+// stress line 0 for ui/sub3/file_107.go\n+// stress line 1 for ui/sub3/file_107.go\n+// stress line 2 for ui/sub3/file_107.go\n+// stress line 3 for ui/sub3/file_107.go\n+// stress line 4 for ui/sub3/file_107.go\n+// stress line 5 for ui/sub3/file_107.go\n+// stress line 6 for ui/sub3/file_107.go\n+// stress line 7 for ui/sub3/file_107.go\n+// stress line 8 for ui/sub3/file_107.go\n+// stress line 9 for ui/sub3/file_107.go\n+// stress line 10 for ui/sub3/file_107.go\n+// stress line 11 for ui/sub3/file_107.go\n"
+  }
+}
