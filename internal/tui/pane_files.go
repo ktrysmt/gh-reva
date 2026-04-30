@@ -24,10 +24,12 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.state.FilesCursor < len(m.state.PR.Files)-1 {
 			m.state.FilesCursor++
+			m.autoSelectFlat()
 		}
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
+			m.autoSelectFlat()
 		}
 	case "t":
 		prev := m.state.FilesTreeMode
@@ -37,11 +39,6 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.FilesCursor < len(m.state.PR.Files) {
 			m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
 			m.state.FocusedPane = model.PaneCommits
-		}
-	case " ":
-		if m.state.FilesCursor < len(m.state.PR.Files) {
-			f := m.state.PR.Files[m.state.FilesCursor]
-			m.toggleCommitFilter(f.Path)
 		}
 	}
 	return m, nil
@@ -53,10 +50,12 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.state.FilesCursor < len(rows)-1 {
 			m.state.FilesCursor++
+			m.autoSelectTree(rows)
 		}
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
+			m.autoSelectTree(rows)
 		}
 	case "t":
 		prev := m.state.FilesTreeMode
@@ -78,14 +77,6 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.selectFile(r.Path)
 		m.state.FocusedPane = model.PaneCommits
-	case " ":
-		if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(rows) {
-			return m, nil
-		}
-		r := rows[m.state.FilesCursor]
-		if r.Kind == model.FilesRowFile {
-			m.toggleCommitFilter(r.Path)
-		}
 	}
 	return m, nil
 }
@@ -101,13 +92,65 @@ func (m *Model) selectFile(path string) {
 	}
 }
 
-func (m *Model) toggleCommitFilter(path string) {
-	if m.state.CommitFilterFile == path {
-		m.state.CommitFilterFile = ""
-	} else {
-		m.state.CommitFilterFile = path
+// autoSelectFlat keeps SelectedFile aligned with the Files cursor in flat mode.
+// Visual mode is excluded so multi-row yank does not mutate the working file.
+func (m *Model) autoSelectFlat() {
+	if m.state.Visual != nil || m.state.PR == nil {
+		return
 	}
-	m.state.CommitsCursor = 0
+	if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(m.state.PR.Files) {
+		return
+	}
+	m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
+}
+
+// autoSelectTree mirrors autoSelectFlat for tree mode. Dir rows leave the
+// current selection intact so users can fold/unfold without disturbing Diff.
+func (m *Model) autoSelectTree(rows []model.FilesRow) {
+	if m.state.Visual != nil {
+		return
+	}
+	if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(rows) {
+		return
+	}
+	r := rows[m.state.FilesCursor]
+	if r.Kind == model.FilesRowFile {
+		m.selectFile(r.Path)
+	}
+}
+
+// advanceFile moves to the next/prev file in the Files pane while leaving
+// FocusedPane unchanged. Used by Shift+J/K outside the Files pane so users can
+// scrub through file diffs without losing context. Tree-mode walks skip dir
+// rows so callers always land on a file.
+func (m *Model) advanceFile(forward bool) {
+	if m.state.PR == nil || len(m.state.PR.Files) == 0 {
+		return
+	}
+	step := 1
+	if !forward {
+		step = -1
+	}
+	if !m.state.FilesTreeMode {
+		idx := m.state.FilesCursor + step
+		if idx < 0 || idx >= len(m.state.PR.Files) {
+			return
+		}
+		m.state.FilesCursor = idx
+		m.selectFile(m.state.PR.Files[idx].Path)
+		return
+	}
+	rows := m.filesTreeRows()
+	if len(rows) == 0 {
+		return
+	}
+	for i := m.state.FilesCursor + step; i >= 0 && i < len(rows); i += step {
+		if rows[i].Kind == model.FilesRowFile {
+			m.state.FilesCursor = i
+			m.selectFile(rows[i].Path)
+			return
+		}
+	}
 }
 
 func (m Model) filesView() string {
@@ -121,15 +164,11 @@ func (m Model) filesView() string {
 	var rows []string
 	for i, f := range m.state.PR.Files {
 		cursor := m.cursorMarker(model.PaneFiles, i, m.state.FilesCursor)
-		filterMark := " "
-		if f.Path == m.state.CommitFilterFile {
-			filterMark = "*"
-		}
 		count := ""
 		if f.CommentCount > 0 {
 			count = fmt.Sprintf(" (%d)", f.CommentCount)
 		}
-		rows = append(rows, fmt.Sprintf("%s%s%s %s%s", cursor, filterMark, changeKindShort(f.Status), f.Path, count))
+		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, changeKindShort(f.Status), f.Path, count))
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }
@@ -153,15 +192,11 @@ func (m Model) filesTreeRender() string {
 			out = append(out, fmt.Sprintf("%s%s%s%s/", cursor, ind, marker, name))
 		default:
 			f := m.state.PR.Files[r.FileIndex]
-			filterMark := " "
-			if f.Path == m.state.CommitFilterFile {
-				filterMark = "*"
-			}
 			count := ""
 			if f.CommentCount > 0 {
 				count = fmt.Sprintf(" (%d)", f.CommentCount)
 			}
-			out = append(out, fmt.Sprintf("%s%s%s%s %s%s", cursor, ind, filterMark, changeKindShort(f.Status), baseName(f.Path), count))
+			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, changeKindShort(f.Status), baseName(f.Path), count))
 		}
 	}
 	return strings.Join(out, "\n")

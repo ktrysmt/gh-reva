@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -99,7 +100,26 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
 	if c.Outdated {
 		tag = " [outdated]"
 	}
-	return fmt.Sprintf("%s%s%s: %s %s%s — %s", cursor, in, c.User, date, sha, tag, c.Body)
+	header := fmt.Sprintf("%s%s%s: %s %s%s — ", cursor, in, c.User, date, sha, tag)
+	wrapWidth := m.paneWidthComments
+	if wrapWidth <= 0 {
+		wrapWidth = m.width
+	}
+	if wrapWidth <= 0 {
+		return header + c.Body
+	}
+	headWidth := utf8.RuneCountInString(header)
+	bodyWidth := wrapWidth - headWidth
+	if bodyWidth < 10 {
+		bodyWidth = 10
+	}
+	chunks := wrapText(c.Body, bodyWidth)
+	contIndent := strings.Repeat(" ", headWidth)
+	out := []string{header + chunks[0]}
+	for _, ch := range chunks[1:] {
+		out = append(out, contIndent+ch)
+	}
+	return strings.Join(out, "\n")
 }
 
 func (m Model) commentsForView() []*model.ReviewComment {

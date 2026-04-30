@@ -5,10 +5,9 @@ type AppState struct {
 
 	FocusedPane PaneID
 
-	SelectedFile     string
-	CommitFilterFile string
-	SelectedRange    CommitRange
-	DiffViewMode     DiffViewMode
+	SelectedFile  string
+	SelectedRange CommitRange
+	DiffViewMode  DiffViewMode
 
 	FilesCursor    int
 	CommitsCursor  int

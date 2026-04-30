@@ -18,32 +18,46 @@ func (m Model) handleKeyCommits(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.state.CommitsCursor < len(commits)-1 {
 			m.state.CommitsCursor++
+			m.autoSelectCommit(commits)
 		}
 	case "k", "up":
 		if m.state.CommitsCursor > 0 {
 			m.state.CommitsCursor--
+			m.autoSelectCommit(commits)
 		}
 	case "enter":
-		if m.state.CommitsCursor < len(commits) {
-			c := commits[m.state.CommitsCursor]
-			m.state.SelectedRange = model.CommitRange{Kind: model.RangeSingleCommit, SHA: c.SHA}
-			m.state.DiffCursor = model.DiffCursor{}
-			m.state.DiffViewport.Top = 0
-			m.state.CommentsCursor = 0
-			m.state.FocusedPane = model.PaneDiff
-		}
+		// Enter focuses Diff without changing SelectedRange. Single-commit
+		// drill is driven by j/k auto-select; pressing Enter without prior
+		// j/k preserves the PR-wide diff that was set by the Files step.
+		m.state.FocusedPane = model.PaneDiff
 	case "backspace":
 		m.state.FocusedPane = model.PaneFiles
 	}
 	return m, nil
 }
 
-func (m Model) commitsView() string {
-	suffix := ""
-	if m.state.CommitFilterFile != "" {
-		suffix = "(filter: " + m.state.CommitFilterFile + ")"
+// autoSelectCommit pins SelectedRange to the cursor commit so the Diff and
+// Comments panes follow the cursor live. Visual mode is excluded so multi-row
+// yank does not mutate the working slice.
+func (m *Model) autoSelectCommit(commits []*model.Commit) {
+	if m.state.Visual != nil {
+		return
 	}
-	title := paneTitle("Commits", m.state.FocusedPane == model.PaneCommits, suffix)
+	if m.state.CommitsCursor < 0 || m.state.CommitsCursor >= len(commits) {
+		return
+	}
+	c := commits[m.state.CommitsCursor]
+	if m.state.SelectedRange.Kind == model.RangeSingleCommit && m.state.SelectedRange.SHA == c.SHA {
+		return
+	}
+	m.state.SelectedRange = model.CommitRange{Kind: model.RangeSingleCommit, SHA: c.SHA}
+	m.state.DiffCursor = model.DiffCursor{}
+	m.state.DiffViewport.Top = 0
+	m.state.CommentsCursor = 0
+}
+
+func (m Model) commitsView() string {
+	title := paneTitle("Commits", m.state.FocusedPane == model.PaneCommits, "")
 	if m.state.PR == nil {
 		return title
 	}
@@ -62,16 +76,19 @@ func (m Model) commitsView() string {
 	return title + "\n" + strings.Join(rows, "\n")
 }
 
+// visibleCommits filters PR.Commits to those that touch the SelectedFile.
+// Without a SelectedFile (initial state before any file is loaded), all
+// commits are returned.
 func (m Model) visibleCommits() []*model.Commit {
 	if m.state.PR == nil {
 		return nil
 	}
-	if m.state.CommitFilterFile == "" {
+	if m.state.SelectedFile == "" {
 		return m.state.PR.Commits
 	}
 	var out []*model.Commit
 	for _, c := range m.state.PR.Commits {
-		if _, ok := c.ChangedFiles[m.state.CommitFilterFile]; ok {
+		if _, ok := c.ChangedFiles[m.state.SelectedFile]; ok {
 			out = append(out, c)
 		}
 	}

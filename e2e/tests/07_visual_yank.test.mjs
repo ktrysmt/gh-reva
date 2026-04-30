@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 
-import { launchGhRv, waitReady, quit } from '../helpers/launch.mjs'
+import { launchGhRv, waitReady, quit, countSelectedRows } from '../helpers/launch.mjs'
 
 function pbpaste () {
   const r = spawnSync('pbpaste', { encoding: 'utf8' })
@@ -25,21 +25,6 @@ test('H1: v shows the -- VISUAL -- indicator', async () => {
   await s.press('esc')
   await quit(s)
 })
-
-// Visual selection rendering: rows in [anchor, cursor] keep the "> " cursor
-// prefix even when they are not the active cursor row.
-function countSelectedRows (screen, paneLabel) {
-  // Capture lines after the active pane title (▶ <Pane>) up to the next blank.
-  const lines = screen.split('\n')
-  const start = lines.findIndex(l => l.startsWith('▶ ' + paneLabel))
-  if (start < 0) return 0
-  let n = 0
-  for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].trim() === '') break
-    if (lines[i].startsWith('> ')) n++
-  }
-  return n
-}
 
 test('H2: visual mode in Files is linewise (j extends selection by line)', async () => {
   const s = await launchGhRv()

@@ -76,3 +76,68 @@ export async function activePaneLabel (session) {
   }
   return matches[0]
 }
+
+const PANE_LABELS = ['Files', 'Commits', 'Diff', 'Comments']
+
+function locatePanes (screen) {
+  const lines = screen.split('\n')
+  const slots = {}
+  for (const label of PANE_LABELS) {
+    const re = new RegExp('(?:▶ |  )' + label + '\\b')
+    for (let i = 0; i < lines.length; i++) {
+      const m = re.exec(lines[i])
+      if (m) {
+        slots[label] = { row: i, col: m.index }
+        break
+      }
+    }
+  }
+  return { lines, slots }
+}
+
+/**
+ * Extract one pane's vertical column slice from a screen capture. Returns the
+ * pane's rows joined by newlines, with right-side padding trimmed.
+ *
+ * Useful in tests that anchor on cursor markers (`^>`) in a column other than
+ * the leftmost — anchoring the regex to a column slice avoids matching the
+ * cursor of an unrelated pane on the same row.
+ */
+export function paneText (screen, label) {
+  const { lines, slots } = locatePanes(screen)
+  const me = slots[label]
+  if (!me) return ''
+  const otherCols = Object.values(slots)
+    .filter(s => s.col > me.col)
+    .map(s => s.col)
+    .sort((a, b) => a - b)
+  const endCol = otherCols.length > 0 ? otherCols[0] : (lines[me.row] || '').length + 100
+  // Where does this pane stop vertically? Look for another pane in the same
+  // column starting on a later row (e.g. Commits below Files).
+  const inSameColRows = Object.entries(slots)
+    .filter(([k, s]) => k !== label && s.col === me.col && s.row > me.row)
+    .map(([, s]) => s.row)
+  const endRow = inSameColRows.length > 0 ? Math.min(...inSameColRows) : lines.length
+  const out = []
+  for (let i = me.row; i < endRow; i++) {
+    // Strip trailing border chars (`│`) introduced by the column's right edge
+    // and the adjacent pane's left edge — they would otherwise leak into
+    // assertions that count split separators or apply `^>` anchors.
+    out.push((lines[i] || '').slice(me.col, endCol).replace(/(?:\s*│)+\s*$/, '').trimEnd())
+  }
+  return out.join('\n')
+}
+
+/**
+ * Count rows in the given pane that render with a `> ` cursor prefix at the
+ * pane's left edge. Used to verify visual-selection extents.
+ */
+export function countSelectedRows (screen, label) {
+  const sliced = paneText(screen, label)
+  if (!sliced) return 0
+  let n = 0
+  for (const line of sliced.split('\n').slice(1)) {  // skip header
+    if (line.startsWith('> ')) n++
+  }
+  return n
+}

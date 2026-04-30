@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ktrysmt/gh-rv/internal/api"
 	"github.com/ktrysmt/gh-rv/internal/model"
@@ -19,6 +20,18 @@ type Model struct {
 	width  int
 	height int
 	err    error
+
+	// Per-pane render budgets, set by View() before delegating to the
+	// pane renderers. Each pane uses these for width-aware wrapping
+	// (Comments) or viewport sizing (Diff).
+	paneWidthFiles     int
+	paneHeightFiles    int
+	paneWidthCommits   int
+	paneHeightCommits  int
+	paneWidthDiff      int
+	paneHeightDiff     int
+	paneWidthComments  int
+	paneHeightComments int
 }
 
 func (m Model) Err() error { return m.err }
@@ -87,16 +100,168 @@ func (m Model) View() string {
 	if m.state.PR == nil {
 		return loadingView(m.state.LoadFrame, m.state.LoadStage)
 	}
-	body := strings.Join([]string{
-		m.filesView(),
-		m.commitsView(),
-		m.diffView(),
-		m.commentsView(),
-	}, "\n\n")
+	// Reserve a row for the visual indicator when active so it does not
+	// disappear under the column rendering.
+	bodyHeight := m.height
+	if m.state.Visual != nil && bodyHeight > 0 {
+		bodyHeight--
+	}
+	if m.width <= 0 || bodyHeight <= 0 {
+		// Window size not received yet — fall back to a stacked render
+		// (used by smoke tests and the very first frame).
+		body := strings.Join([]string{
+			m.filesView(),
+			m.commitsView(),
+			m.diffView(),
+			m.commentsView(),
+		}, "\n\n")
+		if m.state.Visual != nil {
+			return body + "\n-- VISUAL --"
+		}
+		return body
+	}
+
+	leftW, midW, rightW := splitColumnWidths(m.width)
+	topH, bottomH := splitColumnHeights(bodyHeight)
+
+	// Each pane renders as: top border + title row + ├──┤ divider + content
+	// rows + bottom border. Inner content budget is therefore outer width − 2
+	// and outer height − 4.
+	innerLeftW := atLeast(leftW-2, 1)
+	innerMidW := atLeast(midW-2, 1)
+	innerRightW := atLeast(rightW-2, 1)
+	innerTopH := atLeast(topH-4, 1)
+	innerBottomH := atLeast(bottomH-4, 1)
+	innerBodyH := atLeast(bodyHeight-4, 1)
+
+	m.paneWidthFiles = innerLeftW
+	m.paneHeightFiles = innerTopH
+	m.paneWidthCommits = innerLeftW
+	m.paneHeightCommits = innerBottomH
+	m.paneWidthDiff = innerMidW
+	m.paneHeightDiff = innerBodyH
+	m.paneWidthComments = innerRightW
+	m.paneHeightComments = innerBodyH
+
+	files := boxFromPaneView(m.filesView(), leftW, topH)
+	commits := boxFromPaneView(m.commitsView(), leftW, bottomH)
+	leftCol := lipgloss.JoinVertical(lipgloss.Left, files, commits)
+	diffCol := boxFromPaneView(m.diffView(), midW, bodyHeight)
+	commentsCol := boxFromPaneView(m.commentsView(), rightW, bodyHeight)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
+
 	if m.state.Visual != nil {
 		return body + "\n-- VISUAL --"
 	}
 	return body
+}
+
+// splitColumnWidths divides total terminal width across the three columns.
+// Targets roughly 30 / 60 / remainder for left / right / middle so the
+// Comments column has room to display typical comment bodies without
+// aggressive wrap.
+func splitColumnWidths(total int) (left, mid, right int) {
+	if total >= 130 {
+		// Border consumes 2 cols per pane; bump outer widths so inner widths
+		// (used for content) match the pre-border targets.
+		left = 42
+		right = 57
+		mid = total - left - right
+		return
+	}
+	if total >= 80 {
+		left = total / 4
+		if left < 22 {
+			left = 22
+		}
+		if left > 38 {
+			left = 38
+		}
+		right = total * 2 / 5
+		if right < 28 {
+			right = 28
+		}
+		mid = total - left - right
+		if mid < 25 {
+			mid = 25
+			over := left + mid + right - total
+			right -= over
+			if right < 22 {
+				right = 22
+				left = total - mid - right
+			}
+		}
+		return
+	}
+	// Degenerate (<80 cols): keep something sensible.
+	left = total / 4
+	mid = total / 2
+	right = total - left - mid
+	if right < 1 {
+		right = 1
+	}
+	return
+}
+
+// splitColumnHeights divides the body height between Files (top) and Commits
+// (bottom). Top gets the larger half so file lists are easier to scan.
+func splitColumnHeights(total int) (top, bottom int) {
+	if total < 4 {
+		return total, 0
+	}
+	top = (total + 1) / 2
+	bottom = total - top
+	return
+}
+
+func atLeast(n, floor int) int {
+	if n < floor {
+		return floor
+	}
+	return n
+}
+
+// boxFromPaneView lifts a pane renderer's "title\nbody" output into a
+// bordered box with a horizontal divider under the title row. width and
+// height are outer dimensions.
+//
+//	┌────────┐
+//	│ title  │
+//	├────────┤
+//	│ body…  │
+//	└────────┘
+func boxFromPaneView(view string, width, height int) string {
+	title, body := splitTitleBody(view)
+	return renderPaneBox(title, body, width, height)
+}
+
+func splitTitleBody(s string) (string, string) {
+	if i := strings.Index(s, "\n"); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
+func renderPaneBox(title, body string, width, height int) string {
+	innerW := atLeast(width-2, 1)
+	contentRows := atLeast(height-4, 0)
+	bar := strings.Repeat("─", innerW)
+
+	var sb strings.Builder
+	sb.WriteString("┌" + bar + "┐\n")
+	sb.WriteString("│" + padTrunc(title, innerW) + "│\n")
+	sb.WriteString("├" + bar + "┤\n")
+
+	bodyLines := strings.Split(body, "\n")
+	for i := 0; i < contentRows; i++ {
+		line := ""
+		if i < len(bodyLines) {
+			line = bodyLines[i]
+		}
+		sb.WriteString("│" + padTrunc(line, innerW) + "│\n")
+	}
+	sb.WriteString("└" + bar + "┘")
+	return sb.String()
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}

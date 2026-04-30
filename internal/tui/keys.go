@@ -37,6 +37,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.state.Visual = vs
 		return m, nil
+	case "J":
+		m.advanceFile(true)
+		return m, nil
+	case "K":
+		m.advanceFile(false)
+		return m, nil
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
