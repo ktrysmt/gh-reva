@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,15 +12,20 @@ import (
 
 	"github.com/ktrysmt/gh-rv/internal/api"
 	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-rv/internal/theme"
 )
 
 type Model struct {
-	client api.Client
-	target *api.Target
-	state  *model.AppState
-	width  int
-	height int
-	err    error
+	client       api.Client
+	target       *api.Target
+	state        *model.AppState
+	theme        *theme.Theme
+	syntaxCache  *syntaxCache
+	patchLinesC  patchLinesCache
+	rowCache     *diffRowCache
+	width        int
+	height       int
+	err          error
 
 	// Per-pane render budgets, set by View() before delegating to the
 	// pane renderers. Each pane uses these for width-aware wrapping
@@ -41,11 +47,26 @@ func (m Model) Err() error { return m.err }
 // terminal size.
 func (m *Model) SetDiffHeight(h int) { m.state.DiffViewport.Height = h }
 
+// SetTheme installs the resolved color palette. Must be called before the
+// first render. A nil theme is replaced with the builtin dark fallback so
+// rendering code can rely on m.theme being non-nil.
+func (m *Model) SetTheme(t *theme.Theme) {
+	if t == nil {
+		t, _ = theme.Resolve("")
+	}
+	m.theme = t
+}
+
 func NewModel(client api.Client, target *api.Target) Model {
+	t, _ := theme.Resolve("")
 	return Model{
-		client: client,
-		target: target,
-		state:  model.NewAppState(),
+		client:      client,
+		target:      target,
+		state:       model.NewAppState(),
+		theme:       t,
+		syntaxCache: &syntaxCache{},
+		patchLinesC: patchLinesCache{cache: map[string]*patchInfo{}},
+		rowCache:    &diffRowCache{m: map[string][]string{}},
 	}
 }
 
@@ -79,14 +100,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.LoadStage = model.LoadStageDone
 		return m, nil
 	case ScrollDiffToLineMsg:
-		patch := m.currentPatch()
-		if patch == "" {
+		lines := m.patchLines()
+		if len(lines) == 0 {
 			return m, nil
 		}
-		bufIdx := bufferIndexForNewLine(patch, msg.NewLine)
+		bufIdx := bufferIndexForNewLine(lines, msg.NewLine)
 		if bufIdx >= 0 {
-			totalLines := strings.Count(patch, "\n") + 1
-			m.scrollDiffToLine(bufIdx, totalLines)
+			m.scrollDiffToLine(bufIdx, len(lines))
 		}
 		return m, nil
 	case ErrMsg:
@@ -98,7 +118,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.state.PR == nil {
-		return loadingView(m.state.LoadFrame, m.state.LoadStage)
+		return m.loadingView(m.state.LoadFrame, m.state.LoadStage)
 	}
 	// Reserve a row for the visual indicator when active so it does not
 	// disappear under the column rendering.
@@ -116,7 +136,7 @@ func (m Model) View() string {
 			m.commentsView(),
 		}, "\n\n")
 		if m.state.Visual != nil {
-			return body + "\n-- VISUAL --"
+			return body + "\n" + m.visualIndicator()
 		}
 		return body
 	}
@@ -143,17 +163,25 @@ func (m Model) View() string {
 	m.paneWidthComments = innerRightW
 	m.paneHeightComments = innerBodyH
 
-	files := boxFromPaneView(m.filesView(), leftW, topH)
-	commits := boxFromPaneView(m.commitsView(), leftW, bottomH)
+	files := m.boxFromPaneView(m.filesView(), leftW, topH, model.PaneFiles)
+	commits := m.boxFromPaneView(m.commitsView(), leftW, bottomH, model.PaneCommits)
 	leftCol := lipgloss.JoinVertical(lipgloss.Left, files, commits)
-	diffCol := boxFromPaneView(m.diffView(), midW, bodyHeight)
-	commentsCol := boxFromPaneView(m.commentsView(), rightW, bodyHeight)
+	diffCol := m.boxFromPaneView(m.diffView(), midW, bodyHeight, model.PaneDiff)
+	commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
 
 	if m.state.Visual != nil {
-		return body + "\n-- VISUAL --"
+		return body + "\n" + m.visualIndicator()
 	}
 	return body
+}
+
+// visualIndicator renders the "-- VISUAL --" marker shown at the bottom of
+// the screen while linewise visual mode is active. CommentAnchor (orange in
+// builtin-dark) doubles as the attention hue for mode banners; bold makes
+// it stand out from the surrounding pane chrome.
+func (m Model) visualIndicator() string {
+	return fgBold("-- VISUAL --", m.theme.CommentAnchor)
 }
 
 // splitColumnWidths divides total terminal width across the three columns.
@@ -230,9 +258,17 @@ func atLeast(n, floor int) int {
 //	├────────┤
 //	│ body…  │
 //	└────────┘
-func boxFromPaneView(view string, width, height int) string {
+//
+// pane identifies which pane this is so the active/inactive border color
+// can be picked from the model's theme.
+func (m Model) boxFromPaneView(view string, width, height int, pane model.PaneID) string {
 	title, body := splitTitleBody(view)
-	return renderPaneBox(title, body, width, height)
+	active := m.state.FocusedPane == pane
+	border := m.theme.PaneBorderInactive
+	if active {
+		border = m.theme.PaneBorderActive
+	}
+	return renderPaneBox(title, body, width, height, border)
 }
 
 func splitTitleBody(s string) (string, string) {
@@ -242,15 +278,20 @@ func splitTitleBody(s string) (string, string) {
 	return s, ""
 }
 
-func renderPaneBox(title, body string, width, height int) string {
+// renderPaneBox draws a bordered box. The border color is applied to every
+// glyph (corners, horizontals, side bars). Title and body lines are passed
+// through unchanged — pane renderers own their own coloring.
+func renderPaneBox(title, body string, width, height int, border lipgloss.Color) string {
 	innerW := atLeast(width-2, 1)
 	contentRows := atLeast(height-4, 0)
 	bar := strings.Repeat("─", innerW)
+	side := fg("│", border)
+	hr := fg(bar, border)
 
 	var sb strings.Builder
-	sb.WriteString("┌" + bar + "┐\n")
-	sb.WriteString("│" + padTrunc(title, innerW) + "│\n")
-	sb.WriteString("├" + bar + "┤\n")
+	sb.WriteString(fg("┌"+bar+"┐", border) + "\n")
+	sb.WriteString(side + padTrunc(title, innerW) + side + "\n")
+	sb.WriteString(fg("├", border) + hr + fg("┤", border) + "\n")
 
 	bodyLines := strings.Split(body, "\n")
 	for i := 0; i < contentRows; i++ {
@@ -258,17 +299,17 @@ func renderPaneBox(title, body string, width, height int) string {
 		if i < len(bodyLines) {
 			line = bodyLines[i]
 		}
-		sb.WriteString("│" + padTrunc(line, innerW) + "│\n")
+		sb.WriteString(side + padTrunc(line, innerW) + side + "\n")
 	}
-	sb.WriteString("└" + bar + "┘")
+	sb.WriteString(fg("└"+bar+"┘", border))
 	return sb.String()
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func loadingView(frame int, stage model.LoadStage) string {
+func (m Model) loadingView(frame int, stage model.LoadStage) string {
 	glyph := spinnerFrames[frame%len(spinnerFrames)]
-	return fmt.Sprintf("%s Loading PR (%s)...", glyph, stageLabel(stage))
+	return fmt.Sprintf("%s Loading PR (%s)...", fg(glyph, m.theme.LoadingSpinner), stageLabel(stage))
 }
 
 func stageLabel(s model.LoadStage) string {
@@ -383,6 +424,146 @@ func (m Model) currentPatch() string {
 		sha = m.state.SelectedRange.SHA
 	}
 	return m.state.DiffCache[diffKey(sha, m.state.SelectedFile)]
+}
+
+// patchInfo bundles the per-patch derived data that the renderer needs on
+// every frame. Building these is O(buffer_size), so caching them keyed on
+// (sha, path) keeps split-mode `j/k` repeat cost flat instead of redoing
+// the walk on every redraw.
+type patchInfo struct {
+	lines    []string
+	specs    []diffLineSpec // populated lazily; only split mode reads it
+	newNums  []int          // populated lazily; commentLineSet etc.
+}
+
+// diffRowCache memoizes the per-buffer-line render output for the Diff
+// pane. The hot loop in `j/k` repeat re-renders the same non-cursor rows
+// every frame; with the cache, only the previous-cursor and new-cursor
+// rows recompute each keystroke. Invalidated by including the patch key
+// and layout dimensions in the cache key.
+type diffRowCache struct {
+	patchKey string
+	width    int
+	halfW    int
+	m        map[string][]string
+}
+
+func (c *diffRowCache) get(key string) ([]string, bool) {
+	v, ok := c.m[key]
+	return v, ok
+}
+
+func (c *diffRowCache) put(key string, rows []string) {
+	c.m[key] = rows
+}
+
+func (c *diffRowCache) reset(patchKey string, width, halfW int) {
+	c.patchKey = patchKey
+	c.width = width
+	c.halfW = halfW
+	c.m = map[string][]string{}
+}
+
+// rowCacheKey composes the cache key for a Diff buffer line. The key
+// only carries the bits the renderer actually branches on — line index,
+// commented gutter, plus a mode tag (`s` split, `u` unified). The width
+// dimensions are validated by the cache itself in invalidateRowCacheIfStale.
+func (m Model) rowCacheKey(mode string, idx, halfW int, commented bool) string {
+	c := byte('0')
+	if commented {
+		c = '1'
+	}
+	return mode + "\x00" + strconv.Itoa(idx) + "\x00" + strconv.Itoa(halfW) + "\x00" + string(c)
+}
+
+// invalidateRowCacheIfStale clears the row cache when the patch identity
+// or layout dimensions change. Called once per Diff render before the
+// per-row loop; cheap when nothing changed.
+func (m Model) invalidateRowCacheIfStale() {
+	if m.rowCache == nil {
+		return
+	}
+	patchKey := ""
+	if m.state != nil && m.state.PR != nil && m.state.SelectedFile != "" {
+		sha := ""
+		if m.state.SelectedRange.Kind == model.RangeSingleCommit {
+			sha = m.state.SelectedRange.SHA
+		}
+		patchKey = diffKey(sha, m.state.SelectedFile)
+	}
+	_, halfW := m.splitLayout()
+	if m.rowCache.patchKey != patchKey || m.rowCache.width != m.paneWidthDiff || m.rowCache.halfW != halfW {
+		m.rowCache.reset(patchKey, m.paneWidthDiff, halfW)
+	}
+}
+
+// patchLinesCache memoizes strings.Split of the current patch plus the
+// derived per-line specs / new-file line numbers. Keyed by
+// diffKey(sha, path); invalidated implicitly when the user changes file
+// or commit (different key, miss, recompute).
+type patchLinesCache struct {
+	cache map[string]*patchInfo
+}
+
+func (m Model) patchInfo() *patchInfo {
+	if m.state == nil || m.state.PR == nil || m.state.SelectedFile == "" {
+		return nil
+	}
+	sha := ""
+	if m.state.SelectedRange.Kind == model.RangeSingleCommit {
+		sha = m.state.SelectedRange.SHA
+	}
+	key := diffKey(sha, m.state.SelectedFile)
+	if m.patchLinesC.cache != nil {
+		if v, ok := m.patchLinesC.cache[key]; ok {
+			return v
+		}
+	}
+	patch := m.state.DiffCache[key]
+	if patch == "" {
+		return nil
+	}
+	info := &patchInfo{
+		lines: strings.Split(strings.TrimRight(patch, "\n"), "\n"),
+	}
+	if m.patchLinesC.cache != nil {
+		m.patchLinesC.cache[key] = info
+	}
+	return info
+}
+
+func (m Model) patchLines() []string {
+	pi := m.patchInfo()
+	if pi == nil {
+		return nil
+	}
+	return pi.lines
+}
+
+// patchSpecs returns the cached diffLineSpec slice for the current patch.
+// First reader pays the parse; subsequent renders reuse the slice.
+func (m Model) patchSpecs() []diffLineSpec {
+	pi := m.patchInfo()
+	if pi == nil {
+		return nil
+	}
+	if pi.specs == nil {
+		pi.specs = parseDiffSpecs(pi.lines)
+	}
+	return pi.specs
+}
+
+// patchNewLineNumbers returns the cached new-file line-number mapping.
+// Lazy for the same reason as patchSpecs.
+func (m Model) patchNewLineNumbers() []int {
+	pi := m.patchInfo()
+	if pi == nil {
+		return nil
+	}
+	if pi.newNums == nil {
+		pi.newNums = newLineNumbers(pi.lines)
+	}
+	return pi.newNums
 }
 
 func (m Model) effectiveDiffViewMode() string {

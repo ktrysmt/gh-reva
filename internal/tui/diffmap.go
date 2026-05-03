@@ -10,11 +10,10 @@ import (
 // newLineNumbers walks a unified diff and returns, for each rendered line,
 // the corresponding new-file line number — or 0 if that line has no new-file
 // counterpart (header, hunk marker, removed line).
-func newLineNumbers(patch string) []int {
-	if patch == "" {
+func newLineNumbers(lines []string) []int {
+	if len(lines) == 0 {
 		return nil
 	}
-	lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
 	out := make([]int, len(lines))
 	cur := 0
 	for i, l := range lines {
@@ -61,11 +60,11 @@ func parseHunkNewStart(hunk string) int {
 // bufferIndexForNewLine returns the index in the rendered patch buffer that
 // corresponds to the given new-file line number, or -1 when the line is not
 // represented in this patch.
-func bufferIndexForNewLine(patch string, newLine int) int {
+func bufferIndexForNewLine(lines []string, newLine int) int {
 	if newLine <= 0 {
 		return -1
 	}
-	mapping := newLineNumbers(patch)
+	mapping := newLineNumbers(lines)
 	for i, n := range mapping {
 		if n == newLine {
 			return i
@@ -77,8 +76,7 @@ func bufferIndexForNewLine(patch string, newLine int) int {
 // commentThreadIndexForDiffLine returns the threads-list index of the first
 // comment whose new-file line maps to the given buffer line, or -1 if none.
 func (m Model) commentThreadIndexForDiffLine(diffLine int) int {
-	patch := m.currentPatch()
-	mapping := newLineNumbers(patch)
+	mapping := m.patchNewLineNumbers()
 	if diffLine < 0 || diffLine >= len(mapping) {
 		return -1
 	}

@@ -32,7 +32,6 @@ type AppState struct {
 
 type DiffCursor struct {
 	Line int
-	Col  int
 }
 
 type DiffViewport struct {
@@ -74,7 +73,6 @@ type VisualState struct {
 	OriginPane PaneID
 	Anchor     int
 	AnchorLine int
-	AnchorCol  int
 	Linewise   bool
 }
 

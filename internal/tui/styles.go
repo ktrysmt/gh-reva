@@ -18,9 +18,63 @@ func paneTitle(label string, active bool, suffix string) string {
 	return prefix + label
 }
 
+// styledPaneTitle is paneTitle plus theme coloring: active titles get the
+// active-title color in bold; inactive titles get the inactive-title color.
+// Width-aware truncation still goes through fitPaneTitle on the raw text so
+// SGR codes never participate in length math.
+func (m Model) styledPaneTitle(label string, active bool, suffix string) string {
+	var raw string
+	if w := paneInnerWidth(m, label); w > 0 {
+		raw = fitPaneTitle(label, suffix, active, w)
+	} else {
+		raw = paneTitle(label, active, suffix)
+	}
+	prefix := "  "
+	if active {
+		prefix = "▶ "
+	}
+	// Re-apply color to the prefix and the rest separately. The prefix is
+	// always exactly 2 cells, so a rune slice is safe.
+	runes := []rune(raw)
+	body := string(runes[2:])
+	if active {
+		return fgBold(prefix, m.theme.PaneTitleActive) + fgBold(body, m.theme.PaneTitleActive)
+	}
+	return prefix + fg(body, m.theme.PaneTitle)
+}
+
+// paneInnerWidth picks the right per-pane width budget for fitPaneTitle.
+// Returns 0 when no budget has been computed yet (pre-first-frame), letting
+// callers fall back to the un-fitted form. Matches by prefix so dynamic
+// labels like "Diff: path @ sha" still pick the Diff budget.
+func paneInnerWidth(m Model, label string) int {
+	switch {
+	case strings.HasPrefix(label, "Files"):
+		return m.paneWidthFiles
+	case strings.HasPrefix(label, "Commits"):
+		return m.paneWidthCommits
+	case strings.HasPrefix(label, "Diff"):
+		return m.paneWidthDiff
+	case strings.HasPrefix(label, "Comments"):
+		return m.paneWidthComments
+	}
+	return 0
+}
+
 func cursorPrefix(isCursor bool) string {
 	if isCursor {
 		return "> "
+	}
+	return "  "
+}
+
+// styledCursor returns the row-prefix glyph (`> ` or `  `) with the cursor
+// row color and bold weight applied when the row is the cursor or part of
+// the visual range. Mirrors cursorMarker's logic but produces a colored
+// string instead of plain text.
+func (m Model) styledCursor(pane model.PaneID, idx, cursor int) string {
+	if idx == cursor || m.inVisualRange(pane, idx) {
+		return fgBold("> ", m.theme.CursorRow)
 	}
 	return "  "
 }
@@ -37,6 +91,24 @@ func changeKindShort(k model.ChangeKind) string {
 		return "R"
 	}
 	return "?"
+}
+
+// styledStatus returns the single-letter change-kind glyph wrapped in the
+// matching theme color. Used by Files and Commits panes for the per-row
+// `[A]/[M]/[D]/[R]` annotations.
+func (m Model) styledStatus(k model.ChangeKind) string {
+	letter := changeKindShort(k)
+	switch k {
+	case model.ChangeAdded:
+		return fg(letter, m.theme.StatusAdded)
+	case model.ChangeModified:
+		return fg(letter, m.theme.StatusModified)
+	case model.ChangeDeleted:
+		return fg(letter, m.theme.StatusDeleted)
+	case model.ChangeRenamed:
+		return fg(letter, m.theme.StatusRenamed)
+	}
+	return letter
 }
 
 func shortSHA(s string) string {

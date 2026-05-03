@@ -57,21 +57,22 @@ func (m *Model) autoSelectCommit(commits []*model.Commit) {
 }
 
 func (m Model) commitsView() string {
-	title := paneTitle("Commits", m.state.FocusedPane == model.PaneCommits, "")
+	title := m.styledPaneTitle("Commits", m.state.FocusedPane == model.PaneCommits, "")
 	if m.state.PR == nil {
 		return title
 	}
 	var rows []string
 	commits := m.visibleCommits()
 	for i, c := range commits {
-		cursor := m.cursorMarker(model.PaneCommits, i, m.state.CommitsCursor)
+		cursor := m.styledCursor(model.PaneCommits, i, m.state.CommitsCursor)
 		annotation := "    "
 		if m.state.SelectedFile != "" {
 			if k, ok := c.ChangedFiles[m.state.SelectedFile]; ok {
-				annotation = "[" + changeKindShort(k) + "] "
+				annotation = "[" + m.styledStatus(k) + "] "
 			}
 		}
-		rows = append(rows, fmt.Sprintf("%s%s%s %s", cursor, annotation, c.ShortSHA, c.Message))
+		sha := fg(c.ShortSHA, m.theme.CommitSHA)
+		rows = append(rows, fmt.Sprintf("%s%s%s %s", cursor, annotation, sha, c.Message))
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }

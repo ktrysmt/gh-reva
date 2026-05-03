@@ -154,7 +154,7 @@ func (m *Model) advanceFile(forward bool) {
 }
 
 func (m Model) filesView() string {
-	title := paneTitle("Files", m.state.FocusedPane == model.PaneFiles, "")
+	title := m.styledPaneTitle("Files", m.state.FocusedPane == model.PaneFiles, "")
 	if m.state.PR == nil {
 		return title
 	}
@@ -163,12 +163,13 @@ func (m Model) filesView() string {
 	}
 	var rows []string
 	for i, f := range m.state.PR.Files {
-		cursor := m.cursorMarker(model.PaneFiles, i, m.state.FilesCursor)
+		cursor := m.styledCursor(model.PaneFiles, i, m.state.FilesCursor)
 		count := ""
 		if f.CommentCount > 0 {
-			count = fmt.Sprintf(" (%d)", f.CommentCount)
+			count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 		}
-		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, changeKindShort(f.Status), f.Path, count))
+		status := m.styledStatus(f.Status)
+		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, f.Path, count))
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }
@@ -180,7 +181,7 @@ func (m Model) filesTreeRender() string {
 	}
 	var out []string
 	for i, r := range rows {
-		cursor := m.cursorMarker(model.PaneFiles, i, m.state.FilesCursor)
+		cursor := m.styledCursor(model.PaneFiles, i, m.state.FilesCursor)
 		ind := indent(r.Depth)
 		switch r.Kind {
 		case model.FilesRowDir:
@@ -189,14 +190,15 @@ func (m Model) filesTreeRender() string {
 				marker = "> "
 			}
 			name := baseName(r.Path)
-			out = append(out, fmt.Sprintf("%s%s%s%s/", cursor, ind, marker, name))
+			out = append(out, fmt.Sprintf("%s%s%s%s/", cursor, ind, fg(marker, m.theme.DiffLineNumber), name))
 		default:
 			f := m.state.PR.Files[r.FileIndex]
 			count := ""
 			if f.CommentCount > 0 {
-				count = fmt.Sprintf(" (%d)", f.CommentCount)
+				count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 			}
-			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, changeKindShort(f.Status), baseName(f.Path), count))
+			status := m.styledStatus(f.Status)
+			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, status, baseName(f.Path), count))
 		}
 	}
 	return strings.Join(out, "\n")

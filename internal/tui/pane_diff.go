@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ktrysmt/gh-rv/internal/model"
 )
 
 func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	patch := m.currentPatch()
-	totalLines := strings.Count(patch, "\n") + 1
+	totalLines := len(m.patchLines())
+	if totalLines == 0 {
+		// Avoid division/clamp wrap when there is no diff to navigate.
+		totalLines = 1
+	}
 	pageSize := m.diffViewportHeight()
 	half := pageSize / 2
 	switch msg.String() {
@@ -58,20 +62,6 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.DiffViewport.Top -= pageSize
 		if m.state.DiffCursor.Line < 0 {
 			m.state.DiffCursor.Line = 0
-		}
-	case "h", "left":
-		if m.state.DiffCursor.Col > 0 {
-			m.state.DiffCursor.Col--
-		}
-	case "l", "right":
-		m.state.DiffCursor.Col++
-	case "w", "e":
-		m.state.DiffCursor.Col += 5
-	case "b":
-		if m.state.DiffCursor.Col >= 5 {
-			m.state.DiffCursor.Col -= 5
-		} else {
-			m.state.DiffCursor.Col = 0
 		}
 	case "H":
 		m.state.DiffCursor.Line = m.state.DiffViewport.Top
@@ -123,17 +113,12 @@ func (m Model) diffView() string {
 	}
 	suffix := fmt.Sprintf("[%s]", m.effectiveDiffViewMode())
 	active := m.state.FocusedPane == model.PaneDiff
-	var title string
-	if m.paneWidthDiff > 0 {
-		title = fitPaneTitle(label, suffix, active, m.paneWidthDiff)
-	} else {
-		title = paneTitle(label, active, suffix)
-	}
-	patch := m.currentPatch()
-	if patch == "" {
+	title := m.styledPaneTitle(label, active, suffix)
+	lines := m.patchLines()
+	if len(lines) == 0 {
 		return title + "\n(no diff)"
 	}
-	lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
+	m.invalidateRowCacheIfStale()
 	height := m.diffViewportHeight()
 	top := m.state.DiffViewport.Top
 	if top < 0 {
@@ -150,28 +135,234 @@ func (m Model) diffView() string {
 	isSplit, halfW := m.splitLayout()
 	var specs []diffLineSpec
 	if isSplit {
-		specs = parseDiffSpecs(patch)
+		specs = m.patchSpecs()
 	}
+	cursorLine := m.state.DiffCursor.Line
 	var out []string
-	for i := top; i < end; i++ {
-		cursor := m.cursorMarker(model.PaneDiff, i, m.state.DiffCursor.Line)
-		marker := "  "
-		if commented[i] {
-			marker = "◆ "
-		}
-		// Expand tabs so rune count tracks display width in the rendered cell.
-		line := expandTabs(lines[i], 4)
+	for i := top; i < end && len(out) < height; i++ {
+		var rows []string
 		if isSplit {
-			spec := specs[i]
-			oldSide, newSide := splitDiffLine(line)
-			leftCell := lnFmt(spec.OldLn, kindHasOld(spec.Kind)) + " " + padTrunc(oldSide, halfW)
-			rightCell := lnFmt(spec.NewLn, kindHasNew(spec.Kind)) + " " + padTrunc(newSide, halfW)
-			out = append(out, cursor+marker+leftCell+" │ "+rightCell)
+			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, commented[i])
 		} else {
-			out = append(out, cursor+marker+line)
+			rows = m.renderUnifiedBufferLine(lines[i], i, cursorLine, commented[i])
+		}
+		for _, r := range rows {
+			if len(out) >= height {
+				break
+			}
+			out = append(out, r)
 		}
 	}
 	return title + "\n" + strings.Join(out, "\n")
+}
+
+// renderUnifiedBufferLine returns the display rows for one buffer line in
+// unified mode. First row is `<cursor 2><marker 2><content>` where content is
+// the wrap-cell head. Continuation rows are `<4 blanks><wrap-cell tail>`,
+// where the tail's leading blank aligns past the diff marker (`+`/`-`/space)
+// — so total continuation indent is 5 cols (cursor 2 + marker 2 + 1).
+func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, commented bool) []string {
+	isCursor := idx == cursorLine
+	inVisual := m.inVisualRange(model.PaneDiff, idx)
+	cacheKey := ""
+	if !isCursor && !inVisual && m.rowCache != nil {
+		cacheKey = m.rowCacheKey("u", idx, 0, commented)
+		if v, ok := m.rowCache.get(cacheKey); ok {
+			return v
+		}
+	}
+	contentW := m.paneWidthDiff - 4
+	if contentW <= 0 {
+		contentW = 1
+	}
+	expanded := expandTabs(line, 4)
+	cells := wrapCell(expanded, contentW)
+	kind := diffLineKind(line)
+	out := make([]string, 0, len(cells))
+	for j, cell := range cells {
+		colored := m.colorDiffCell(cell, kind, false)
+		var prefix string
+		if j == 0 {
+			cursor := m.cursorMarker(model.PaneDiff, idx, cursorLine)
+			if cursor == "> " {
+				cursor = fgBold(cursor, m.theme.CursorRow)
+			}
+			marker := "  "
+			if commented {
+				marker = fg("◆ ", m.theme.CommentAnchor)
+			}
+			prefix = cursor + marker
+		} else if inVisual {
+			prefix = fgBold("> ", m.theme.CursorRow) + "  "
+		} else {
+			prefix = "    "
+		}
+		row := padTrunc(prefix+colored, m.paneWidthDiff)
+		if inVisual {
+			row = bgRow(row, m.theme.VisualRangeBg)
+		}
+		out = append(out, row)
+	}
+	if cacheKey != "" {
+		m.rowCache.put(cacheKey, out)
+	}
+	return out
+}
+
+// renderSplitBufferLine returns the display rows for one buffer line in split
+// mode. First row carries cursor / ◆ / line numbers / both half-cells with the
+// │ separator. Continuation rows blank cursor / marker / line-number columns,
+// re-draw │ at the same column, and prefix each half-cell with 1 blank to
+// align past the diff marker.
+//
+// Hot path under j/k repeat: split mode does ~2× the per-row work of
+// unified (two cells, two line-number gutters, separator). To keep
+// `j`-hold responsive we cache the final []string output keyed on the
+// inputs that actually affect rendering. The cursor and visual rows are
+// not cached (they change every keystroke); everything else is, so 28/30
+// visible rows hit the cache on each redraw.
+func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, commented bool) []string {
+	isCursor := idx == cursorLine
+	inVisual := m.inVisualRange(model.PaneDiff, idx)
+	cacheKey := ""
+	if !isCursor && !inVisual && m.rowCache != nil {
+		cacheKey = m.rowCacheKey("s", idx, halfW, commented)
+		if v, ok := m.rowCache.get(cacheKey); ok {
+			return v
+		}
+	}
+	expanded := expandTabs(line, 4)
+	oldSide, newSide := splitDiffLine(expanded)
+	leftCells := wrapCell(oldSide, halfW)
+	rightCells := wrapCell(newSide, halfW)
+	n := len(leftCells)
+	if len(rightCells) > n {
+		n = len(rightCells)
+	}
+	blank := strings.Repeat(" ", halfW)
+	sep := fg("│", m.theme.DiffSeparator)
+	out := make([]string, 0, n)
+	for j := 0; j < n; j++ {
+		left := blank
+		if j < len(leftCells) {
+			left = leftCells[j]
+		}
+		right := blank
+		if j < len(rightCells) {
+			right = rightCells[j]
+		}
+		left = m.colorDiffCell(left, spec.Kind, false)
+		right = m.colorDiffCell(right, spec.Kind, true)
+
+		var cursor, marker, oldLn, newLn string
+		if j == 0 {
+			cursor = m.cursorMarker(model.PaneDiff, idx, cursorLine)
+			if cursor == "> " {
+				cursor = fgBold(cursor, m.theme.CursorRow)
+			}
+			marker = "  "
+			if commented {
+				marker = fg("◆ ", m.theme.CommentAnchor)
+			}
+			oldLn = fg(lnFmt(spec.OldLn, kindHasOld(spec.Kind)), m.theme.DiffLineNumber)
+			newLn = fg(lnFmt(spec.NewLn, kindHasNew(spec.Kind)), m.theme.DiffLineNumber)
+		} else {
+			if inVisual {
+				cursor = fgBold("> ", m.theme.CursorRow)
+			} else {
+				cursor = "  "
+			}
+			marker = "  "
+			oldLn = "    "
+			newLn = "    "
+		}
+		row := padTrunc(cursor+marker+oldLn+" "+left+" "+sep+" "+newLn+" "+right, m.paneWidthDiff)
+		if inVisual {
+			row = bgRow(row, m.theme.VisualRangeBg)
+		}
+		out = append(out, row)
+	}
+	if cacheKey != "" {
+		m.rowCache.put(cacheKey, out)
+	}
+	return out
+}
+
+// diffLineKind classifies a unified-diff buffer line into the same byte tags
+// used by parseDiffSpecs ('h' file header, '@' hunk, '+'/'-' add/del, ' '
+// context). Order matters — `---`/`+++` must be tested before `+`/`-`.
+func diffLineKind(line string) byte {
+	switch {
+	case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
+		return 'h'
+	case strings.HasPrefix(line, "@@"):
+		return '@'
+	case strings.HasPrefix(line, "+"):
+		return '+'
+	case strings.HasPrefix(line, "-"):
+		return '-'
+	default:
+		return ' '
+	}
+}
+
+// colorDiffCell paints a pre-padded diff cell. Header and hunk-header rows
+// keep a flat foreground color (they aren't source code). Added and
+// deleted rows get a near-black row-wide background plus per-token
+// foreground from the theme's chroma syntax style — the bg highlights the
+// change extent, the fg keeps language-specific readability. Context rows
+// keep a flat foreground (no syntax highlighting): they are by far the
+// most numerous and tokenizing them blows up the per-render cost enough
+// to race tuistory's idle deadline.
+//
+// In split mode, the side opposite to the change is blank and is returned
+// untouched so empty cells do not pick up SGR sequences.
+func (m Model) colorDiffCell(cell string, kind byte, isRight bool) string {
+	switch kind {
+	case 'h':
+		return fg(cell, m.theme.DiffFileHeader)
+	case '@':
+		return fg(cell, m.theme.DiffHunkHeader)
+	case '+':
+		if isRight {
+			return m.styledDiffCell(cell, m.theme.DiffPlusBg)
+		}
+		return cell
+	case '-':
+		if !isRight {
+			return m.styledDiffCell(cell, m.theme.DiffMinusBg)
+		}
+		return cell
+	default:
+		return fg(cell, m.theme.DiffContext)
+	}
+}
+
+// wrapCell splits content into one or more `cellW`-wide rows. The first row
+// holds up to cellW runes of content; continuation rows hold a single leading
+// blank (to align past the diff marker) plus up to cellW-1 runes. Every
+// returned row is exactly cellW runes wide (right-padded with spaces).
+func wrapCell(content string, cellW int) []string {
+	if cellW <= 0 {
+		return []string{""}
+	}
+	runes := []rune(content)
+	if len(runes) <= cellW {
+		return []string{padTrunc(content, cellW)}
+	}
+	out := []string{padTrunc(string(runes[:cellW]), cellW)}
+	contW := cellW - 1
+	if contW < 1 {
+		contW = 1
+	}
+	for pos := cellW; pos < len(runes); pos += contW {
+		end := pos + contW
+		if end > len(runes) {
+			end = len(runes)
+		}
+		out = append(out, " "+padTrunc(string(runes[pos:end]), contW))
+	}
+	return out
 }
 
 // splitLayout reports whether the Diff pane should render side-by-side, and
@@ -211,18 +402,21 @@ func splitDiffLine(line string) (string, string) {
 	}
 }
 
-// padTrunc right-pads or truncates a string to exactly `width` runes.
+// padTrunc right-pads or truncates a string to exactly `width` visible
+// cells, ignoring SGR escape sequences. Truncation goes through
+// ansi.Truncate so SGR codes are preserved (and a final reset is emitted
+// when needed) instead of being sliced mid-sequence. Padding always uses
+// plain spaces.
 func padTrunc(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	w := utf8.RuneCountInString(s)
+	w := lipgloss.Width(s)
 	if w == width {
 		return s
 	}
 	if w > width {
-		runes := []rune(s)
-		return string(runes[:width])
+		return ansi.Truncate(s, width, "")
 	}
 	return s + strings.Repeat(" ", width-w)
 }
@@ -262,11 +456,10 @@ type diffLineSpec struct {
 
 // parseDiffSpecs walks the patch and produces, for each buffer line, the
 // old/new file line numbers it represents. Hunk headers reset both counters.
-func parseDiffSpecs(patch string) []diffLineSpec {
-	if patch == "" {
+func parseDiffSpecs(lines []string) []diffLineSpec {
+	if len(lines) == 0 {
 		return nil
 	}
-	lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
 	out := make([]diffLineSpec, len(lines))
 	var oldLn, newLn int
 	for i, l := range lines {
@@ -329,11 +522,10 @@ func lnFmt(n int, has bool) string {
 // review comment in the current Diff view. Built once per render so per-line
 // rendering stays O(1).
 func (m Model) commentLineSet() map[int]bool {
-	patch := m.currentPatch()
-	if patch == "" {
+	mapping := m.patchNewLineNumbers()
+	if len(mapping) == 0 {
 		return nil
 	}
-	mapping := newLineNumbers(patch)
 	threads := m.threadsForView()
 	if len(threads) == 0 {
 		return nil
@@ -375,8 +567,16 @@ func (m Model) diffViewportHeight() int {
 	return 5
 }
 
-// scrollDiffIntoView clamps DiffViewport.Top so the cursor stays inside the
-// visible window. Idempotent — safe to call after every cursor change.
+// scrollDiffIntoView clamps DiffViewport.Top so the cursor's first display
+// row stays inside the visible window. Wrap-aware: walks the buffer counting
+// display rows so a cursor on a multi-row wrapped line is not pushed offscreen
+// just because earlier lines also wrapped.
+//
+// Hot path under j/k repeat: the previous implementation called
+// displayRowsBetween every loop iteration (each rebuild splits the patch +
+// re-counts wrapped rows). We now compute the initial remaining count
+// once and subtract per-line rows as `top` advances, so the loop stays
+// O(viewport) regardless of cursor distance.
 func (m *Model) scrollDiffIntoView(totalLines int) {
 	height := m.diffViewportHeight()
 	if height <= 0 || totalLines <= 0 {
@@ -387,18 +587,46 @@ func (m *Model) scrollDiffIntoView(totalLines int) {
 	if cursor < top {
 		top = cursor
 	}
-	if cursor >= top+height {
-		top = cursor - height + 1
-	}
 	if top < 0 {
 		top = 0
 	}
-	max := totalLines - height
-	if max < 0 {
-		max = 0
+	if top >= totalLines {
+		top = totalLines - 1
 	}
-	if top > max {
-		top = max
+	if top >= cursor {
+		m.state.DiffViewport.Top = top
+		return
+	}
+	if m.paneWidthDiff <= 0 {
+		// No layout known yet; fall back to 1:1 buffer-row mapping.
+		if cursor-top+1 > height {
+			top = cursor - height + 1
+		}
+		m.state.DiffViewport.Top = top
+		return
+	}
+	lines := m.patchLines()
+	if len(lines) == 0 {
+		m.state.DiffViewport.Top = top
+		return
+	}
+	isSplit, halfW := m.splitLayout()
+	contentW := m.paneWidthDiff - 4
+	if contentW <= 0 {
+		contentW = 1
+	}
+	// Sum [top, cursor+1) once.
+	remaining := 0
+	hi := cursor + 1
+	if hi > len(lines) {
+		hi = len(lines)
+	}
+	for i := top; i < hi; i++ {
+		remaining += displayRowsForLine(lines[i], isSplit, halfW, contentW)
+	}
+	for top < cursor && remaining > height {
+		remaining -= displayRowsForLine(lines[top], isSplit, halfW, contentW)
+		top++
 	}
 	m.state.DiffViewport.Top = top
 }
@@ -414,12 +642,60 @@ func (m *Model) scrollDiffToLine(line, totalLines int) {
 	if top < 0 {
 		top = 0
 	}
-	max := totalLines - height
-	if max < 0 {
-		max = 0
-	}
-	if top > max {
-		top = max
+	if top >= totalLines {
+		top = totalLines - 1
 	}
 	m.state.DiffViewport.Top = top
+}
+
+// displayRowsBetween returns the total number of display rows that buffer
+// lines [lo, hi) consume in the current Diff render mode. Used by viewport
+// math to handle wrapped lines correctly. When the pane width is not yet
+// known (pre-first-frame), falls back to 1 row per buffer line so callers
+// behave like the legacy 1:1 mapping.
+func (m Model) displayRowsBetween(lo, hi int) int {
+	if hi <= lo {
+		return 0
+	}
+	if m.paneWidthDiff <= 0 {
+		return hi - lo
+	}
+	lines := m.patchLines()
+	if len(lines) == 0 {
+		return 0
+	}
+	if hi > len(lines) {
+		hi = len(lines)
+	}
+	if lo < 0 {
+		lo = 0
+	}
+	isSplit, halfW := m.splitLayout()
+	contentW := m.paneWidthDiff - 4
+	if contentW <= 0 {
+		contentW = 1
+	}
+	total := 0
+	for i := lo; i < hi; i++ {
+		total += displayRowsForLine(lines[i], isSplit, halfW, contentW)
+	}
+	return total
+}
+
+// displayRowsForLine reports the display-row count for a single buffer
+// line under the current view mode. Pulled out so scrollDiffIntoView can
+// decrement `remaining` one line at a time without re-walking the whole
+// patch on every iteration.
+func displayRowsForLine(line string, isSplit bool, halfW, contentW int) int {
+	expanded := expandTabs(line, 4)
+	if isSplit {
+		oldSide, newSide := splitDiffLine(expanded)
+		l := len(wrapCell(oldSide, halfW))
+		r := len(wrapCell(newSide, halfW))
+		if r > l {
+			l = r
+		}
+		return l
+	}
+	return len(wrapCell(expanded, contentW))
 }

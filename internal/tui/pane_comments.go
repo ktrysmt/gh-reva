@@ -52,20 +52,19 @@ func (m *Model) syncDiffToCursorComment() {
 	}
 	c := flat[m.state.CommentsCursor]
 	target := commentNewLine(c)
-	patch := m.currentPatch()
-	if patch == "" {
+	lines := m.patchLines()
+	if len(lines) == 0 {
 		return
 	}
-	bufIdx := bufferIndexForNewLine(patch, target)
+	bufIdx := bufferIndexForNewLine(lines, target)
 	if bufIdx < 0 {
 		return
 	}
-	totalLines := strings.Count(patch, "\n") + 1
-	m.scrollDiffToLine(bufIdx, totalLines)
+	m.scrollDiffToLine(bufIdx, len(lines))
 }
 
 func (m Model) commentsView() string {
-	title := paneTitle("Comments", m.state.FocusedPane == model.PaneComments, "")
+	title := m.styledPaneTitle("Comments", m.state.FocusedPane == model.PaneComments, "")
 	if m.state.PR == nil || m.state.SelectedFile == "" {
 		return title
 	}
@@ -89,7 +88,7 @@ func (m Model) commentsView() string {
 }
 
 func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
-	cursor := m.cursorMarker(model.PaneComments, idx, m.state.CommentsCursor)
+	cursor := m.styledCursor(model.PaneComments, idx, m.state.CommentsCursor)
 	in := indent(depth)
 	date := c.CreatedAt.Format("2006-01-02")
 	sha := shortSHA(c.CommitID)
@@ -100,7 +99,19 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
 	if c.Outdated {
 		tag = " [outdated]"
 	}
-	header := fmt.Sprintf("%s%s%s: %s %s%s — ", cursor, in, c.User, date, sha, tag)
+	// Build the header with the original (uncolored) widths first so the
+	// wrap math (headWidth → contIndent) stays driven by visible columns.
+	rawHeader := fmt.Sprintf("%s%s%s: %s %s%s — ",
+		cursorPrefix(idx == m.state.CommentsCursor || m.inVisualRange(model.PaneComments, idx)),
+		in, c.User, date, sha, tag)
+	headWidth := utf8.RuneCountInString(rawHeader)
+	header := fmt.Sprintf("%s%s%s: %s %s%s — ",
+		cursor, in,
+		fg(c.User, m.theme.CommentAuthor),
+		fg(date, m.theme.CommentDate),
+		fg(sha, m.theme.CommitSHA),
+		fg(tag, m.theme.CommentOutdated),
+	)
 	wrapWidth := m.paneWidthComments
 	if wrapWidth <= 0 {
 		wrapWidth = m.width
@@ -108,7 +119,6 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
 	if wrapWidth <= 0 {
 		return header + c.Body
 	}
-	headWidth := utf8.RuneCountInString(header)
 	bodyWidth := wrapWidth - headWidth
 	if bodyWidth < 10 {
 		bodyWidth = 10

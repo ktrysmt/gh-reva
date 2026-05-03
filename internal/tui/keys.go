@@ -33,7 +33,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			vs.Anchor = m.state.CommentsCursor
 		case model.PaneDiff:
 			vs.AnchorLine = m.state.DiffCursor.Line
-			vs.AnchorCol = m.state.DiffCursor.Col
 		}
 		m.state.Visual = vs
 		return m, nil
