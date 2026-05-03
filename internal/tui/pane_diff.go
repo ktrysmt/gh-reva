@@ -307,15 +307,15 @@ func diffLineKind(line string) byte {
 }
 
 // colorDiffCell paints a pre-padded diff cell. Header and hunk-header rows
-// keep a flat foreground color (they aren't source code). Added and
-// deleted rows get a near-black row-wide background plus per-token
-// foreground from the theme's chroma syntax style — the bg highlights the
-// change extent, the fg keeps language-specific readability. Context rows
-// keep a flat foreground (no syntax highlighting): they are by far the
-// most numerous and tokenizing them blows up the per-render cost enough
-// to race tuistory's idle deadline.
+// keep a flat foreground color (they aren't source code). Added, deleted,
+// and context rows all run through styledDiffCell for per-token chroma
+// foreground; +/- rows additionally carry a row-wide near-black bg to mark
+// the change extent. Context rows pass bg="" so the terminal default bg
+// is used. The rowCache + syntaxCache pair amortizes tokenization to a
+// one-shot cost per (lexer, bg, cell) tuple, so the visual gain does not
+// regress j/k repeat latency.
 //
-// In split mode, the side opposite to the change is blank and is returned
+// In split mode, the side opposite to a +/- change is blank and returned
 // untouched so empty cells do not pick up SGR sequences.
 func (m Model) colorDiffCell(cell string, kind byte, isRight bool) string {
 	switch kind {
@@ -334,7 +334,7 @@ func (m Model) colorDiffCell(cell string, kind byte, isRight bool) string {
 		}
 		return cell
 	default:
-		return fg(cell, m.theme.DiffContext)
+		return m.styledDiffCell(cell, "")
 	}
 }
 
