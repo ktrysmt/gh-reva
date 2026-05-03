@@ -92,6 +92,31 @@ annotation describing how it changed the selected file.
 - Threads render with replies indented under the root; `h` / `l` fold and
   unfold the thread under the cursor
 
+## Color theming
+
+`gh-rv` ships with `builtin-dark` as the default palette. Pass `--theme
+<name>` to swap in any chroma styles registry entry (`dracula`, `nord`,
+`tokyonight-night`, `monokai`, and 70+ others). Run `gh rv --list-themes`
+to see every accepted name.
+
+```sh
+gh rv --theme dracula
+gh rv --no-color           # also honors NO_COLOR / CLICOLOR
+GH_RV_THEME=nord gh rv     # env var fallback when --theme is not set
+```
+
+The chosen theme drives diff add / delete row backgrounds, per-token syntax
+foreground inside diff content, pane chrome (border / title / status badges),
+and the spinner. Light backgrounds are not yet auto-detected — picking a
+light-theme name on a dark terminal is allowed but may render with poor
+contrast.
+
+| Flag | Purpose |
+| --- | --- |
+| `--theme <name>` | Pick a color palette (default: `builtin-dark`) |
+| `--no-color` | Disable color output. Also reads `NO_COLOR` / `CLICOLOR` |
+| `--list-themes` | Print every accepted theme name on stdout and exit 0 |
+
 ## Development
 
 ```sh
