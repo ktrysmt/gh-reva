@@ -24,9 +24,14 @@ export async function launchGhRv ({
   rows = 50,
   env = {},
 } = {}) {
+  // Hover popup is interactive UX; suppress it by default so substring
+  // / equality assertions across the suite stay deterministic. Tests
+  // that exercise the popup (13_hover.test.mjs) pass their own
+  // --hover-delay and the explicit value wins.
+  const finalArgs = args.includes('--hover-delay') ? args : ['--hover-delay', '0', ...args]
   const session = await launchTerminal({
     command: BIN,
-    args: ['--fixture', fixture, ...args],
+    args: ['--fixture', fixture, ...finalArgs],
     cols,
     rows,
     env: { ...process.env, ...env },
