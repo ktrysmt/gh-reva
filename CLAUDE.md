@@ -122,6 +122,7 @@ gh-rv/
 │       ├── pane_comments.go        # commentsView + word wrap + diff auto-scroll
 │       ├── files_tree.go           # tree mode rendering
 │       ├── visual.go               # visual mode + yank
+│       ├── hover.go                # cursor-row tooltip (Files/Commits)
 │       └── diffmap.go              # newLineNumbers / commentThreadIndexForDiffLine
 ├── testdata/
 │   ├── sample-pr.json              # default fixture (5 files, 3 commits, 4 comments)
@@ -214,6 +215,7 @@ and several break the user's mental model.
 39d. **Diff-renderer perf rule**: do not call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly from any hot path. Always go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers()`. New caches that share fate with the patch should also key on `diffKey(sha, path)` and reset via the `invalidateRowCacheIfStale` pattern (key + paneWidthDiff + halfW).
 40. **`waitReady` defaults to 10s** in `e2e/helpers/launch.mjs` to absorb chroma's `styles` + `lexers` init cost (~500ms cold) plus first-frame tokenization. Tests that need a tighter signal can pass `{ timeout: ... }` explicitly.
 41. **`session.press` / `session.type` are wrapped with a 120ms settle** in `launchGhRv`. bubbletea's Update→View pipeline is async and ghostty's parser needs a beat to drain SGR-laden output before subsequent `text()` reads see the post-keystroke screen. Don't reach for `session.press` directly inside helpers — go through the wrapped session returned by `launchGhRv`.
+42. **Hover popup is gated by `model.HoverState{Gen, Show}` plus `Model.hoverDelay`**. Every `tea.KeyMsg` increments `Gen` and forces `Show=false`; eligible panes (Files / Commits, non-Visual) then schedule a `tea.Tick(hoverDelay)` returning `HoverTickMsg{Gen}`. The handler only flips `Show=true` when `msg.Gen == m.state.Hover.Gen`, so a later keystroke (which has bumped `Gen`) implicitly cancels the in-flight tick. `PRLoadedMsg` arms the initial popup so a freshly-opened PR shows the cursor's full path / subject after the delay without requiring a key. `--hover-delay 0` disables the popup; e2e settle (120ms) is longer than tight delays (~80ms) so a press-then-capture sequence sees the popup again on the new cursor row. The overlay replaces the bottom 3 body rows (centered, ≤100 cols), losing the pane bottom borders for the popup duration — chosen over reserved height because layout shifts on every show / hide cycle would flicker badly.
 
 ---
 

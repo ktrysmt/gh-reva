@@ -116,6 +116,15 @@ contrast.
 | `--theme <name>` | Pick a color palette (default: `builtin-dark`) |
 | `--no-color` | Disable color output. Also reads `NO_COLOR` / `CLICOLOR` |
 | `--list-themes` | Print every accepted theme name on stdout and exit 0 |
+| `--hover-delay <duration>` | Delay before the cursor row's full text appears in a popup (default `500ms`; `0` disables) |
+
+## Cursor row hover
+
+In Files and Commits, when the cursor settles on a row for `--hover-delay`
+the full path or commit subject is shown in a small bordered popup at the
+bottom of the screen. Pressing any navigation key (`j` / `k` / Tab / etc.)
+hides the popup immediately; the next popup arms automatically against the
+new cursor row. Set `--hover-delay 0` to turn the feature off.
 
 ## Development
 

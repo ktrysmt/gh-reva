@@ -23,6 +23,7 @@ type Model struct {
 	syntaxCache  *syntaxCache
 	patchLinesC  patchLinesCache
 	rowCache     *diffRowCache
+	hoverDelay   time.Duration
 	width        int
 	height       int
 	err          error
@@ -57,6 +58,11 @@ func (m *Model) SetTheme(t *theme.Theme) {
 	m.theme = t
 }
 
+// SetHoverDelay configures the wait before the cursor-row tooltip appears.
+// Zero disables the popup entirely. Used by the --hover-delay flag and by
+// e2e tests that need a tighter timer.
+func (m *Model) SetHoverDelay(d time.Duration) { m.hoverDelay = d }
+
 func NewModel(client api.Client, target *api.Target) Model {
 	t, _ := theme.Resolve("")
 	return Model{
@@ -81,7 +87,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		// Every keystroke invalidates any pending hover so it never
+		// lingers past a navigation. The Gen counter doubles as a
+		// cancellation token for in-flight HoverTickMsg.
+		m.state.Hover.Show = false
+		m.state.Hover.Gen++
+		next, cmd := m.handleKey(msg)
+		if rm, ok := next.(Model); ok && rm.shouldScheduleHover() {
+			return rm, tea.Batch(cmd, rm.scheduleHoverTick())
+		}
+		return next, cmd
+	case HoverTickMsg:
+		if msg.Gen == m.state.Hover.Gen {
+			m.state.Hover.Show = true
+		}
+		return m, nil
 	case LoadStageMsg:
 		m.state.LoadStage = msg.Stage
 		return m, nil
@@ -98,6 +118,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SelectedFile = msg.PR.Files[0].Path
 		}
 		m.state.LoadStage = model.LoadStageDone
+		// Arm the hover popup against the initial cursor position so a
+		// user who just opened a PR and waits a beat sees the full
+		// cursor path / commit subject without having to press a key.
+		if m.shouldScheduleHover() {
+			return m, m.scheduleHoverTick()
+		}
 		return m, nil
 	case ScrollDiffToLineMsg:
 		lines := m.patchLines()
@@ -135,6 +161,7 @@ func (m Model) View() string {
 			m.diffView(),
 			m.commentsView(),
 		}, "\n\n")
+		body = m.overlayHover(body)
 		if m.state.Visual != nil {
 			return body + "\n" + m.visualIndicator()
 		}
@@ -169,6 +196,7 @@ func (m Model) View() string {
 	diffCol := m.boxFromPaneView(m.diffView(), midW, bodyHeight, model.PaneDiff)
 	commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
+	body = m.overlayHover(body)
 
 	if m.state.Visual != nil {
 		return body + "\n" + m.visualIndicator()

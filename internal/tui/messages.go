@@ -30,3 +30,12 @@ type ScrollDiffToLineMsg struct {
 type ErrMsg struct {
 	Err error
 }
+
+// HoverTickMsg fires after the configured hover delay following a
+// keystroke in the Files / Commits panes. The handler only marks the
+// hover popup as visible when Gen matches the live state — any
+// intervening key has already incremented the live counter, leaving
+// this message stale and discarded.
+type HoverTickMsg struct {
+	Gen int
+}

@@ -24,6 +24,7 @@ var (
 	themeName     string
 	noColor       bool
 	listThemes    bool
+	hoverDelay    time.Duration
 
 	// Set via -ldflags at release time (see .goreleaser.yaml).
 	version = "dev"
@@ -92,6 +93,7 @@ var rootCmd = &cobra.Command{
 
 		m := tui.NewModel(client, ref)
 		m.SetTheme(th)
+		m.SetHoverDelay(hoverDelay)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}
@@ -115,6 +117,7 @@ func init() {
 	rootCmd.Flags().StringVar(&themeName, "theme", "", "color theme name (default: builtin-dark; see --list-themes)")
 	rootCmd.Flags().BoolVar(&noColor, "no-color", false, "disable color output (also honors NO_COLOR / CLICOLOR)")
 	rootCmd.Flags().BoolVar(&listThemes, "list-themes", false, "print every available theme name and exit")
+	rootCmd.Flags().DurationVar(&hoverDelay, "hover-delay", 500*time.Millisecond, "delay before the cursor row's full text appears in a popup; 0 disables")
 	_ = rootCmd.Flags().MarkHidden("simulate-error")
 	_ = rootCmd.Flags().MarkHidden("slow-load")
 	_ = rootCmd.Flags().MarkHidden("diff-height")

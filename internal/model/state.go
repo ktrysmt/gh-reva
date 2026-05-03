@@ -23,6 +23,8 @@ type AppState struct {
 
 	Visual *VisualState
 
+	Hover HoverState
+
 	DiffCache map[string]string
 	Loading   map[string]bool
 
@@ -74,6 +76,17 @@ type VisualState struct {
 	Anchor     int
 	AnchorLine int
 	Linewise   bool
+}
+
+// HoverState drives the cursor-row tooltip in Files / Commits. Gen
+// increments on every keypress; the deferred HoverTickMsg compares its
+// snapshotted gen against the current value and only flips Show when
+// they still match — i.e. the user has not moved since the tick was
+// scheduled. Show is reset on every keypress so the tooltip never
+// lingers past a navigation.
+type HoverState struct {
+	Gen  int
+	Show bool
 }
 
 func NewAppState() *AppState {
