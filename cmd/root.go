@@ -2,12 +2,17 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 
 	"github.com/ktrysmt/gh-rv/internal/api"
+	"github.com/ktrysmt/gh-rv/internal/theme"
 	"github.com/ktrysmt/gh-rv/internal/tui"
 )
 
@@ -16,6 +21,9 @@ var (
 	simulateError string
 	slowLoad      time.Duration
 	diffHeight    int
+	themeName     string
+	noColor       bool
+	listThemes    bool
 
 	// Set via -ldflags at release time (see .goreleaser.yaml).
 	version = "dev"
@@ -29,12 +37,39 @@ var rootCmd = &cobra.Command{
 	Version: versionString(),
 	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// --list-themes is a self-contained query; emit names and return
+		// before touching the API or the renderer.
+		if listThemes {
+			out := cmd.OutOrStdout()
+			for _, n := range theme.ListThemes() {
+				fmt.Fprintln(out, n)
+			}
+			return nil
+		}
+
+		name := themeName
+		if name == "" {
+			name = os.Getenv("GH_RV_THEME")
+		}
+		th, err := theme.Resolve(name)
+		if err != nil {
+			return err
+		}
+
+		// lipgloss v1 has no per-program color profile option; the
+		// default renderer is the one bubbletea will see, so we lock it
+		// before tea.NewProgram. EnvNoColor honors NO_COLOR / CLICOLOR
+		// for users who set the standard env vars.
+		if noColor || termenv.EnvNoColor() {
+			lipgloss.SetColorProfile(termenv.Ascii)
+		}
+		// gh-rv ships a single dark palette; lock background detection so
+		// adaptive components used by future deps render predictably.
+		lipgloss.SetHasDarkBackground(true)
+
 		ctx := context.Background()
 
-		var (
-			client api.Client
-			err    error
-		)
+		var client api.Client
 		switch {
 		case simulateError != "":
 			client = api.NewErrorClient(simulateError)
@@ -56,6 +91,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		m := tui.NewModel(client, ref)
+		m.SetTheme(th)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}
@@ -76,12 +112,36 @@ func init() {
 	rootCmd.Flags().StringVar(&simulateError, "simulate-error", "", "inject a simulated error: unauth | not_found | rate_limit (testing)")
 	rootCmd.Flags().DurationVar(&slowLoad, "slow-load", 0, "inject per-call delay into the loader (testing)")
 	rootCmd.Flags().IntVar(&diffHeight, "diff-height", 0, "force the Diff viewport height (testing)")
+	rootCmd.Flags().StringVar(&themeName, "theme", "", "color theme name (default: builtin-dark; see --list-themes)")
+	rootCmd.Flags().BoolVar(&noColor, "no-color", false, "disable color output (also honors NO_COLOR / CLICOLOR)")
+	rootCmd.Flags().BoolVar(&listThemes, "list-themes", false, "print every available theme name and exit")
 	_ = rootCmd.Flags().MarkHidden("simulate-error")
 	_ = rootCmd.Flags().MarkHidden("slow-load")
 	_ = rootCmd.Flags().MarkHidden("diff-height")
+	// Suppress cobra's built-in error / usage printing so the wrapper in
+	// main.go controls the format (single colored line via theme.ErrorText).
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
 }
 
 func Execute() error { return rootCmd.Execute() }
+
+// PrintError writes err to stderr coloured by theme.ErrorText. The default
+// (builtin-dark) palette is used because errors can fire before --theme is
+// resolved or precisely because --theme failed; consistency over fidelity.
+// In a non-TTY (lipgloss falls back to Ascii profile), the SGR wrapping is
+// a no-op and the output remains plain text — substring matchers in the
+// e2e suite continue to work.
+func PrintError(err error) {
+	if err == nil {
+		return
+	}
+	msg := err.Error()
+	if th, terr := theme.Resolve(""); terr == nil && th != nil && th.ErrorText != "" {
+		msg = lipgloss.NewStyle().Foreground(th.ErrorText).Render(msg)
+	}
+	fmt.Fprintln(os.Stderr, msg)
+}
 
 func versionString() string {
 	return version + " (" + commit + ", " + date + ")"
