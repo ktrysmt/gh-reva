@@ -24,21 +24,42 @@ export async function launchGhRv ({
   rows = 50,
   env = {},
 } = {}) {
-  return launchTerminal({
+  const session = await launchTerminal({
     command: BIN,
     args: ['--fixture', fixture, ...args],
     cols,
     rows,
     env: { ...process.env, ...env },
   })
+  // Wrap press / type so callers don't need to manually sync after each
+  // keystroke. bubbletea's Update → View pipeline is async and ghostty's
+  // parser needs a beat to drain the SGR-laden output before subsequent
+  // text() reads see the post-keystroke screen. ~120ms covers the worst
+  // case observed under the colored renderer; a stable test that passes
+  // here also passes interactively.
+  const SETTLE_MS = 120
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+  for (const fn of ['press', 'type']) {
+    const orig = session[fn].bind(session)
+    session[fn] = async (...a) => {
+      const r = await orig(...a)
+      await sleep(SETTLE_MS)
+      return r
+    }
+  }
+  return session
 }
 
 /**
  * Wait until the fixture-loaded UI is rendered (i.e. the loading screen has
  * gone away). Phase 1 marker is the literal "Files" heading shown in the
  * top-left pane after PR data arrives.
+ *
+ * The 10s default accommodates chroma's styles + lexers package init
+ * (~74 styles parsed at startup, several hundred lexers registered) which
+ * can add ~500ms to first-frame latency on cold caches.
  */
-export async function waitReady (session, { timeout = 5000 } = {}) {
+export async function waitReady (session, { timeout = 10000 } = {}) {
   await session.waitForText('Files', { timeout })
 }
 

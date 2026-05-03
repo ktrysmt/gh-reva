@@ -54,3 +54,16 @@ test('A8: Ctrl-C quits cleanly', async () => {
   await s.press(['ctrl', 'c'])
   s.close()
 })
+
+test('A9: session.text() never carries raw ANSI escape bytes', async () => {
+  // tuistory parses through ghostty so SGR sequences should be consumed by
+  // the virtual terminal. A raw 0x1b in the captured text means a renderer
+  // emitted bytes the parser could not interpret, which would break
+  // substring-based assertions across the suite.
+  const s = await launchGhRv()
+  await waitReady(s)
+  const screen = await s.text()
+  const ESC = String.fromCharCode(0x1b)
+  assert.ok(!screen.includes(ESC), 'raw ANSI escape byte (0x1b) leaked into rendered text')
+  await quit(s)
+})

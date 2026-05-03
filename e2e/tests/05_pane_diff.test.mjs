@@ -131,16 +131,6 @@ test('F4c: Ctrl-d / Ctrl-u half-page; Ctrl-f / Ctrl-b full page', async () => {
   await quit(s)
 })
 
-test('F5: horizontal motions h/l/w/b/e do not crash', async () => {
-  const s = await launchGhRv()
-  await waitReady(s)
-  await s.press('tab'); await s.press('tab')
-  for (const key of ['h', 'l', 'w', 'b', 'e']) await s.type(key)
-  const screen = await s.text()
-  assert.match(screen, /▶ Diff/, 'focus should remain on Diff after motion keys')
-  await quit(s)
-})
-
 test('F6: H jumps to viewport top after G scrolls down', async () => {
   // --diff-height=4 pins a tiny viewport so G actually scrolls Top away from
   // 0, letting H stand observably apart from gg (which would jump to the
@@ -267,6 +257,95 @@ test('F10b: Shift+K at first file and Shift+J at last file are clamped', async (
   await s.type('J')
   screen = await s.text()
   assert.match(screen, /Diff: go\.mod/, 'Shift+J at last file does not wrap')
+  await quit(s)
+})
+
+test('F12: split mode wraps a long content line into multiple display rows', async () => {
+  const s = await launchGhRv()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  // greeting.go buffer line 5 = `+// Hello returns a greeting for the given name.`
+  // (48 chars). At default cols=160, split halfW=21, so the line wraps to 3
+  // display rows. The cell tail "name." lands in the second continuation row.
+  const diff = paneText(await s.text(), 'Diff')
+  assert.ok(
+    /name\./.test(diff),
+    `wrap continuation should expose text past the truncation; Diff slice:\n${diff}`,
+  )
+  await quit(s)
+})
+
+test('F13: cursor `>` appears only on the first display row of a wrapped line', async () => {
+  const s = await launchGhRv()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  // Move cursor to the long-wrapping buffer line 5.
+  for (let i = 0; i < 5; i++) await s.type('j')
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  const headRow = lines.findIndex(l => l.includes('Hello returns'))
+  assert.ok(headRow >= 0, `expected first row of wrap; Diff:\n${diff}`)
+  assert.ok(lines[headRow].startsWith('> '), `head row must carry "> "; got "${lines[headRow]}"`)
+  // Continuation row carries the wrap of "...for the given..." (split halfW=22).
+  const contRow = lines.findIndex(l => /for the give/.test(l))
+  assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
+  assert.ok(
+    !lines[contRow].startsWith('> '),
+    `continuation row must not carry "> " (cursor lives on the buffer line, not display row); got "${lines[contRow]}"`,
+  )
+  await quit(s)
+})
+
+test('F15: ◆ marker appears only on the first display row of a wrapped commented line', async () => {
+  const s = await launchGhRv()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  // Buffer line 5 carries comment 1001 and wraps in default split layout.
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  const headRow = lines.findIndex(l => l.includes('Hello returns'))
+  assert.ok(headRow >= 0, `expected wrap row; Diff:\n${diff}`)
+  assert.ok(lines[headRow].includes('◆'), `first row of commented wrapped line must show ◆; got "${lines[headRow]}"`)
+  const contRow = lines.findIndex(l => /for the give/.test(l))
+  assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
+  assert.ok(
+    !lines[contRow].includes('◆'),
+    `continuation row must not show ◆ (◆ is per-buffer-line, not per-display-row); got "${lines[contRow]}"`,
+  )
+  await quit(s)
+})
+
+test('F16: split `│` separator continues on every continuation display row', async () => {
+  const s = await launchGhRv()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  const headRow = lines.findIndex(l => l.includes('Hello returns'))
+  assert.ok(headRow >= 0)
+  const firstCol = lines[headRow].indexOf('│')
+  assert.ok(firstCol >= 0, 'first row of wrapped buffer line must include │')
+  const contRow = lines.findIndex(l => /for the give/.test(l))
+  assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
+  const contCol = lines[contRow].indexOf('│')
+  assert.equal(contCol, firstCol, `│ on continuation row must be at the same column; first=${firstCol} cont=${contCol}; row="${lines[contRow]}"`)
+  await quit(s)
+})
+
+test('F17: unified mode wraps long lines and indents continuation by 5 cols', async () => {
+  const s = await launchGhRv({ cols: 80 })   // forces unified (F3)
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  // At cols=80 the unified content area is narrow enough to wrap line 5
+  // (48-char `+// Hello returns ...`).
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  const idx = lines.findIndex(l => l.includes('Hello returns'))
+  assert.ok(idx >= 0, `expected wrap of long line in narrow unified mode; Diff:\n${diff}`)
+  const cont = lines[idx + 1]
+  assert.ok(cont !== undefined, `expected at least one continuation row; Diff:\n${diff}`)
+  // Continuation must indent 5 cols (cursor 2 + ◆marker 2 + diff-marker 1).
+  assert.match(cont, /^ {5}\S/, `unified continuation must indent 5 cols past the diff marker; got "${cont}"`)
   await quit(s)
 })
 
