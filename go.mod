@@ -11,12 +11,14 @@ require (
 )
 
 require (
+	github.com/alecthomas/chroma/v2 v2.24.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v1.0.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/cli/safeexec v1.0.0 // indirect
 	github.com/cli/shurcooL-graphql v0.0.4 // indirect
+	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/henvic/httpretty v0.0.6 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
