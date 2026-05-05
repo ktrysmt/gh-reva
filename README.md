@@ -61,6 +61,7 @@ prefixed with `> `. Visual selection extends `> ` across the selected range.
 | `t` | Files: toggle flat ⇄ tree rendering | Files |
 | `Enter` | Tree mode only: fold / unfold directory under cursor | Files |
 | `v` / `y` / `Esc` | Visual mode + yank to clipboard / cancel | All |
+| `?` | Toggle the help modal (dismiss with `?` / `Esc` / `q` / `Ctrl-C`) | All |
 | `q` / `Ctrl-C` | Quit | All |
 
 `tab` / `shift-tab` are the only keys that move focus between panes. `j` / `k`
