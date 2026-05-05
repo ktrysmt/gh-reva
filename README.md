@@ -1,17 +1,6 @@
 # gh-reva
 
-<pre>
-          <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓</span>
-        <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span>
-      <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
-    <span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
-    <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span>
-  <span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░░░</span>
-<span style="color:#fff176">░░░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░░░</span><span style="color:#ffffe0">████</span><span style="color:#fff176">░░░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░░░</span>
-  <span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span>
-    <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
-  <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████████</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
-</pre>
+<img src="assets/logo.png" alt="gh-reva logo" width="240">
 
 PR review TUI distributed as a `gh` CLI extension.
 
