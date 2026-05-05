@@ -1,8 +1,10 @@
-# gh-reva
+<h1 align="center">gh-reva</h1>
 
-<img src="assets/logo.png" alt="gh-reva logo" width="240">
+<p align="center">
+  <img src="assets/logo.png" alt="gh-reva logo" width="240">
+</p>
 
-PR review TUI distributed as a `gh` CLI extension.
+<p align="center">PR review TUI distributed as a <code>gh</code> CLI extension.</p>
 
 `gh-reva` is a four-pane terminal viewer for GitHub Pull Requests with a focus
 on per-file review flow: pin a file, then walk only the commits that touch it
