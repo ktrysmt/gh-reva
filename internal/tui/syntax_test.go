@@ -73,6 +73,72 @@ func TestDiffMarkerHasAccentFgAndBold(t *testing.T) {
 	}
 }
 
+// TestStyledDiffCellNeverEmitsNewline pins the contract that styledDiffCell
+// output is single-line. Chroma's line-oriented lexers (most notably the
+// JavaScript / TSX lexers) auto-append a trailing `\n` to their input so
+// regex anchors match, and that synthesized newline rides into one of the
+// emitted Whitespace tokens. Without sanitization, the `\n` ends up inside
+// a rendered diff cell — when the row is concatenated and printed, the
+// newline breaks the cell across two terminal rows, fragmenting the split
+// layout into the stripe pattern observed in PR #1's diff view.
+//
+// We test multiple lexer family / cell-content shapes because the auto-
+// newline behavior is per-lexer; the JS family was the failing case but
+// the contract should hold for every lexer the user can hit.
+func TestStyledDiffCellNeverEmitsNewline(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	cases := []struct {
+		file    string
+		cell    string
+		comment string
+	}{
+		{"test.mjs", "+ short" + strings.Repeat(" ", 23), "JS short content padded to 30"},
+		{"test.mjs", "+" + strings.Repeat(" ", 29), "JS empty + only whitespace"},
+		{"test.mjs", "+   await s.type('?')" + strings.Repeat(" ", 9), "JS realistic line padded"},
+		{"test.go", "+ func main() { }" + strings.Repeat(" ", 13), "Go content padded"},
+		{"test.py", "+ def hi(): pass" + strings.Repeat(" ", 14), "Python content padded"},
+		{"test.tsx", "- const x = 1" + strings.Repeat(" ", 17), "TSX deletion padded"},
+		{"test.txt", " plain context" + strings.Repeat(" ", 16), "plain text context"},
+	}
+	m := NewModel(nil, nil)
+	for _, tc := range cases {
+		m.state.SelectedFile = tc.file
+		got := m.styledDiffCell(tc.cell, m.theme.DiffPlusBg)
+		stripped := stripSGR(got)
+		if strings.ContainsAny(stripped, "\n\r") {
+			t.Errorf("%s: styledDiffCell output contained newline; stripped=%q",
+				tc.comment, stripped)
+		}
+	}
+}
+
+// stripSGR is a minimal SGR-stripper used only by the test. It mirrors
+// ansi.Strip's behaviour for the CSI sequences chroma + lipgloss emit but
+// avoids pulling in the package just for one test.
+func stripSGR(s string) string {
+	var sb strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2
+			for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			i = j
+			continue
+		}
+		sb.WriteByte(s[i])
+		i++
+	}
+	return sb.String()
+}
+
 // TestUnifiedAdditionGetsBgAndSyntax pins the contract that in unified mode,
 // '+' rows pass through styledDiffCell so they receive both a row-wide bg
 // (DiffPlusBg) and per-token syntax highlighting — symmetric with how '-'
