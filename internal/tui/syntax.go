@@ -101,6 +101,21 @@ func tokenizeAndStyle(cell string, bg, markerPlus, markerMinus lipgloss.Color, l
 		return sb.String()
 	}
 	for tok := iter(); tok != chroma.EOF; tok = iter() {
+		// Chroma's line-oriented lexers (e.g. JavaScript) auto-append a
+		// trailing newline to the input so their regex anchors match, and
+		// the synthesized newline shows up inside a Whitespace / Text
+		// token. Letting that `\n` through breaks our diff cell across two
+		// terminal rows — the next half-cell ends up on the row below,
+		// producing the stripe pattern observed in PR #1's diff view.
+		// We render one cell at a time, so any `\n` / `\r` in token
+		// values is by definition spurious; strip them before rendering.
+		val := tok.Value
+		if strings.ContainsAny(val, "\n\r") {
+			val = strings.NewReplacer("\n", "", "\r", "").Replace(val)
+		}
+		if val == "" {
+			continue
+		}
 		seg := bgStyle
 		entry := style.Get(tok.Type)
 		if entry.Colour.IsSet() {
@@ -112,7 +127,7 @@ func tokenizeAndStyle(cell string, bg, markerPlus, markerMinus lipgloss.Color, l
 		if entry.Italic == chroma.Yes {
 			seg = seg.Italic(true)
 		}
-		sb.WriteString(seg.Render(tok.Value))
+		sb.WriteString(seg.Render(val))
 	}
 	return sb.String()
 }
