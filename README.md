@@ -1,3 +1,5 @@
+# gh-reva
+
 <div align="center">
 <pre>
           <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓</span>
@@ -13,22 +15,11 @@
 </pre>
 </div>
 
-# gh-reva
-
 PR review TUI distributed as a `gh` CLI extension.
 
 `gh-reva` is a four-pane terminal viewer for GitHub Pull Requests with a focus
 on per-file review flow: pin a file, then walk only the commits that touch it
 without losing your place in the diff or comments.
-
-## Status
-
-Phase 1 (read-only viewer) lands the four-pane layout, keymap, and file-scoped
-commit filter. Phase 1.5 wires up the real GitHub REST API. Editor-driven
-comment posting and resolved-thread toggling stay scoped to Phase 2.
-
-Detailed design notes live in
-`results/00020_gh拡張CLI-PR-Review-TUI設計/` (機能要求整理 + 設計詳細).
 
 ## Install
 
@@ -160,7 +151,7 @@ go run . --fixture testdata/sample-pr.json
 ### End-to-end tests
 
 ```sh
-cd e2e
+cd ./e2e/
 pnpm install        # first run only
 pnpm test           # runs `go build` then node --test against tuistory
 pnpm run test:smoke # smoke subset
