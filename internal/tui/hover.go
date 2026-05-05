@@ -1,14 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
-	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // hoverMaxLines caps the popup body so a pathologically long commit
@@ -17,8 +16,9 @@ import (
 const hoverMaxLines = 12
 
 // hoverEligible answers whether the popup should be drawn given the
-// current focus / mode. Visual mode suppresses it because the visual
-// banner already carries focus + a row-wide bg highlight.
+// current focus / mode. The popup is toggled on / off explicitly via
+// `<space>` in Files / Commits; visual mode suppresses it because the
+// visual banner already carries focus + a row-wide bg highlight.
 func (m Model) hoverEligible() bool {
 	if !m.state.Hover.Show {
 		return false
@@ -29,35 +29,10 @@ func (m Model) hoverEligible() bool {
 	return m.state.FocusedPane == model.PaneFiles || m.state.FocusedPane == model.PaneCommits
 }
 
-// shouldScheduleHover decides whether to fire a HoverTickMsg after a
-// keystroke. Mirrors hoverEligible (Files / Commits + non-visual) but
-// ignores the Show flag because we are scheduling, not drawing.
-func (m Model) shouldScheduleHover() bool {
-	if m.hoverDelay <= 0 {
-		return false
-	}
-	if m.state.Visual != nil {
-		return false
-	}
-	return m.state.FocusedPane == model.PaneFiles || m.state.FocusedPane == model.PaneCommits
-}
-
-// scheduleHoverTick snapshots the current Gen and returns a tea.Cmd that
-// fires HoverTickMsg with that snapshot after hoverDelay. If the user
-// presses anything in the meantime the live Gen will have moved on and
-// the eventual message is discarded by the Update handler.
-func (m Model) scheduleHoverTick() tea.Cmd {
-	if m.hoverDelay <= 0 {
-		return nil
-	}
-	gen := m.state.Hover.Gen
-	delay := m.hoverDelay
-	return tea.Tick(delay, func(time.Time) tea.Msg {
-		return HoverTickMsg{Gen: gen}
-	})
-}
-
-// hoverLines returns the popup body. Files = single-line path. Commits =
+// hoverLines returns the popup body. Files = single-line `<path>` (with
+// `(N comments)` suffix when the cursor file carries threads); for tree
+// rows the path is resolved through `filesTreeRows()` so dir rows surface
+// the dir path rather than misindexing into PR.Files. Commits =
 // "<sha> <subject>" followed by every body line of the commit message,
 // preserving blank lines so bullet-list / paragraph-style descriptions
 // render verbatim.
@@ -67,25 +42,65 @@ func (m Model) hoverLines() []string {
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
+		if m.state.FilesTreeMode {
+			rows := m.filesTreeRows()
+			idx := m.state.FilesCursor
+			if idx < 0 || idx >= len(rows) {
+				return nil
+			}
+			r := rows[idx]
+			switch r.Kind {
+			case model.FilesRowDir:
+				return []string{r.Path + "/"}
+			case model.FilesRowFile:
+				if r.FileIndex < 0 || r.FileIndex >= len(m.state.PR.Files) {
+					return nil
+				}
+				return []string{filesHoverLine(m.state.PR.Files[r.FileIndex])}
+			}
+			return nil
+		}
 		idx := m.state.FilesCursor
 		files := m.state.PR.Files
 		if idx < 0 || idx >= len(files) {
 			return nil
 		}
-		return []string{files[idx].Path}
+		return []string{filesHoverLine(files[idx])}
 	case model.PaneCommits:
+		// Index 0 is the synthetic "All commits" row — there is no per-commit
+		// summary to surface, so the popup is suppressed.
 		commits := m.visibleCommits()
 		idx := m.state.CommitsCursor
-		if idx < 0 || idx >= len(commits) {
+		if idx <= 0 || idx > len(commits) {
 			return nil
 		}
-		c := commits[idx]
+		c := commits[idx-1]
 		subject, body := splitCommitMessage(c.Message)
-		out := []string{shortSHA(c.SHA) + " " + subject}
+		// Color the SHA so the popup mirrors the Commits row's syntax
+		// highlighting; the subject stays uncolored to match the row.
+		out := []string{fg(shortSHA(c.SHA), m.theme.CommitSHA) + " " + subject}
 		out = append(out, body...)
 		return out
 	}
 	return nil
+}
+
+// filesHoverLine formats one Files-pane popup body row. The popup mirrors
+// the row's path and appends an explicit `(N comments)` count when the
+// file carries threads — narrow row content (`(N)`) gets clobbered by
+// long paths, the popup has the room to spell it out.
+func filesHoverLine(f *model.FileEntry) string {
+	if f == nil {
+		return ""
+	}
+	if f.CommentCount <= 0 {
+		return f.Path
+	}
+	word := "comments"
+	if f.CommentCount == 1 {
+		word = "comment"
+	}
+	return fmt.Sprintf("%s (%d %s)", f.Path, f.CommentCount, word)
 }
 
 // splitCommitMessage divides a git commit message into its subject (first
@@ -143,7 +158,10 @@ func (m Model) hoverCursorRow() int {
 // show. Position priority is: above the cursor (the natural reading
 // direction once the user has pressed j to land on a row), then below
 // (if there is no room above), then "best effort" — pick the side with
-// more vertical space and shrink the popup to fit.
+// more vertical space and shrink the popup to fit. The horizontal anchor
+// is the column where the cursor row's path / subject text begins, so
+// the popup hovers directly above the text it mirrors rather than across
+// the rest of the screen.
 func (m Model) hoverLayout() (lines []string, top, left, width int, ok bool) {
 	rawLines := m.hoverLines()
 	if len(rawLines) == 0 {
@@ -153,10 +171,25 @@ func (m Model) hoverLayout() (lines []string, top, left, width int, ok bool) {
 	if cursorRow < 0 {
 		return nil, 0, 0, 0, false
 	}
-	leftW, _, _ := splitColumnWidths(m.width)
-	left = leftW
-	width = m.width - leftW
-	if width < 30 {
+	left = m.hoverAnchorCol()
+	if left < 0 || left >= m.width {
+		return nil, 0, 0, 0, false
+	}
+
+	contentW := 0
+	for _, ln := range rawLines {
+		if w := lipgloss.Width(ln); w > contentW {
+			contentW = w
+		}
+	}
+	if contentW < 1 {
+		contentW = 1
+	}
+	width = contentW + 2
+	if max := m.width - left; width > max {
+		width = max
+	}
+	if width < 4 {
 		return nil, 0, 0, 0, false
 	}
 
@@ -204,6 +237,42 @@ func (m Model) hoverLayout() (lines []string, top, left, width int, ok bool) {
 	return rawLines[:contentN], top, left, width, true
 }
 
+// hoverAnchorCol returns the absolute screen column where the popup's
+// left border (`│` / `┌` / `└`) should land, so its content column lines
+// up just past the cursor + status prefix on the cursor row.
+//
+//	Files flat: │ + cursor(2) + ` ` + status(1) + ` ` = col 6
+//	Files tree: │ + cursor(2) + indent + marker(2) | ` ` + status(1) + ` `
+//	Commits:    │ + cursor(2) + annotation(4) + sha(7) + ` ` = col 15
+//
+// Both Files and Commits live in the leftmost column so the leading `│`
+// is at screen col 0; the anchor is therefore measured from screen col 0.
+func (m Model) hoverAnchorCol() int {
+	switch m.state.FocusedPane {
+	case model.PaneFiles:
+		if m.state.FilesTreeMode {
+			rows := m.filesTreeRows()
+			idx := m.state.FilesCursor
+			if idx < 0 || idx >= len(rows) {
+				return 6
+			}
+			r := rows[idx]
+			base := 1 + 2 + 2*r.Depth
+			if r.Kind == model.FilesRowDir {
+				return base + 2
+			}
+			return base + 3
+		}
+		return 6
+	case model.PaneCommits:
+		// Border + cursor(2) + annotation(4) = 7 — anchored at the SHA
+		// column so the popup body's `<sha> <subject>` lines up exactly
+		// with the Commits row below it.
+		return 7
+	}
+	return 0
+}
+
 // renderHoverPopupBlock builds the bordered tooltip box. width is the
 // outer width including borders; inner content area is width-2.
 func (m Model) renderHoverPopupBlock(lines []string, width int) string {
@@ -248,24 +317,25 @@ func (m Model) overlayHover(body string) string {
 		if row < 0 || row >= len(bodyRows) {
 			continue
 		}
-		bodyRows[row] = spliceColumn(bodyRows[row], pr, left)
+		bodyRows[row] = spliceMid(bodyRows[row], pr, left, width)
 	}
 	return strings.Join(bodyRows, "\n")
 }
 
-// spliceColumn returns line with everything past visible column col
-// dropped, then replacement appended. The original prefix is padded with
-// spaces if it was shorter than col cells. SGR codes inside the prefix
-// are preserved by ansi.Truncate; padding is plain spaces so trailing
-// styles do not bleed into the popup background.
-func spliceColumn(line, replacement string, col int) string {
-	if col <= 0 {
-		return replacement
+// spliceMid returns line with visible columns [col, col+width) replaced
+// by replacement, preserving both the prefix [0, col) and the suffix
+// [col+width, end). The prefix is padded with plain spaces when the
+// original line was shorter than col cells so the popup never collides
+// with leftover content. SGR codes are kept intact in both prefix and
+// suffix via ansi.Truncate / ansi.TruncateLeft.
+func spliceMid(line, replacement string, col, width int) string {
+	leftPart := ""
+	if col > 0 {
+		leftPart = ansi.Truncate(line, col, "")
+		if w := lipgloss.Width(leftPart); w < col {
+			leftPart += strings.Repeat(" ", col-w)
+		}
 	}
-	leftPart := ansi.Truncate(line, col, "")
-	leftW := lipgloss.Width(leftPart)
-	if leftW < col {
-		leftPart += strings.Repeat(" ", col-leftW)
-	}
-	return leftPart + replacement
+	rightPart := ansi.TruncateLeft(line, col+width, "")
+	return leftPart + replacement + rightPart
 }

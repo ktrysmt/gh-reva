@@ -1,16 +1,16 @@
-// Category C — Pane traversal (tab / shift-tab / Enter / Backspace / numeric).
+// Category C — Pane traversal (tab / shift-tab only).
 
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { launchGhRv, waitReady, quit, activePaneLabel, paneText } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, activePaneLabel, paneText } from '../helpers/launch.mjs'
 
 // C1/C4/C5/C7 all begin and end at Files focus and do not mutate cursors or
 // SelectedFile, so they can share a single launched session in sequence.
 describe('C1+C4+C5+C7: Files-stable navigation sequences (shared launch)', () => {
   let session
   before(async () => {
-    session = await launchGhRv()
+    session = await launchReva()
     await waitReady(session)
   })
   after(async () => { await quit(session) })
@@ -23,19 +23,23 @@ describe('C1+C4+C5+C7: Files-stable navigation sequences (shared launch)', () =>
     await session.press('tab'); assert.equal(await activePaneLabel(session), 'Files')
   })
 
-  test('C4: Backspace returns Comments → Diff → Commits → Files', async () => {
+  test('C4: Backspace is a no-op for pane focus', async () => {
+    // Move to Comments via tab, then press backspace repeatedly. Focus must
+    // remain on Comments — backspace no longer steps panes backward.
     await session.press('tab'); await session.press('tab'); await session.press('tab')
     assert.equal(await activePaneLabel(session), 'Comments')
-    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Diff')
-    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Commits')
-    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Files')
-    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Files')
+    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Comments')
+    await session.press('backspace'); assert.equal(await activePaneLabel(session), 'Comments')
+    // Restore Files focus for the shared session.
+    await session.press('tab'); assert.equal(await activePaneLabel(session), 'Files')
   })
 
-  test('C5: Backspace mash from Comments lands at Files', async () => {
+  test('C5: Backspace mash from Comments leaves focus on Comments', async () => {
     await session.press('tab'); await session.press('tab'); await session.press('tab')
     for (let i = 0; i < 10; i++) await session.press('backspace')
-    assert.equal(await activePaneLabel(session), 'Files')
+    assert.equal(await activePaneLabel(session), 'Comments')
+    // Restore Files focus.
+    await session.press('tab'); assert.equal(await activePaneLabel(session), 'Files')
   })
 
   test('C7: numeric keys (1-4) do not jump panes', async () => {
@@ -46,45 +50,45 @@ describe('C1+C4+C5+C7: Files-stable navigation sequences (shared launch)', () =>
 
 test('C2: shift-tab cycles Files → Comments → Diff → Commits → Files', { skip: 'tuistory cannot reliably emit CSI Z (back-tab): the ["shift","tab"] chord is a no-op and `s.type("\\x1b[Z")` arrives as 3 separate key events (ESC, [, Z) due to typing-simulation pacing. The bubbletea handler (`case "shift+tab"` in keys.go) is verified correct by inspection and works against a real terminal.' }, async () => {
   // Manual reproduction (until tuistory grows raw-write support):
-  //   gh-rv --fixture testdata/sample-pr.json
+  //   gh-reva --fixture testdata/sample-pr.json
   //   <press Shift+Tab> — focus must cycle Files → Comments → Diff → Commits → Files.
 })
 
-test('C3: Enter drills Files → Commits → Diff → Comments', async () => {
-  const s = await launchGhRv()
+test('C3: Enter does NOT shift focus across panes (Tab is the only mover)', async () => {
+  const s = await launchReva()
   await waitReady(s)
-  await s.press('enter')   // Files: select greeting.go → focus Commits
-  assert.equal(await activePaneLabel(s), 'Commits')
-  await s.press('enter')   // Commits: focus Diff (WholePR view, no commit pick)
-  assert.equal(await activePaneLabel(s), 'Diff')
-  // Land on buffer line 5 — the new line "+// Hello returns ..." carries
-  // comment 1001 (carol). Enter on a non-anchored line is a no-op now that
-  // the "any-comment" fallback is gone.
-  for (let i = 0; i < 5; i++) await s.type('j')
+  // Files: Enter must not move focus to Commits.
+  assert.equal(await activePaneLabel(s), 'Files')
   await s.press('enter')
-  assert.equal(await activePaneLabel(s), 'Comments')
+  assert.equal(await activePaneLabel(s), 'Files', 'Enter on Files must not focus Commits')
+  // Move to Commits via Tab; Enter from Commits must also be a no-op for focus.
+  await s.press('tab')
+  assert.equal(await activePaneLabel(s), 'Commits')
+  await s.press('enter')
+  assert.equal(await activePaneLabel(s), 'Commits', 'Enter on Commits must not focus Diff')
   await quit(s)
 })
 
-test('C6: each pane preserves its selection across Backspace', async () => {
-  const s = await launchGhRv()
+test('C6: cursors persist across Tab navigation', async () => {
+  const s = await launchReva()
   await waitReady(s)
-  // Stay on greeting.go (cursor=0, default) so the Commits pane has 2 entries
-  // (aaa1111 + bbb2222). greeting_test.go would only show ccc3333 — too narrow
-  // to exercise the second-commit cursor preservation.
-  await s.press('enter')       // Files → Commits (cursor=0, aaa1111)
+  // Stay on greeting.go (cursor=0, default) so the Commits pane has 2 real
+  // entries (aaa1111 + bbb2222) plus the leading All commits virtual row.
+  // Move to Commits via Tab, advance cursor twice (All commits → aaa1111 →
+  // bbb2222), hop away through the Tab cycle, return — cursor stays on bbb2222.
+  await s.press('tab')         // → Commits (cursor on All commits row)
+  await s.type('j')           // → aaa1111 (auto-selects aaa1111)
+  await s.type('j')           // → bbb2222 (auto-selects bbb2222)
+  // Cycle: Commits → Diff → Comments → Files → Commits.
+  await s.press('tab'); await s.press('tab'); await s.press('tab'); await s.press('tab')
   assert.equal(await activePaneLabel(s), 'Commits')
-  await s.type('j')           // Commits cursor → bbb2222 (auto-selects bbb2222)
-  await s.press('backspace')   // → Files (selectFile on same path = no reset)
-  assert.equal(await activePaneLabel(s), 'Files')
-  await s.press('enter')       // → Commits again, CommitsCursor preserved
   const commits = paneText(await s.text(), 'Commits')
-  assert.match(commits, /^>[^\n]*bbb2222/m, 'Commits cursor should remain on bbb2222 after re-entering')
+  assert.match(commits, /^>[^\n]*bbb2222/m, 'Commits cursor should remain on bbb2222 after the Tab cycle')
   await quit(s)
 })
 
 test('C8: Shift+J/K navigates files from any pane (focus preserved)', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   // Files: J → greeting.go → greeting_test.go
   let screen = await s.text()
@@ -117,4 +121,3 @@ test('C8: Shift+J/K navigates files from any pane (focus preserved)', async () =
   assert.match(screen, /▶ Comments/, 'focus stays on Comments')
   await quit(s)
 })
-

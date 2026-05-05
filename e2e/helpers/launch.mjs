@@ -5,10 +5,10 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const REPO_ROOT = path.resolve(__dirname, '..', '..')
 export const FIXTURE_DEFAULT = path.join(REPO_ROOT, 'testdata', 'sample-pr.json')
-export const BIN = path.join(REPO_ROOT, 'gh-rv')
+export const BIN = path.join(REPO_ROOT, 'gh-reva')
 
 /**
- * Launch gh-rv with a fixture file. Returns a tuistory session.
+ * Launch gh-reva with a fixture file. Returns a tuistory session.
  *
  * @param {object} opts
  * @param {string[]} [opts.args]      extra CLI args
@@ -17,21 +17,28 @@ export const BIN = path.join(REPO_ROOT, 'gh-rv')
  * @param {number}   [opts.rows]
  * @param {object}   [opts.env]
  */
-export async function launchGhRv ({
+export async function launchReva ({
   args = [],
   fixture = FIXTURE_DEFAULT,
   cols = 160,
   rows = 50,
   env = {},
 } = {}) {
-  // Hover popup is interactive UX; suppress it by default so substring
-  // / equality assertions across the suite stay deterministic. Tests
-  // that exercise the popup (13_hover.test.mjs) pass their own
-  // --hover-delay and the explicit value wins.
-  const finalArgs = args.includes('--hover-delay') ? args : ['--hover-delay', '0', ...args]
+  // bubbletea v1.3.0's tea_init.go calls lipgloss.HasDarkBackground() at
+  // import time, which makes termenv send OSC 11 + DSR queries on stdout
+  // and block up to termenv.OSCTimeout (5s) for a response. The PTY has
+  // no terminal to answer, so every launch ate the full 5s — ~96 launches
+  // × 5s ≈ 8 minutes of pure idle wait across the suite.
+  // termenv.termStatusReport short-circuits when TERM starts with "screen"
+  // or "tmux", so forcing TERM=tmux-256color skips the wait. Pass it via
+  // `sh -c` because tuistory hard-codes TERM=xterm-truecolor in its child
+  // env (session.js spreads options.env BEFORE setting TERM), and `exec`
+  // re-applies our value just before the binary starts.
+  const escaped = [BIN, '--fixture', fixture, ...args]
+    .map(a => "'" + String(a).replace(/'/g, "'\\''") + "'").join(' ')
   const session = await launchTerminal({
-    command: BIN,
-    args: ['--fixture', fixture, ...finalArgs],
+    command: '/bin/sh',
+    args: ['-c', `TERM=tmux-256color COLORTERM=truecolor exec ${escaped}`],
     cols,
     rows,
     env: { ...process.env, ...env },

@@ -10,23 +10,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ktrysmt/gh-rv/internal/api"
-	"github.com/ktrysmt/gh-rv/internal/model"
-	"github.com/ktrysmt/gh-rv/internal/theme"
+	"github.com/ktrysmt/gh-reva/internal/api"
+	"github.com/ktrysmt/gh-reva/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/theme"
 )
 
 type Model struct {
-	client       api.Client
-	target       *api.Target
-	state        *model.AppState
-	theme        *theme.Theme
-	syntaxCache  *syntaxCache
-	patchLinesC  patchLinesCache
-	rowCache     *diffRowCache
-	hoverDelay   time.Duration
-	width        int
-	height       int
-	err          error
+	client      api.Client
+	target      *api.Target
+	state       *model.AppState
+	theme       *theme.Theme
+	syntaxCache *syntaxCache
+	patchLinesC patchLinesCache
+	rowCache    *diffRowCache
+	width       int
+	height      int
+	err         error
 
 	// Per-pane render budgets, set by View() before delegating to the
 	// pane renderers. Each pane uses these for width-aware wrapping
@@ -58,11 +57,6 @@ func (m *Model) SetTheme(t *theme.Theme) {
 	m.theme = t
 }
 
-// SetHoverDelay configures the wait before the cursor-row tooltip appears.
-// Zero disables the popup entirely. Used by the --hover-delay flag and by
-// e2e tests that need a tighter timer.
-func (m *Model) SetHoverDelay(d time.Duration) { m.hoverDelay = d }
-
 func NewModel(client api.Client, target *api.Target) Model {
 	t, _ := theme.Resolve("")
 	return Model{
@@ -87,21 +81,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		// Every keystroke invalidates any pending hover so it never
-		// lingers past a navigation. The Gen counter doubles as a
-		// cancellation token for in-flight HoverTickMsg.
-		m.state.Hover.Show = false
-		m.state.Hover.Gen++
-		next, cmd := m.handleKey(msg)
-		if rm, ok := next.(Model); ok && rm.shouldScheduleHover() {
-			return rm, tea.Batch(cmd, rm.scheduleHoverTick())
-		}
-		return next, cmd
-	case HoverTickMsg:
-		if msg.Gen == m.state.Hover.Gen {
-			m.state.Hover.Show = true
-		}
-		return m, nil
+		return m.handleKey(msg)
 	case LoadStageMsg:
 		m.state.LoadStage = msg.Stage
 		return m, nil
@@ -118,12 +98,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SelectedFile = msg.PR.Files[0].Path
 		}
 		m.state.LoadStage = model.LoadStageDone
-		// Arm the hover popup against the initial cursor position so a
-		// user who just opened a PR and waits a beat sees the full
-		// cursor path / commit subject without having to press a key.
-		if m.shouldScheduleHover() {
-			return m, m.scheduleHoverTick()
-		}
 		return m, nil
 	case ScrollDiffToLineMsg:
 		lines := m.patchLines()
@@ -335,9 +309,113 @@ func renderPaneBox(title, body string, width, height int, border lipgloss.Color)
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// logoArt is the splash logo shown above the spinner during PR load.
+// Sourced from logo.md at the repo root. Three glyphs encode shading:
+// █ = brightest (LogoShade1), ▓ = mid (LogoShade2), ░ = dimmest (LogoShade3).
+const logoArt = `          ▓▓▓▓▓▓▓▓▓▓
+        ▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░▓▓
+    ▓▓▓▓░░▓▓▓▓▓▓▓▓▓▓▓▓░░▓▓
+    ▓▓░░▓▓▓▓░░▓▓▓▓░░▓▓▓▓░░
+  ░░▓▓░░▓▓░░██░░▓▓▓▓░░▓▓░░░░
+░░░░▓▓▓▓░░░░████░░░░▓▓░░▓▓░░░░
+  ░░▓▓░░██░░██████░░██░░▓▓░░
+    ▓▓░░██░░██████░░██░░▓▓
+  ▓▓░░▓▓░░██████████░░▓▓░░▓▓`
+
+// renderLogo returns the splash logo with each glyph colored from the active
+// theme. The source rows in logoArt have different widths because the
+// leading-space gradient encodes the dome curve; renderLogo right-pads
+// every row to the widest row so per-row centering downstream preserves
+// the dome's vertical axis. Same-shade runs are coalesced into one SGR
+// span to bound escape overhead.
+func renderLogo(th *theme.Theme) string {
+	rows := strings.Split(logoArt, "\n")
+	maxW := 0
+	for _, r := range rows {
+		if w := lipgloss.Width(r); w > maxW {
+			maxW = w
+		}
+	}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		var b strings.Builder
+		runes := []rune(row)
+		j := 0
+		for j < len(runes) {
+			c := runes[j]
+			color := lipgloss.Color("")
+			switch c {
+			case '█':
+				color = th.LogoShade1
+			case '▓':
+				color = th.LogoShade2
+			case '░':
+				color = th.LogoShade3
+			}
+			k := j + 1
+			for k < len(runes) && runes[k] == c {
+				k++
+			}
+			run := string(runes[j:k])
+			if color == "" {
+				b.WriteString(run)
+			} else {
+				b.WriteString(fg(run, color))
+			}
+			j = k
+		}
+		if pad := maxW - lipgloss.Width(row); pad > 0 {
+			b.WriteString(strings.Repeat(" ", pad))
+		}
+		out[i] = b.String()
+	}
+	return strings.Join(out, "\n")
+}
+
 func (m Model) loadingView(frame int, stage model.LoadStage) string {
 	glyph := spinnerFrames[frame%len(spinnerFrames)]
-	return fmt.Sprintf("%s Loading PR (%s)...", fg(glyph, m.theme.LoadingSpinner), stageLabel(stage))
+	spinnerLine := fmt.Sprintf("%s Loading PR (%s)...", fg(glyph, m.theme.LoadingSpinner), stageLabel(stage))
+	if m.width <= 0 || m.height <= 0 {
+		// Pre-WindowSize fallback: keep the spinner top-left so the very first
+		// frame still emits text. Skip the logo here to avoid emitting a
+		// raw-art block before we know the terminal width.
+		return spinnerLine
+	}
+	logo := renderLogo(m.theme)
+	logoRows := strings.Split(logo, "\n")
+
+	// Block = logo + 1 blank gap + spinner line. Center each row by its own
+	// visible width so glyph rows of differing width still align around the
+	// terminal midline.
+	rows := make([]string, 0, len(logoRows)+2)
+	rows = append(rows, logoRows...)
+	rows = append(rows, "")
+	rows = append(rows, spinnerLine)
+
+	var sb strings.Builder
+	topPad := 0
+	if m.height > len(rows) {
+		topPad = (m.height - len(rows)) / 2
+	}
+	for i := 0; i < topPad; i++ {
+		sb.WriteByte('\n')
+	}
+	for i, r := range rows {
+		visible := lipgloss.Width(r)
+		leftPad := 0
+		if m.width > visible {
+			leftPad = (m.width - visible) / 2
+		}
+		if leftPad > 0 {
+			sb.WriteString(strings.Repeat(" ", leftPad))
+		}
+		sb.WriteString(r)
+		if i < len(rows)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
 }
 
 func stageLabel(s model.LoadStage) string {

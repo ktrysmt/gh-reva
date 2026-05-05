@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // errorClient is a Client that fails every call with a fixed error. Used to

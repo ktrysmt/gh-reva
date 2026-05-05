@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // newLineNumbers walks a unified diff and returns, for each rendered line,
@@ -73,51 +73,9 @@ func bufferIndexForNewLine(lines []string, newLine int) int {
 	return -1
 }
 
-// commentThreadIndexForDiffLine returns the threads-list index of the first
-// comment whose new-file line maps to the given buffer line, or -1 if none.
-func (m Model) commentThreadIndexForDiffLine(diffLine int) int {
-	mapping := m.patchNewLineNumbers()
-	if diffLine < 0 || diffLine >= len(mapping) {
-		return -1
-	}
-	target := mapping[diffLine]
-	if target == 0 {
-		return -1
-	}
-	threads := m.threadsForView()
-	for i, t := range threads {
-		if commentNewLine(t.Root) == target {
-			return i
-		}
-		for _, r := range t.Replies {
-			if commentNewLine(r) == target {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
 func commentNewLine(c *model.ReviewComment) int {
 	if c.Line > 0 {
 		return c.Line
 	}
 	return c.OriginalLine
-}
-
-// flatIndexForThread returns the position in flatComments() where the i-th
-// thread root appears, accounting for fold state.
-func (m Model) flatIndexForThread(threadIdx int) int {
-	threads := m.threadsForView()
-	idx := 0
-	for i, t := range threads {
-		if i == threadIdx {
-			return idx
-		}
-		idx++
-		if !m.state.ThreadFolded[t.Root.ID] {
-			idx += len(t.Replies)
-		}
-	}
-	return -1
 }

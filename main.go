@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ktrysmt/gh-rv/cmd"
+	"github.com/ktrysmt/gh-reva/cmd"
 )
 
 func main() {

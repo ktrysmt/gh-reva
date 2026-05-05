@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 
-import { launchGhRv, waitReady, quit, paneText, BIN, FIXTURE_DEFAULT } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, paneText, BIN, FIXTURE_DEFAULT } from '../helpers/launch.mjs'
 
 // assertCursorSurvives verifies the Files-pane cursor row (`> `) is reachable
 // from the captured screen even when the renderer wraps content in SGR
@@ -23,7 +23,7 @@ function assertCursorSurvives (screen, themeLabel) {
 }
 
 test('L1: --theme=dracula renders all four panes', async () => {
-  const s = await launchGhRv({ args: ['--theme', 'dracula'] })
+  const s = await launchReva({ args: ['--theme', 'dracula'] })
   await waitReady(s)
   const screen = await s.text()
   for (const label of ['Files', 'Commits', 'Diff', 'Comments']) {
@@ -35,7 +35,7 @@ test('L1: --theme=dracula renders all four panes', async () => {
 })
 
 test('L2: --theme=tokyonight-night renders all four panes', async () => {
-  const s = await launchGhRv({ args: ['--theme', 'tokyonight-night'] })
+  const s = await launchReva({ args: ['--theme', 'tokyonight-night'] })
   await waitReady(s)
   const screen = await s.text()
   for (const label of ['Files', 'Commits', 'Diff', 'Comments']) {
@@ -66,7 +66,7 @@ test('L4: --list-themes prints builtin + chroma names and exits 0', () => {
 })
 
 test('L5: --no-color still renders all four panes', async () => {
-  const s = await launchGhRv({ args: ['--no-color'] })
+  const s = await launchReva({ args: ['--no-color'] })
   await waitReady(s)
   const screen = await s.text()
   for (const label of ['Files', 'Commits', 'Diff', 'Comments']) {

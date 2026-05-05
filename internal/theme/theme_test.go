@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ktrysmt/gh-rv/internal/theme"
+	"github.com/ktrysmt/gh-reva/internal/theme"
 )
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -36,13 +36,13 @@ func TestResolveBuiltinDark(t *testing.T) {
 	}
 }
 
-func TestResolveEmptyDefaultsToBuiltin(t *testing.T) {
+func TestResolveEmptyDefaultsToGruvbox(t *testing.T) {
 	th, err := theme.Resolve("")
 	if err != nil {
 		t.Fatalf("Resolve(\"\"): %v", err)
 	}
-	if th == nil || th.Name != "builtin-dark" {
-		t.Fatalf("got %+v, want Name=builtin-dark", th)
+	if th == nil || th.Name != "gruvbox" {
+		t.Fatalf("got %+v, want Name=gruvbox", th)
 	}
 }
 
@@ -64,14 +64,13 @@ func TestResolveChromaDracula(t *testing.T) {
 	if th.Name != "dracula" {
 		t.Errorf("Name = %q, want dracula", th.Name)
 	}
-	// chroma's dracula style sets GenericInserted to #50fa7b and
-	// GenericDeleted to #ff5555. Match case-insensitively to keep the test
-	// resilient to minor case changes.
-	if got := strings.ToLower(string(th.DiffPlus)); got != "#50fa7b" {
-		t.Errorf("DiffPlus = %q, want #50fa7b", got)
-	}
-	if got := strings.ToLower(string(th.DiffMinus)); got != "#ff5555" {
-		t.Errorf("DiffMinus = %q, want #ff5555", got)
+	// PaneTitleActive maps to chroma.GenericStrong; for dracula that is the
+	// bold foreground (#f8f8f2). Spot-check this branch of the chroma
+	// adapter — DiffPlus/DiffMinus are now uniform across themes, so
+	// asserting on the diff-marker fg is no longer a meaningful chroma
+	// extraction signal.
+	if got := strings.ToLower(string(th.PaneTitleActive)); got != "#f8f8f2" {
+		t.Errorf("PaneTitleActive = %q, want #f8f8f2", got)
 	}
 	// every field is a valid hex.
 	checkAllHex(t, th)
@@ -128,6 +127,195 @@ func TestEveryListedThemeResolves(t *testing.T) {
 	}
 }
 
+func TestCursorRowIsThemeAccent(t *testing.T) {
+	// gruvbox's chroma style sets GenericInserted.Colour to the editor base
+	// (#282828), not a bright accent. Deriving CursorRow from GenericInserted
+	// makes the cursor invisible. We map CursorRow to GenericStrong (the
+	// same source as PaneTitleActive) so it always lands on a visible accent.
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{"gruvbox", "#ebdbb2"},
+		{"dracula", "#f8f8f2"},
+	} {
+		th, err := theme.Resolve(tc.name)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", tc.name, err)
+		}
+		if got := strings.ToLower(string(th.CursorRow)); got != tc.want {
+			t.Errorf("CursorRow[%s] = %q, want %q", tc.name, got, tc.want)
+		}
+		// Cursor and active title must share a source so the accent is
+		// internally consistent.
+		if string(th.CursorRow) != string(th.PaneTitleActive) {
+			t.Errorf("CursorRow[%s] = %q, want == PaneTitleActive %q",
+				tc.name, th.CursorRow, th.PaneTitleActive)
+		}
+	}
+}
+
+func TestDiffMarkerFgIsUniformBright(t *testing.T) {
+	// The +/- marker rune at the start of every changed row uses the theme's
+	// DiffPlus / DiffMinus foreground. To keep the marker unambiguous and
+	// distinguishable from syntax-highlighted code regardless of which
+	// chroma palette the user picks, the values are hard-coded to a
+	// saturated bright green / bright red — same intent as the uniform
+	// dark bg.
+	const (
+		wantPlus  = "#3fb950"
+		wantMinus = "#f85149"
+	)
+	for _, name := range []string{"builtin-dark", "gruvbox", "dracula", "monokai", "solarized-dark"} {
+		th, err := theme.Resolve(name)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", name, err)
+		}
+		if got := strings.ToLower(string(th.DiffPlus)); got != wantPlus {
+			t.Errorf("DiffPlus[%s] = %q, want %q", name, got, wantPlus)
+		}
+		if got := strings.ToLower(string(th.DiffMinus)); got != wantMinus {
+			t.Errorf("DiffMinus[%s] = %q, want %q", name, got, wantMinus)
+		}
+	}
+}
+
+func TestDiffBgIsUniformDark(t *testing.T) {
+	// Diff add/del row backgrounds are theme-independent: dark green / dark
+	// red so the +/- distinction is unambiguous regardless of which palette
+	// the user picks. Per-theme derivation collapses to near-black for
+	// styles that store the bright color on Background instead of Colour
+	// (gruvbox), so we hard-code uniform values.
+	const (
+		wantPlus  = "#0d3b13"
+		wantMinus = "#3b0d0d"
+	)
+	for _, name := range []string{"builtin-dark", "gruvbox", "dracula", "monokai", "solarized-dark"} {
+		th, err := theme.Resolve(name)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", name, err)
+		}
+		if got := strings.ToLower(string(th.DiffPlusBg)); got != wantPlus {
+			t.Errorf("DiffPlusBg[%s] = %q, want %q", name, got, wantPlus)
+		}
+		if got := strings.ToLower(string(th.DiffMinusBg)); got != wantMinus {
+			t.Errorf("DiffMinusBg[%s] = %q, want %q", name, got, wantMinus)
+		}
+	}
+}
+
+func TestGruvboxStatusBadgesVisible(t *testing.T) {
+	// Gruvbox's GenericInserted/Deleted Colour is the editor base (#282828);
+	// the bright accent lives on Background. The chroma adapter must detect
+	// this inversion and surface the accent so file-row [A]/[D] badges and
+	// DiffPlus/Minus foregrounds remain visible.
+	th, err := theme.Resolve("gruvbox")
+	if err != nil {
+		t.Fatalf("Resolve(gruvbox): %v", err)
+	}
+	for name, c := range map[string]string{
+		"StatusAdded":   string(th.StatusAdded),
+		"StatusDeleted": string(th.StatusDeleted),
+		"DiffPlus":      string(th.DiffPlus),
+		"DiffMinus":     string(th.DiffMinus),
+	} {
+		if strings.EqualFold(c, "#282828") {
+			t.Errorf("%s = %q (editor base), want a bright accent", name, c)
+		}
+	}
+	// Spot-check the resolved values match gruvbox's bright accents.
+	if got := strings.ToLower(string(th.StatusAdded)); got != "#b8bb26" {
+		t.Errorf("StatusAdded = %q, want #b8bb26", got)
+	}
+	if got := strings.ToLower(string(th.StatusDeleted)); got != "#fb4934" {
+		t.Errorf("StatusDeleted = %q, want #fb4934", got)
+	}
+}
+
+func TestVisualRangeBgUsesEditorBackground(t *testing.T) {
+	// VisualRangeBg paints the row-wide highlight applied to every line in
+	// the Diff visual selection. It must be derived from the chroma style's
+	// editor BACKGROUND (the actual `bg:#…` value on the Background entry),
+	// not from its foreground Colour. Otherwise the row bg lands within a
+	// few RGB ticks of CursorRow / DiffContext / pane chrome (all of which
+	// are derived from the editor TEXT color), making the cursor `>` glyph
+	// and the row content essentially invisible against the highlight.
+	//
+	// gruvbox is the canonical break case: editor bg is #282828, text is
+	// #ebdbb2, and the prior `pickBrighten(chroma.Background, 0.15)` read
+	// the .Colour field instead of .Background, producing #eee0bd — a
+	// pale-cream that erases the cursor.
+	for _, name := range []string{
+		"gruvbox", "dracula", "monokai", "nord", "tokyonight-night", "solarized-dark",
+	} {
+		th, err := theme.Resolve(name)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", name, err)
+		}
+		bgR, bgG, bgB, ok := parseHex(string(th.VisualRangeBg))
+		if !ok {
+			t.Errorf("VisualRangeBg[%s] = %q, not parseable", name, th.VisualRangeBg)
+			continue
+		}
+		curR, curG, curB, _ := parseHex(string(th.CursorRow))
+		// Channel-wise distance must be visible (>= 64 on at least one
+		// channel). Anything closer leaves the cursor practically
+		// indistinguishable from the row highlight.
+		dist := absInt(bgR-curR) + absInt(bgG-curG) + absInt(bgB-curB)
+		if dist < 64 {
+			t.Errorf("VisualRangeBg[%s] = %s is too close to CursorRow %s (manhattan distance %d, want >= 64)",
+				name, th.VisualRangeBg, th.CursorRow, dist)
+		}
+		// Sanity: a row highlight on a dark editor must itself be on the
+		// dark side of the spectrum. brightness > 200 means we picked the
+		// text color (or worse, near-white).
+		brightness := (bgR + bgG + bgB) / 3
+		if brightness > 200 {
+			t.Errorf("VisualRangeBg[%s] = %s has avg brightness %d (>200) — looks like the editor text color, not the editor bg",
+				name, th.VisualRangeBg, brightness)
+		}
+	}
+}
+
+func parseHex(s string) (r, g, b int, ok bool) {
+	if len(s) != 7 || s[0] != '#' {
+		return 0, 0, 0, false
+	}
+	for i, shift := range []int{1, 3, 5} {
+		_ = i
+		v := 0
+		for _, c := range s[shift : shift+2] {
+			v <<= 4
+			switch {
+			case c >= '0' && c <= '9':
+				v |= int(c - '0')
+			case c >= 'a' && c <= 'f':
+				v |= int(c-'a') + 10
+			case c >= 'A' && c <= 'F':
+				v |= int(c-'A') + 10
+			default:
+				return 0, 0, 0, false
+			}
+		}
+		switch shift {
+		case 1:
+			r = v
+		case 3:
+			g = v
+		case 5:
+			b = v
+		}
+	}
+	return r, g, b, true
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 func TestBuiltinDarkSyntaxStyleIsGitHubDark(t *testing.T) {
 	// builtin-dark deliberately uses GitHub-dark's syntax palette because
 	// the chrome colors are GitHub-inspired. A swap here changes the in-line
@@ -173,6 +361,9 @@ func checkAllHex(t *testing.T, th *theme.Theme) {
 		"CommentOutdated":    string(th.CommentOutdated),
 		"LoadingSpinner":     string(th.LoadingSpinner),
 		"ErrorText":          string(th.ErrorText),
+		"LogoShade1":         string(th.LogoShade1),
+		"LogoShade2":         string(th.LogoShade2),
+		"LogoShade3":         string(th.LogoShade3),
 	} {
 		if !hexColor.MatchString(c) {
 			t.Errorf("%s in theme %q = %q, want #rrggbb", name, th.Name, c)

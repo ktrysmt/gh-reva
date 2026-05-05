@@ -1,4 +1,4 @@
-# CLAUDE.md — gh-rv development conventions
+# CLAUDE.md — gh-reva development conventions
 
 `gh` extension that opens a vim-like 4-pane TUI for reviewing GitHub PRs.
 Built on `bubbletea` + `lipgloss`. Single-purpose CLI; no shared infrastructure.
@@ -11,21 +11,21 @@ session that touches this repo, and update it when an invariant changes.
 ## 1. Build / test commands
 
 ```sh
-# Repo root: /Users/dew/workspace/gh-rv
+# Repo root: /Users/dew/workspace/gh-rv (binary name remains `gh-reva`)
 
 # Go
-go build -o gh-rv .            # produce ./gh-rv binary at repo root
+go build -o gh-reva .            # produce ./gh-reva binary at repo root
 go vet ./...
 go test ./...                  # currently only internal/api ghclient_errors_test
 
 # Manual TUI
-./gh-rv --fixture testdata/sample-pr.json
-./gh-rv --fixture testdata/large-pr.json
-./gh-rv --fixture testdata/sample-pr.json --slow-load 500ms
+./gh-reva --fixture testdata/sample-pr.json
+./gh-reva --fixture testdata/large-pr.json
+./gh-reva --fixture testdata/sample-pr.json --slow-load 500ms
 
 # E2E (cd e2e first)
 pnpm install
-pnpm test                      # full suite; pretest hook auto-rebuilds gh-rv
+pnpm test                      # full suite; pretest hook auto-rebuilds gh-reva
 pnpm run test:smoke
 node --test --test-force-exit --test-timeout=20000 \
      --test-name-pattern='F2|F11' tests/05_pane_diff.test.mjs   # targeted
@@ -34,18 +34,18 @@ node --test --test-force-exit --test-timeout=20000 \
 go run testdata/gen_large_fixture.go testdata/large-pr.json
 ```
 
-`go build -o gh-rv .` (NOT `go build ./...`) is required — the latter does
+`go build -o gh-reva .` (NOT `go build ./...`) is required — the latter does
 not produce a usable binary at repo root. Targeted `node --test` skips the
 pretest hook, so rebuild manually.
 
 ### Hidden flags (E2E only)
 - `--fixture <path>` — load PR data from JSON instead of GitHub
-- `--simulate-error <kind>` — `not_found` | `rate_limit` | `network` | `unauthorized`
+- `--simulate-error <kind>` — `unauth` | `not_found` | `rate_limit` (any other kind falls back to `errors.New("simulated error: <kind>")`)
 - `--diff-height N` — pin Diff viewport height for deterministic scroll tests
 - `--slow-load <duration>` — inject per-API sleep in fixtureClient (spinner observation)
 
 ### User-facing flags
-- `--theme <name>` — color theme; default `builtin-dark`. Accepts any chroma styles registry name (74) plus `builtin-dark`. `GH_RV_THEME` env var works as fallback.
+- `--theme <name>` — color theme; default `gruvbox`. Accepts any chroma styles registry name (74) plus `builtin-dark`. `GH_REVA_THEME` env var works as fallback. `theme.Resolve("")` is wired to the `defaultThemeName` constant in `internal/theme/theme.go` — change the constant if you want a different empty-name default.
 - `--no-color` — disable color output. Also honors `NO_COLOR` / `CLICOLOR` (`termenv.EnvNoColor`).
 - `--list-themes` — print every accepted name on stdout and exit 0; no API access.
 
@@ -91,14 +91,17 @@ the assistant to commit.
 ## 3. Architecture
 
 ```
-gh-rv/
+gh-reva/
 ├── cmd/root.go                     # CLI entry, flags (incl hidden)
 ├── main.go
 ├── internal/
 │   ├── api/                        # GitHub client (go-gh) + fixture mode
-│   │   ├── client.go               # Client interface
-│   │   ├── ghclient_*.go           # real client (gh REST API)
-│   │   ├── fixture.go              # fixtureClient (loads testdata/*.json)
+│   │   ├── client.go               # Client interface + NewGHClient constructor
+│   │   ├── pr.go                   # ghClient: GetPR / ListCommits / ListFiles / ListComments
+│   │   ├── diff.go                 # ghClient: GetFileDiff (PR-wide and per-commit)
+│   │   ├── paginate.go             # ghClient: Link-header pagination helper
+│   │   ├── resolve.go              # ghClient: ResolveCurrentBranchPR + ParseTargetArg
+│   │   ├── fixture.go              # fixtureClient (loads testdata/*.json) + WithSlowLoad
 │   │   ├── error_client.go         # error injection (--simulate-error)
 │   │   └── ghclient_errors_test.go # httptest 401 / 404 / 429 / pagination
 │   ├── clipboard/
@@ -130,7 +133,7 @@ gh-rv/
 │   ├── wrap-pr.json                # single long-bodied comment (G11)
 │   └── gen_large_fixture.go        # //go:build ignore generator
 └── e2e/
-    ├── helpers/launch.mjs          # launchGhRv / paneText / countSelectedRows
+    ├── helpers/launch.mjs          # launchReva / paneText / countSelectedRows
     └── tests/                      # node:test + tuistory
 ```
 
@@ -159,7 +162,7 @@ and several break the user's mental model.
 4. **Active pane**: `▶ ` prefix on its title row. Exactly one pane has it.
 5. **Cursor row**: `> ` prefix in Files / Commits / Diff / Comments. Visual-range rows also carry `> `.
 6. **Visual mode indicator**: `-- VISUAL --` on its own row at the bottom. 1 row reserved when `state.Visual != nil`.
-7. **Loading view**: pre-PR uses `<spinner> Loading PR (<stage>)...` (no boxes). Stages: `metadata → commits → files → comments → diffs → ready`.
+7. **Loading view**: pre-PR shows the splash logo (10 rows of `▓`/`░`/`█` glyphs sourced from `logo.md`, embedded as `logoArt` in `internal/tui/app.go`) + a single blank gap + `<spinner> Loading PR (<stage>)...` (no boxes). The whole block is centered horizontally per-row (each row's lead is `(m.width - lipgloss.Width(row)) / 2`) and vertically as a unit (`topPad = (m.height - len(rows)) / 2`). Stages: `metadata → commits → files → comments → diffs → ready`. Before `tea.WindowSizeMsg` arrives (`m.width <= 0`), the spinner line falls back to top-left and the logo is suppressed so the very first frame still emits text. Logo glyph coloring uses `theme.LogoShade1` (█, brightest) / `LogoShade2` (▓, mid) / `LogoShade3` (░, dimmest); `renderLogo` coalesces same-shade runs into one SGR span to bound escape overhead.
 
 ### Diff pane
 8. Split mode layout (first row of a buffer line): `<cursor 2><marker 2><oldLn 4><sp 1><leftCell halfW><sp 1>│<sp 1><newLn 4><sp 1><rightCell halfW>`. Fixed overhead = 17. `halfW = (paneWidthDiff − 17) / 2`. Degrades to unified when `halfW < 8` (structural fallback only).
@@ -168,12 +171,13 @@ and several break the user's mental model.
 11. Split row distribution: header (`---`/`+++`/`@@`) and context lines render on both sides; `-` only on left; `+` only on right.
 12. Wrap is always on. Buffer line ↔ display row is 1:N. `DiffCursor.Line` indexes the raw patch buffer; cursor `>` and `◆` markers appear only on the first display row of each buffer line. Continuation rows in unified are indented 5 cols (cursor 2 + marker 2 + diff-marker 1) so wrapped content aligns past the `+`/`-`/space marker. In split, continuation rows leave cursor / marker / oldLn / newLn columns blank, prefix each cell with 1 blank to align past the diff marker, and re-draw `│` at the same column.
 13. `fitPaneTitle` preserves the `[mode]` suffix at narrow widths. Label shrinks with `…`.
-14. Diff Enter on an anchored row focuses Comments and selects that thread. Non-anchored Enter is a no-op (Phase 2 will open a comment-input modal). Anchor lookup is by buffer line, regardless of which display row the cursor sits on.
+14. **Diff Enter is a no-op** (reserved for the Phase 2 comment-input modal). Cross-pane navigation is Tab / Shift-Tab only — no key inside the Diff pane drills into Comments.
 
 ### Commits pane
 15. **`visibleCommits` is auto-filtered by `SelectedFile`**. No manual override; the previous `space` toggle and `CommitFilterFile` field were removed. Without `SelectedFile`, all commits show.
+15a. **Cursor index 0 is the synthetic "All commits" row** representing `RangeWholePR`. It is rendered above the real commits by `commitsView` via `allCommitsRow`, and is the only path back to the whole-PR diff from inside the Commits pane (k past the top lands on it). The cursor space is therefore `[0, len(visibleCommits)]` — `handleKeyCommits` caps `j` at `< len(commits)` (one past the previous bound) and `autoSelectCommit` switches `SelectedRange` to `RangeWholePR` when `idx == 0` and to `RangeSingleCommit{commits[idx-1].SHA}` otherwise. Label form: `All commits (N)` when no file filter is active OR when the filter resolves to M == N (every commit touches the selected file); `All commits (M of N)` only when M < N. The annotation slot mirrors the file's PR-level `Status` (`[A]/[M]/[D]/[R]`) when filtered, blank otherwise. The label is rendered bold via `fgBold(label, "")` to set the row apart from real commits without an extra divider. `selectFile` resets `CommitsCursor = 0` so any file change (including `Shift+J/K`) returns to the All commits row. Hover (`<space>`) is suppressed on this row — `hoverLines` returns nil for `idx == 0`. Visual yank skips this row — `yankString` for Commits iterates the cursor space `len(commits) + 1` and `continue`s on `i == 0`, so the clipboard never includes the `All commits` label. Label rule + behavior contract is locked in by `internal/tui/pane_commits_test.go::TestAllCommitsRowLabel`.
 16. **`j/k` in Commits auto-selects** the cursor commit → `SelectedRange = SingleCommit`. Visual mode gates this.
-17. **Enter on Commits is focus-shift only** (does NOT change `SelectedRange`). Single-commit drill is driven by `j/k` followed by Enter; Enter without prior `j/k` keeps the WholePR view set by Files Enter.
+17. **Enter on Commits is a no-op**. The cursor commit is already auto-selected by j/k, and the Diff pane reflects that selection live; pressing Tab is the only way to shift focus to Diff.
 18. **`[A]/[M]/[D]/[R]` annotation** decorates each commit row that touches `SelectedFile`.
 
 ### Files pane
@@ -181,11 +185,15 @@ and several break the user's mental model.
 20. **Tree mode** (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + status + comment count.
 21. **`autoSelectTree` skips `selectFile` on dir rows** so folding/unfolding does not clobber Diff.
 22. **`remapCursorOnTreeToggle`** preserves the conceptual cursor position when toggling flat ⇄ tree.
+22b. **Enter is bound only to dir fold/unfold** in tree mode. Enter on a file row (flat or tree) is a no-op — j/k auto-select drives Diff/Comments sync; Tab moves focus.
 
 ### Comments pane
-23. **Word-wrap**: `renderCommentRow` wraps the body at `paneWidthComments − headWidth` cols. Continuation rows are indented by `headWidth` spaces so the body column lines up.
-24. **Cursor movement (`j/k/h/l/backspace`) auto-scrolls Diff** to the buffer line of the cursored comment via `syncDiffToCursorComment`.
+23. **Diff-cursor coupling**: `commentsView` shows ONLY the threads anchored at the Diff cursor's current buffer line (the rows the Diff pane decorates with `◆`). When the cursor is not on a `◆` row — including the initial state — the column reads `(no comment at cursor)`. The visible-thread set is computed by `threadsForCursor`: it maps `DiffCursor.Line` through `patchNewLineNumbers` to a new-file line, then keeps every thread where any comment's `commentNewLine` matches that line. Multiple threads on the same line all render. `flatComments` (and therefore Comments-pane j/k navigation + visual yank) is scoped to `threadsForCursor` so the cursor index never drifts past the visible content.
+23b. **Render shape**: each entry is a header row plus indented body rows. Header = `<name>: <yyyy-mm-dd hh:mm> <hash>[ [outdated]]` where the timestamp is rendered in local TZ via `CreatedAt.Local().Format("2006-01-02 15:04")` and `<hash>` is `shortSHA(CommitID)` (falling back to `OriginalCommitID`). Body rows are indented by `2 + 2*(depth+1)` cols (root body = 4, reply body = 6, including the 2-col cursor area). Replies use `depth=1` so their header sits 2 cols deeper than the root header. Entries are separated by a single blank row; the cursor `>` glyph appears on the header row only. Body rendering (`renderCommentBody`) honors source line breaks the way GitHub PR comments do: every single `\n` in `c.Body` is a row break (one source line → one rendered row), and a run of 2+ consecutive `\n`s emits exactly one extra blank row to mark the paragraph boundary. Leading and trailing blank lines are elided. Each source line is then wrapped at `paneWidthComments − bodyLeader` cols via `wrapText` (cell-width measured); over-wide lines flow onto multiple rows but stay glued to their source line (no merge with the next). Fenced code blocks need no special handling — every `\n` inside `` ``` … ``` `` is already a row break under this rule, so the fence markers and code lines render on their own rows. Soft-break collapsing was tried earlier and rejected: it merged distinct source sentences into one paragraph, which mismatched both GitHub's `<br>`-on-soft-break web UI and the user's mental model of "the line I typed should be its own line."
+23c. **Word-boundary rule for wrap**: `wrapText` calls `splitWrapWords` (in `internal/tui/styles.go`) instead of `strings.Fields` so a whitespace splits the input into separate words ONLY when both adjacent runes are ASCII word runes (letters / digits / ASCII punctuation). If either side is non-ASCII (CJK, emoji, etc.), the whitespace is collapsed to a single space and stays inside the running word. Without this rule, a body like `slack コマンドの後すぐに…` splits into `["slack", "コマンドの後すぐに…"]`; the long CJK trailing word can't fit alongside `slack` in a narrow column, so wrap flushes `slack` alone and strands an ASCII fragment on its own row (real bug observed on PR `DatachainDoC/doc-github#345` comment id 3055362231). With the rule, the whole `slack コマンドの…` segment is one (long) word that `hardBreak` can split mid-CJK, keeping `slack` glued to the start of the wrap output. ASCII↔ASCII whitespace (`Hello world`) still acts as a word boundary, so plain English wrap behaves unchanged.
+24. **Cursor movement (`j/k`) auto-scrolls Diff** to the buffer line of the cursored comment via `syncDiffToCursorComment`. `h/l` and `backspace` are unbound — there is no thread fold/unfold (every reply is always visible) and Tab is the only focus mover.
 25. **HEAD vs single-commit visibility**: HEAD/WholePR view hides outdated comments (`c.Outdated`); single-commit view shows comments anchored to that SHA via `CommitID` or `OriginalCommitID`.
+25b. **Threads are always expanded.** `flatComments` and `commentsView` walk every reply; the previous `state.ThreadFolded` map and `flatIndexForThread` / `threadRootIDForCursor` / `clampCommentsCursor` helpers were removed with the keymap cleanup.
 
 ### Visual mode + yank shapes
 26. **`v` enters**, `y` yanks and exits, `Esc` exits without yanking.
@@ -196,34 +204,33 @@ and several break the user's mental model.
     - Diff: line content (visual range = lines joined by `\n`)
 
 ### Global keys
-28. **Tab / Shift-Tab** cycle focus through Files → Commits → Diff → Comments.
-29. **Backspace** moves focus one step backward in the drill chain.
+28. **Tab / Shift-Tab cycle focus** through Files → Commits → Diff → Comments. They are the only keys that move focus between panes.
+29. **Enter / Backspace are not focus movers.** Backspace is unbound everywhere; Enter is bound only to dir fold/unfold inside Files tree mode (Phase 2 will rebind Diff Enter to a comment-input modal). Visual mode keeps them inert as well (`visual.go` lists them in the inert key set).
 30. **Shift+J / Shift+K** advance to next/prev file from any pane via `advanceFile(forward bool)`. Focus is preserved.
 
 ### Color theming
-31. **Theme palette is the single source of truth for color**. `internal/theme.Theme` holds 24 `lipgloss.Color` fields plus `SyntaxStyle *chroma.Style`, covering pane chrome, diff lines (fg + near-black bg), status badges, comment metadata, and the spinner. `Resolve(name)` returns `builtin-dark` for "" / "builtin-dark", any chroma styles registry name, or an error.
-32. **Chroma adapter (`internal/theme/chroma.go`)** maps chroma tokens to UI roles: `GenericInserted`/`GenericDeleted` → diff add/del fg + status; `Brighten(-0.85)` of those → `DiffPlusBg`/`DiffMinusBg` (near-black hue); `GenericSubheading` → hunk header + status modified; `GenericHeading` → file header + status renamed; `GenericStrong` → active border / pane title / commit author; `GenericEmph` → comment anchor; `LineNumbers` → numbers / SHA / inactive border (with `Brighten(-0.3 / -0.4)` for separators). Missing tokens fall back to `builtinDark()`. The chroma style itself is stored in `Theme.SyntaxStyle` for token-level fg in diff content.
-33. **`m.theme` is non-nil after `NewModel`**. `Model` constructor seeds `builtin-dark` (whose `SyntaxStyle = github-dark`); `cmd/root.go` overrides via `Model.SetTheme` after `theme.Resolve`. Renderers must dereference safely.
+31. **Theme palette is the single source of truth for color**. `internal/theme.Theme` holds 27 `lipgloss.Color` fields plus `SyntaxStyle *chroma.Style`, covering pane chrome, diff lines (fg + near-black bg), status badges, comment metadata, the spinner, and the splash logo's three shade ramps (`LogoShade1/2/3`). `Resolve(name)` accepts `"builtin-dark"`, any chroma styles registry name, or `""`; the empty name routes through the `defaultThemeName` constant (currently `"gruvbox"`). Unknown names error.
+32. **Chroma adapter (`internal/theme/chroma.go`)** maps chroma tokens to UI roles: `GenericInserted`/`GenericDeleted` → diff add/del fg + status badges; `GenericSubheading` → hunk header + status modified + `LogoShade2`; `GenericHeading` → file header + status renamed; `GenericStrong` → active border / pane title / commit author + cursor `> ` + `LogoShade1`; `GenericEmph` → comment anchor; `LineNumbers` → numbers / SHA / inactive border (with `Brighten(-0.3 / -0.4)` for separators, and `Brighten(-0.2)` for `LogoShade3`). Missing tokens fall back to `builtinDark()`. The chroma style itself is stored in `Theme.SyntaxStyle` for token-level fg in diff content. Two invariants override the per-token mapping: (a) `DiffPlusBg` / `DiffMinusBg` are hard-coded to `#0d3b13` / `#3b0d0d` for every theme so the +/- distinction stays unambiguous regardless of palette; and (b) `GenericInserted`/`GenericDeleted` are read through `pickAccent`, which prefers `StyleEntry.Background` when `StyleEntry.Colour` equals the editor background (gruvbox-style inversion convention) — without this fallback `DiffPlus` / `DiffMinus` / `StatusAdded` / `StatusDeleted` would collapse to the editor base (`#282828` for gruvbox) and render invisibly. Cursor `> ` shares its source with `PaneTitleActive` (`GenericStrong`) so the focus accent is internally consistent.
+33. **`m.theme` is non-nil after `NewModel`**. `Model` constructor seeds the empty-name default (currently `gruvbox` via `defaultThemeName`); `cmd/root.go` overrides via `Model.SetTheme` after `theme.Resolve`. Renderers must dereference safely.
 34. **Renderer color application uses `internal/tui/colors.go`** helpers — `fg`, `fgBold`, `bgRow`. They no-op when the color is the zero value. Apply color AFTER `padTrunc` / cell assembly, never before, so width math stays driven by visible cells.
 35. **`padTrunc` is SGR-aware** via `lipgloss.Width` for measurement and `ansi.Truncate` for over-width truncation (preserves SGR run integrity). Right-pads with plain spaces.
 36. **Pane border / title coloring** lives in `app.go::renderPaneBox`. The active pane's border + title use `PaneBorderActive` + `PaneTitleActive` (Bold); the rest use `PaneBorderInactive` + `PaneTitle`.
 37. **Visual-mode rows get a row-wide background** via `bgRow(row, theme.VisualRangeBg)` after the row has been padded to `paneWidthDiff`. The bg ends inside the pane; pane borders stay border-colored.
-38. **Diff cells use bg-for-change + per-token syntax fg** (`internal/tui/syntax.go::styledDiffCell`). `+` rows get `DiffPlusBg` row-wide AND chroma syntax-highlighted fg per token; `-` rows likewise with `DiffMinusBg`. Context rows also run through `styledDiffCell` with `bg=""` so they get the same per-token fg on the terminal default bg — visual parity with the changed rows. File / hunk headers stay flat-fg (they are not source code). The cell's leading marker (`+`/`-`/space) is excluded from the chroma lexer (parses as a syntax error in most languages) and re-emitted under the same bg. Tokenizing context rows is bounded by `rowCache` (per-buffer-line) and `syntaxCache` (per-(lexer, bg, cell)) — first render pays once, subsequent frames hit cache. Earlier versions left context flat-fg to spare the e2e render budget; the cache pair removed that constraint.
+38. **Diff cells use bg-for-change + per-token syntax fg** (`internal/tui/syntax.go::styledDiffCell`). `+` rows get `DiffPlusBg` row-wide AND chroma syntax-highlighted fg per token; `-` rows likewise with `DiffMinusBg`. Context rows also run through `styledDiffCell` with `bg=""` so they get the same per-token fg on the terminal default bg — visual parity with the changed rows. File / hunk headers stay flat-fg (they are not source code). The cell's leading marker (`+`/`-`/space) is excluded from the chroma lexer (parses as a syntax error in most languages) and re-emitted under the same bg. The `+` / `-` rune itself is rendered bold with `theme.DiffPlus` / `theme.DiffMinus` foreground (uniform `#3fb950` / `#f85149` across themes — same intent as the uniform bg) so the marker reads at a glance against syntax-colored content; the continuation / context space marker leaves the fg untouched. The marker fgs are theme-uniform constants and therefore do NOT participate in the `syntaxCache` key. Tokenizing context rows is bounded by `rowCache` (per-buffer-line) and `syntaxCache` (per-(lexer, bg, cell)) — first render pays once, subsequent frames hit cache. Earlier versions left context flat-fg to spare the e2e render budget; the cache pair removed that constraint.
 39. **Syntax-token results are cached** via `Model.syntaxCache` (a `*sync.Map`) keyed on `lexer.Name + style.Name + bg + cell`. Without it, even just changed-line tokenization races the parser idle deadline on Tab redraws. The cache pointer is shared across Model copies (Bubbletea returns new Models each Update).
 39b. **Per-patch derived data is bundled in `Model.patchLinesC` → `*patchInfo`** keyed on `diffKey(sha, path)`. `patchInfo` carries `lines` (always), `specs` (lazy, split mode only), `newNums` (lazy, comment line mapping). Previously each render re-ran `strings.Split(patch)` + `parseDiffSpecs` + `newLineNumbers`; the bundle eliminates O(buffer) work per render. `parseDiffSpecs`, `newLineNumbers`, `bufferIndexForNewLine` accept `[]string` rather than the raw patch string so they reuse the cached split. Renderers that need raw lines call `m.patchLines()`; `m.patchSpecs()` and `m.patchNewLineNumbers()` lazily populate the secondary fields.
 39c. **Per-buffer-line render output is cached** via `Model.rowCache` (a `*diffRowCache` with `map[string][]string`). `renderSplitBufferLine` and `renderUnifiedBufferLine` only cache when the row is NOT the cursor and NOT in visual range; the cursor row recomputes every keystroke (correct), 28/30 visible rows hit cache (fast). Key includes mode (`s`/`u`), `lineIdx`, `halfW`, `commented`. Width / patch identity changes invalidate via `m.invalidateRowCacheIfStale()` (called once at the top of `diffView`). Without this cache, split-mode `j`-hold visibly stalls (each frame redoes ~30 rows of tokenize + concat + padTrunc).
 39d. **Diff-renderer perf rule**: do not call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly from any hot path. Always go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers()`. New caches that share fate with the patch should also key on `diffKey(sha, path)` and reset via the `invalidateRowCacheIfStale` pattern (key + paneWidthDiff + halfW).
 40. **`waitReady` defaults to 10s** in `e2e/helpers/launch.mjs` to absorb chroma's `styles` + `lexers` init cost (~500ms cold) plus first-frame tokenization. Tests that need a tighter signal can pass `{ timeout: ... }` explicitly.
-41. **`session.press` / `session.type` are wrapped with a 120ms settle** in `launchGhRv`. bubbletea's Update→View pipeline is async and ghostty's parser needs a beat to drain SGR-laden output before subsequent `text()` reads see the post-keystroke screen. Don't reach for `session.press` directly inside helpers — go through the wrapped session returned by `launchGhRv`.
-42. **Hover popup is gated by `model.HoverState{Gen, Show}` plus `Model.hoverDelay`**. Every `tea.KeyMsg` increments `Gen` and forces `Show=false`; eligible panes (Files / Commits, non-Visual) then schedule a `tea.Tick(hoverDelay)` returning `HoverTickMsg{Gen}`. The handler only flips `Show=true` when `msg.Gen == m.state.Hover.Gen`, so a later keystroke (which has bumped `Gen`) implicitly cancels the in-flight tick. `PRLoadedMsg` arms the initial popup so a freshly-opened PR shows the cursor's full path / subject after the delay without requiring a key. `--hover-delay 0` disables the popup; e2e settle (120ms) is longer than tight delays (~80ms) so a press-then-capture sequence sees the popup again on the new cursor row. The overlay is anchored to the right of the active pane (left = `splitColumnWidths(...).left`) and positioned vertically by `hover.go::hoverLayout`: prefer above the cursor row, fall back to below when the cursor is too close to the top, and clamp content rows to fit if neither side has room. Multi-line popups expand row count to match `c.Message`'s body lines (capped at `hoverMaxLines = 12`). Reserved height was rejected because layout would shift on every show / hide cycle; the overlay simply splices via `spliceColumn` (preserves prefix, drops suffix past `left+width`).
-43. **`launchGhRv` injects `--hover-delay 0` by default** in `e2e/helpers/launch.mjs` so substring / equality assertions across the suite stay deterministic. Tests that exercise the popup (13_hover.test.mjs) pass their own `--hover-delay` value and the explicit one wins (the helper checks `args.includes('--hover-delay')`). Don't drop this default without auditing the suite for "screen before vs after a no-op key" comparisons (e.g. D4) and "Diff title visible" substring checks (e.g. F1, J3) — both classes break when the popup is allowed to overlay the Diff / Comments title row.
+41. **`session.press` / `session.type` are wrapped with a 120ms settle** in `launchReva`. bubbletea's Update→View pipeline is async and ghostty's parser needs a beat to drain SGR-laden output before subsequent `text()` reads see the post-keystroke screen. Don't reach for `session.press` directly inside helpers — go through the wrapped session returned by `launchReva`.
+42. **Hover popup is gated by `model.HoverState{Show}` and toggled by `<space>`**. The Files / Commits key handlers flip `m.state.Hover.Show` on `<space>`; nothing else changes it. While `Show` is true, every render runs through `hoverEligible` (Files / Commits + non-visual) and re-computes the body from the current cursor, so j / k navigation updates the popup without dismissing it. Tab / focus changes do not reset `Show` — the user controls open / close explicitly. Visual mode still suppresses the overlay because the visual banner already carries focus + a row-wide bg highlight. Diff still uses `<space>` for split⇄unified (different pane, different binding). The overlay is anchored above the cursor row's content column via `hover.go::hoverAnchorCol` (Files flat = col 6 = border + cursor + space + status + space; Files tree adds `2*depth`; Commits = col 7 = border + cursor + annotation, hugging the SHA column so the popup body's `<sha> <subject>` lines up exactly with the row below) so the popup sits directly above the path / SHA text rather than across the rest of the screen. Width = `max(lipgloss.Width(line)) + 2 borders`, capped to `m.width - left`. Vertically, `hoverLayout` prefers above the cursor row, falls back to below when the cursor is too close to the top, and clamps content rows to fit if neither side has room. Body content: Files file rows = `<path>` plus `(N comments)` / `(1 comment)` suffix when `CommentCount > 0`; Files tree dir rows surface `<path>/` (resolved through `filesTreeRows()` so `FilesCursor` indexes the tree, not `PR.Files`); Commits = `<sha> <subject>` plus every body line of the commit message (capped at `hoverMaxLines = 12`); the SHA is colored with `theme.CommitSHA` so the popup mirrors the Commits row's syntax highlighting. Reserved height was rejected because layout would shift on every show / hide cycle; the overlay splices via `spliceMid` which preserves both the prefix `[0,left)` and the suffix `[left+width,end)` so the Diff / Comments pane chrome on the same row stays intact (uses `ansi.Truncate` + `ansi.TruncateLeft`).
 
 ---
 
 ## 5. E2E test conventions
 
 ### Helpers (`e2e/helpers/launch.mjs`)
-- `launchGhRv({ args, fixture, cols, rows, env })` — spawn gh-rv with default fixture.
+- `launchReva({ args, fixture, cols, rows, env })` — spawn gh-reva with default fixture.
 - `waitReady(session, { timeout = 5000 })` — wait for `Files` text after PR load.
 - `quit(session)` — send `q`, then close.
 - `activePaneLabel(session)` — return the single active pane name; throw if 0 or > 1.
@@ -232,14 +239,14 @@ and several break the user's mental model.
 
 ### Patterns
 
-**`describe + before + screen capture`** — for read-only observation tests grouped by initial state. Capture screen once, run many `test()` blocks against it. Saves ~5 s per launch.
+**`describe + before + screen capture`** — for read-only observation tests grouped by initial state. Capture screen once, run many `test()` blocks against it. Saves ~1 s per shared launch (was ~5 s before the TERM=tmux-256color fix described below).
 - Currently used: B1+B2+B6, D1+D2, E1+E1b+E2, G1+G2+G3+G4.
 
 ```js
 describe('group', () => {
   let screen
   before(async () => {
-    const s = await launchGhRv()
+    const s = await launchReva()
     await waitReady(s)
     screen = await s.text()
     await quit(s)
@@ -269,14 +276,14 @@ describe('group', () => {
 
 ## 6. Common pitfalls
 
-- **Forgot to rebuild binary**: `go build -o gh-rv .` (NOT `go build ./...`). The `pretest` hook of `pnpm test` does this automatically; targeted `node --test` does not.
+- **Forgot to rebuild binary**: `go build -o gh-reva .` (NOT `go build ./...`). The `pretest` hook of `pnpm test` does this automatically; targeted `node --test` does not.
 - **`^>` regex on raw screen**: borders place `│` at col 0 of each row. Use `paneText(screen, label)` slice instead.
 - **Long substring assertions**: column wrap will split words across rows. Shorten or normalize before checking.
 - **bubbletea startup ~1 s blank**: first `s.text()` after launch can be empty. Always use `waitReady` before reading.
 - **tuistory cannot reliably emit CSI Z**: shift-tab tests are skipped (C2). Document inline and verify by inspection.
 - **Do not re-introduce `lipgloss.Border()`**: we render boxes manually via `renderPaneBox` in `app.go` because lipgloss cannot produce the title-bar divider. Touch only `renderPaneBox` for box visual changes.
 - **Tabs in Diff content**: split mode requires `expandTabs(line, 4)` before wrap/pad. Without it, terminal-side tab expansion shifts `│`.
-- **CJK / wide chars**: padding is now ANSI-aware (uses `lipgloss.Width`) but the comment-pane wrap math still uses `utf8.RuneCountInString`. Wide-char content will mis-align in Comments. Add `go-runewidth` consistently if a real test fixture needs it.
+- **CJK / wide chars in Comments**: `wrapText` (in `internal/tui/styles.go`) measures with `runewidth.StringWidth` / `runewidth.RuneWidth` so CJK and emoji are accounted for as 2 cells. The accumulator and the hard-break helper both use cell width — a single CJK rune that does not fit the remaining budget rolls to the next chunk. Don't reintroduce `utf8.RuneCountInString` here: rune count and display width diverge for any non-ASCII fixture, and `renderPaneBox`'s per-row `padTrunc` will silently truncate any over-wide row produced upstream.
 - **Diff wrap is always on**: there is no toggle. A buffer line that exceeds the cell width is split into multiple display rows with cursor / `◆` rendered only on the first row, and continuation rows indented past the diff marker. `DiffViewport.Top` is a buffer-line index; `diffViewportHeight()` is in display rows; `displayRowsBetween` is the bridge.
 - **Color SGR doesn't reach tuistory's `text()`**: ghostty parses ANSI into cell state, so substring assertions stay color-agnostic. The A9 smoke test guards against raw `\x1b` bytes leaking into the rendered text — keep it in place when adding new renderers.
 - **Chroma case quirk**: registry key `rpgle` resolves to a Style whose `Name` is `RPGLE`. `theme.Resolve` canonicalizes on the registry key; do not rely on `Style.Name` matching the user-supplied name.
@@ -284,7 +291,8 @@ describe('group', () => {
 - **Chroma init is eager**: importing `github.com/alecthomas/chroma/v2/styles` parses all 74 embedded XMLs at package init; `chroma/v2/lexers` registers ~250 lexers. Combined cold-start cost is ~500ms. Don't import these from hot-path packages — the theme module is the gateway.
 - **Diff syntax highlighting needs the cache**: `Model.syntaxCache` is the only thing keeping diff rendering snappy. Don't accidentally drop the pointer when restructuring `Model` (e.g. via `NewModel` rewrites) — without the cache, e2e starts intermittently failing on `waitReady`.
 - **`Model` has 3 reference-typed caches that must propagate across Updates**: `syntaxCache`, `patchLinesC.cache`, `rowCache`. They are pointer / map types so Bubbletea's value-copied `Model` shares the same backing storage. If you ever switch `Model` to a struct embedding pattern or change `NewModel` to copy these, regression is silent — caches just miss on every render, lag returns.
-- **`s.press` / `s.type` are auto-settled in tests**: `launchGhRv` wraps the tuistory session so a 120ms wait fires after every keystroke. Don't add manual `await sleep(N)` after presses; if a test still races, the right fix is `await s.waitForText(<expected post-state>)` rather than upping the global settle.
+- **`s.press` / `s.type` are auto-settled in tests**: `launchReva` wraps the tuistory session so a 120ms wait fires after every keystroke. Don't add manual `await sleep(N)` after presses; if a test still races, the right fix is `await s.waitForText(<expected post-state>)` rather than upping the global settle.
+- **`launchReva` forces TERM=tmux-256color via `sh -c`**: bubbletea v1's `tea_init.go` calls `lipgloss.HasDarkBackground()` at package import, which makes termenv send OSC 11 + DSR queries to stdout and block up to `termenv.OSCTimeout` (5 s) waiting for a terminal that does not exist behind the PTY. termenv's `termStatusReport` short-circuits when `TERM` starts with `screen` / `tmux`, so we set `TERM=tmux-256color` (and keep `COLORTERM=truecolor` so the rendered profile stays TrueColor). Tuistory's `session.js` hard-codes `TERM: 'xterm-truecolor'` AFTER spreading `options.env`, so the value cannot be passed through the `env:` field — `launchReva` instead spawns `/bin/sh -c "TERM=tmux-256color COLORTERM=truecolor exec gh-reva …"` so the child process re-applies the right `TERM` immediately before exec. Removing this wrapper restores the 5 s per-launch idle wait that previously dominated the suite (606 s → 26 s after the fix).
 - **Don't import `chroma/v2/styles` or `chroma/v2/lexers` outside `internal/theme` and `internal/tui/syntax.go`**. Both packages run heavy `init()` work (~500ms cold). The theme module is the single gateway; non-theme code asks `m.theme.SyntaxStyle` / `m.currentLexer()`.
 
 ---

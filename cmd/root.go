@@ -11,9 +11,9 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 
-	"github.com/ktrysmt/gh-rv/internal/api"
-	"github.com/ktrysmt/gh-rv/internal/theme"
-	"github.com/ktrysmt/gh-rv/internal/tui"
+	"github.com/ktrysmt/gh-reva/internal/api"
+	"github.com/ktrysmt/gh-reva/internal/theme"
+	"github.com/ktrysmt/gh-reva/internal/tui"
 )
 
 var (
@@ -24,7 +24,6 @@ var (
 	themeName     string
 	noColor       bool
 	listThemes    bool
-	hoverDelay    time.Duration
 
 	// Set via -ldflags at release time (see .goreleaser.yaml).
 	version = "dev"
@@ -33,7 +32,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "gh-rv [pr-number-or-url]",
+	Use:     "gh-reva [pr-number-or-url]",
 	Short:   "PR review TUI for the gh CLI",
 	Version: versionString(),
 	Args:    cobra.MaximumNArgs(1),
@@ -50,7 +49,7 @@ var rootCmd = &cobra.Command{
 
 		name := themeName
 		if name == "" {
-			name = os.Getenv("GH_RV_THEME")
+			name = os.Getenv("GH_REVA_THEME")
 		}
 		th, err := theme.Resolve(name)
 		if err != nil {
@@ -64,7 +63,7 @@ var rootCmd = &cobra.Command{
 		if noColor || termenv.EnvNoColor() {
 			lipgloss.SetColorProfile(termenv.Ascii)
 		}
-		// gh-rv ships a single dark palette; lock background detection so
+		// gh-reva ships a single dark palette; lock background detection so
 		// adaptive components used by future deps render predictably.
 		lipgloss.SetHasDarkBackground(true)
 
@@ -93,7 +92,6 @@ var rootCmd = &cobra.Command{
 
 		m := tui.NewModel(client, ref)
 		m.SetTheme(th)
-		m.SetHoverDelay(hoverDelay)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}
@@ -114,10 +112,9 @@ func init() {
 	rootCmd.Flags().StringVar(&simulateError, "simulate-error", "", "inject a simulated error: unauth | not_found | rate_limit (testing)")
 	rootCmd.Flags().DurationVar(&slowLoad, "slow-load", 0, "inject per-call delay into the loader (testing)")
 	rootCmd.Flags().IntVar(&diffHeight, "diff-height", 0, "force the Diff viewport height (testing)")
-	rootCmd.Flags().StringVar(&themeName, "theme", "", "color theme name (default: builtin-dark; see --list-themes)")
+	rootCmd.Flags().StringVar(&themeName, "theme", "", "color theme name (default: gruvbox; see --list-themes)")
 	rootCmd.Flags().BoolVar(&noColor, "no-color", false, "disable color output (also honors NO_COLOR / CLICOLOR)")
 	rootCmd.Flags().BoolVar(&listThemes, "list-themes", false, "print every available theme name and exit")
-	rootCmd.Flags().DurationVar(&hoverDelay, "hover-delay", 500*time.Millisecond, "delay before the cursor row's full text appears in a popup; 0 disables")
 	_ = rootCmd.Flags().MarkHidden("simulate-error")
 	_ = rootCmd.Flags().MarkHidden("slow-load")
 	_ = rootCmd.Flags().MarkHidden("diff-height")
@@ -130,7 +127,7 @@ func init() {
 func Execute() error { return rootCmd.Execute() }
 
 // PrintError writes err to stderr coloured by theme.ErrorText. The default
-// (builtin-dark) palette is used because errors can fire before --theme is
+// (gruvbox) palette is used because errors can fire before --theme is
 // resolved or precisely because --theme failed; consistency over fidelity.
 // In a non-TTY (lipgloss falls back to Ascii profile), the SGR wrapping is
 // a no-op and the output remains plain text — substring matchers in the

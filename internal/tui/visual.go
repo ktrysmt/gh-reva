@@ -6,21 +6,30 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ktrysmt/gh-rv/internal/clipboard"
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/clipboard"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "ctrl+c":
+		// Ctrl-C dismisses visual mode like Esc — in vim's parlance it is
+		// the universal "cancel current state" gesture. Suppressing the
+		// global Ctrl-C → Quit handler in this branch keeps the program
+		// running, so a stray Ctrl-C during selection just drops back to
+		// normal mode rather than killing the TUI mid-review.
 		m.state.Visual = nil
 		return m, nil
 	case "y":
 		_ = clipboard.Yank(m.yankString())
 		m.state.Visual = nil
 		return m, nil
-	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q", "ctrl+c":
-		// Focus / mode-changing keys are inert in visual mode.
+	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q":
+		// State-mutating / mode keys are inert in visual mode. Tab / Shift-Tab
+		// would move focus mid-selection; Enter would still toggle Files-tree
+		// dir folds; Space would toggle hover or split⇄unified; v / q would
+		// exit visual or the program. Backspace is unbound today but kept
+		// here so a future re-bind cannot accidentally fire during selection.
 		return m, nil
 	}
 	switch m.state.FocusedPane {
@@ -58,11 +67,18 @@ func (m Model) yankString() string {
 		}
 		return strings.Join(rows, "\n")
 	case model.PaneCommits:
+		// Cursor space is `len(commits) + 1` to account for the synthetic
+		// "All commits" row at index 0; the virtual row contributes nothing
+		// to the clipboard so the loop skips it.
 		commits := m.visibleCommits()
-		lo, hi := m.linewiseSelectionRange(model.PaneCommits, m.state.CommitsCursor, len(commits))
+		total := len(commits) + 1
+		lo, hi := m.linewiseSelectionRange(model.PaneCommits, m.state.CommitsCursor, total)
 		var rows []string
-		for i := lo; i <= hi && i < len(commits); i++ {
-			c := commits[i]
+		for i := lo; i <= hi && i < total; i++ {
+			if i == 0 {
+				continue
+			}
+			c := commits[i-1]
 			rows = append(rows, fmt.Sprintf("%s %s", c.ShortSHA, c.Message))
 		}
 		return strings.Join(rows, "\n")

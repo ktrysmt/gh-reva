@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -84,20 +84,6 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.state.DiffViewMode = model.DiffViewSplit
 		}
-	case "enter":
-		// Drill into the specific thread anchored on this diff line. Lines
-		// without an anchored comment are a no-op in Phase 1; Phase 2 will
-		// open a comment-input modal there instead.
-		if threadIdx := m.commentThreadIndexForDiffLine(m.state.DiffCursor.Line); threadIdx >= 0 {
-			m.state.FocusedPane = model.PaneComments
-			if flat := m.flatIndexForThread(threadIdx); flat >= 0 {
-				m.state.CommentsCursor = flat
-			} else {
-				m.state.CommentsCursor = 0
-			}
-		}
-	case "backspace":
-		m.state.FocusedPane = model.PaneCommits
 	}
 	m.scrollDiffIntoView(totalLines)
 	return m, nil
@@ -178,9 +164,16 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 	expanded := expandTabs(line, 4)
 	cells := wrapCell(expanded, contentW)
 	kind := diffLineKind(line)
+	// colorDiffCell's isRight param was designed for split mode (where the
+	// opposite side of a +/- change is empty and must stay unstyled). In
+	// unified there is only one cell per row, so route '+' through the
+	// right-side branch (DiffPlusBg) and '-' through the left-side branch
+	// (DiffMinusBg) so both kinds receive bg + syntax. Header / hunk /
+	// context kinds ignore this flag.
+	isRight := kind == '+'
 	out := make([]string, 0, len(cells))
 	for j, cell := range cells {
-		colored := m.colorDiffCell(cell, kind, false)
+		colored := m.colorDiffCell(cell, kind, isRight)
 		var prefix string
 		if j == 0 {
 			cursor := m.cursorMarker(model.PaneDiff, idx, cursorLine)

@@ -1,8 +1,23 @@
-# gh-rv
+<div align="center">
+<pre>
+          <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓</span>
+        <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span>
+      <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
+    <span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
+    <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span>
+  <span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░░░</span>
+<span style="color:#fff176">░░░░</span><span style="color:#ffeb3b">▓▓▓▓</span><span style="color:#fff176">░░░░</span><span style="color:#ffffe0">████</span><span style="color:#fff176">░░░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░░░</span>
+  <span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span>
+    <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
+  <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████████</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
+</pre>
+</div>
+
+# gh-reva
 
 PR review TUI distributed as a `gh` CLI extension.
 
-`gh-rv` is a four-pane terminal viewer for GitHub Pull Requests with a focus
+`gh-reva` is a four-pane terminal viewer for GitHub Pull Requests with a focus
 on per-file review flow: pin a file, then walk only the commits that touch it
 without losing your place in the diff or comments.
 
@@ -18,7 +33,7 @@ Detailed design notes live in
 ## Install
 
 ```sh
-gh extension install ktrysmt/gh-rv
+gh extension install ktrysmt/gh-reva
 ```
 
 The first run downloads the precompiled binary that matches your OS and
@@ -27,9 +42,9 @@ architecture from the latest GitHub release.
 ## Usage
 
 ```sh
-gh rv <PR-number>            # explicit PR in the current repo
-gh rv <PR-URL>               # any PR by URL
-gh rv                        # auto-detect the PR for the current branch
+gh reva <PR-number>            # explicit PR in the current repo
+gh reva <PR-URL>               # any PR by URL
+gh reva                        # auto-detect the PR for the current branch
 ```
 
 The TUI requires a real terminal (TTY); piping output is not supported.
@@ -52,22 +67,21 @@ prefixed with `> `. Visual selection extends `> ` across the selected range.
 | Key | Action | Active panes |
 | --- | --- | --- |
 | `tab` / `shift-tab` | Cycle panes Files → Commits → Diff → Comments | All |
-| `Enter` | Drill in (Files → Commits → Diff → Comments) | All |
-| `Backspace` | Drill out | All |
 | `j` / `k` | Move cursor up / down | All |
-| `h` / `l` | Diff: horizontal scroll • Comments: fold/unfold | Diff, Comments |
-| `w` / `b` / `e` | Word-wise horizontal move | Diff |
+| `Shift-J` / `Shift-K` | Advance to next / previous file (focus preserved) | All |
 | `H` / `M` / `L` | Top / middle / bottom of viewport | Diff |
 | `gg` / `G` | Buffer start / end | Diff |
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up | Diff |
 | `Ctrl-f` / `Ctrl-b` | Full-page down / up | Diff |
-| `<space>` | Files: toggle commit-history filter • Diff: split⇄unified | Files, Diff |
+| `<space>` | Files / Commits: toggle hover popup • Diff: split⇄unified | Files, Commits, Diff |
 | `t` | Files: toggle flat ⇄ tree rendering | Files |
+| `Enter` | Tree mode only: fold / unfold directory under cursor | Files |
 | `v` / `y` / `Esc` | Visual mode + yank to clipboard / cancel | All |
 | `q` / `Ctrl-C` | Quit | All |
 
-In tree mode, `Enter` on a directory row folds / unfolds that subtree and the
-cursor stays on the directory.
+`tab` / `shift-tab` are the only keys that move focus between panes. `j` / `k`
+in Files and Commits auto-selects the cursor row, so the Diff and Comments
+panes follow the cursor live without an explicit drill-in step.
 
 ### Visual yank shapes
 
@@ -76,55 +90,63 @@ cursor stays on the directory.
 - Comments: `<user> @ <date>\n<body>` per row
 - Diff: raw line(s) of the patch buffer
 
-## Per-file commit filter
+## Per-file commit history
 
-`<space>` on a Files row pins it, marks the row with `*`, and rewrites the
-Commits pane to show only the commits that touched that path. The Commits
-title becomes `Commits (filter: <path>)`. Press `<space>` again on the same
-row to clear the filter. Each commit row also gains an `[A] / [M] / [D] / [R]`
-annotation describing how it changed the selected file.
+The Commits pane is auto-filtered by the cursor file in Files: only
+commits that touched it are listed, with an `[A] / [M] / [D] / [R]`
+annotation showing how each one changed the file. Move the Files cursor
+to switch the filter; there is no separate pin / unpin step.
 
 ## Comments view rules
 
-- Whole-PR view: shows only active threads (non-outdated, anchored to HEAD)
-- Single-commit view: shows comments anchored to that commit (including ones
-  that became outdated against HEAD), tagged with `[outdated]` when relevant
-- Threads render with replies indented under the root; `h` / `l` fold and
-  unfold the thread under the cursor
+- Coupled to the Diff cursor: the pane shows only threads anchored at the
+  current Diff buffer line (the rows decorated with `◆`). When the cursor is
+  not on a `◆` row, the column reads `(no comment at cursor)`.
+- Whole-PR view filters to active threads (non-outdated, anchored to HEAD);
+  single-commit view shows comments anchored to that commit (including ones
+  that became outdated against HEAD), tagged with `[outdated]` when relevant.
+- Threads always render fully expanded with replies indented under the root.
+  Moving the Comments cursor (`j` / `k`) auto-scrolls the Diff pane to the
+  buffer line of the cursored comment.
 
 ## Color theming
 
-`gh-rv` ships with `builtin-dark` as the default palette. Pass `--theme
+`gh-reva` ships with `gruvbox` as the default palette. Pass `--theme
 <name>` to swap in any chroma styles registry entry (`dracula`, `nord`,
-`tokyonight-night`, `monokai`, and 70+ others). Run `gh rv --list-themes`
-to see every accepted name.
+`tokyonight-night`, `monokai`, `builtin-dark`, and 70+ others). Run
+`gh reva --list-themes` to see every accepted name.
 
 ```sh
-gh rv --theme dracula
-gh rv --no-color           # also honors NO_COLOR / CLICOLOR
-GH_RV_THEME=nord gh rv     # env var fallback when --theme is not set
+gh reva --theme dracula
+gh reva --no-color           # also honors NO_COLOR / CLICOLOR
+GH_REVA_THEME=nord gh reva     # env var fallback when --theme is not set
 ```
 
-The chosen theme drives diff add / delete row backgrounds, per-token syntax
-foreground inside diff content, pane chrome (border / title / status badges),
-and the spinner. Light backgrounds are not yet auto-detected — picking a
-light-theme name on a dark terminal is allowed but may render with poor
-contrast.
+The chosen theme drives per-token syntax foreground inside diff content,
+pane chrome (border / title / status badges), the cursor accent, and the
+spinner. Diff add / delete signals are deliberately theme-independent: the
+row-wide bg is a uniform dark green (`#0d3b13`) / dark red (`#3b0d0d`) and
+the leading `+` / `-` marker is bold bright green (`#3fb950`) / bright red
+(`#f85149`) regardless of theme — so the change extent and direction read
+at a glance even when a palette ships unusual diff hues. Light backgrounds
+are not yet auto-detected — picking a light-theme name on a dark terminal
+is allowed but may render with poor contrast.
 
 | Flag | Purpose |
 | --- | --- |
-| `--theme <name>` | Pick a color palette (default: `builtin-dark`) |
+| `--theme <name>` | Pick a color palette (default: `gruvbox`) |
 | `--no-color` | Disable color output. Also reads `NO_COLOR` / `CLICOLOR` |
 | `--list-themes` | Print every accepted theme name on stdout and exit 0 |
-| `--hover-delay <duration>` | Delay before the cursor row's full text appears in a popup (default `500ms`; `0` disables) |
 
 ## Cursor row hover
 
-In Files and Commits, when the cursor settles on a row for `--hover-delay`
-the full path or commit subject is shown in a small bordered popup at the
-bottom of the screen. Pressing any navigation key (`j` / `k` / Tab / etc.)
-hides the popup immediately; the next popup arms automatically against the
-new cursor row. Set `--hover-delay 0` to turn the feature off.
+In Files and Commits, press `<space>` to toggle a small bordered popup
+that mirrors the cursor row's full content: path + comment count for
+Files, `<sha> <subject>` plus the commit body for Commits. The popup
+hovers above the cursor row, anchored to the path / SHA column so its
+text lines up with the row below. While the popup is open, `j` / `k`
+update its body to the new cursor row; pressing `<space>` again closes
+it.
 
 ## Development
 
@@ -145,7 +167,7 @@ pnpm run test:smoke # smoke subset
 ```
 
 The runner relies on `tuistory` plus `--test-force-exit` to handle the
-bubbletea PTY. If a hung child slows you down, `pkill -f 'gh-rv --fixture'`
+bubbletea PTY. If a hung child slows you down, `pkill -f 'gh-reva --fixture'`
 clears it.
 
 ### Test-only flags
@@ -183,7 +205,7 @@ Sanity-check locally:
 goreleaser release --snapshot --clean
 ```
 
-This produces `dist/` with per-OS/arch binaries named `gh-rv_<os>_<arch>`,
+This produces `dist/` with per-OS/arch binaries named `gh-reva_<os>_<arch>`,
 `checksums.txt`, and a snapshot manifest. The same name template is what
 `gh extension install` consumes from a real release.
 

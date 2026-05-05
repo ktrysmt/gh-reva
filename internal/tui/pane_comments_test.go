@@ -1,0 +1,539 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
+	"github.com/ktrysmt/gh-reva/internal/model"
+)
+
+// commentsModelFixture builds a Model with a synthetic patch + two anchored
+// comment threads on src/foo.go for use by the tests below. Buffer layout:
+//
+//	0: @@ -1,3 +1,5 @@
+//	1:  line1                (newLine 1)
+//	2: +addedLine2           (newLine 2) ← thread T1 (root + reply)
+//	3: +addedLine3           (newLine 3)
+//	4:  line4                (newLine 4) ← thread T2 (root only)
+//	5:  line5                (newLine 5)
+func commentsModelFixture(t *testing.T) Model {
+	t.Helper()
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	// Use time.Local so the renderer's CreatedAt.Local().Format(...) round-trip
+	// reproduces the literal hh:mm we assert on, regardless of host TZ.
+	t1Root := &model.ReviewComment{
+		ID: 1, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 2, User: "carol",
+		CreatedAt: time.Date(2024, 1, 15, 13, 0, 0, 0, time.Local),
+		Body:      "Consider extracting this into a helper function for clarity",
+	}
+	t1Reply := &model.ReviewComment{
+		ID: 2, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 2, InReplyTo: 1, User: "alice",
+		CreatedAt: time.Date(2024, 1, 15, 14, 30, 0, 0, time.Local),
+		Body:      "Good point, will refactor",
+	}
+	t2Root := &model.ReviewComment{
+		ID: 3, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 4, User: "dave",
+		CreatedAt: time.Date(2024, 1, 16, 9, 15, 0, 0, time.Local),
+		Body:      "Nit",
+	}
+	m.state.PR = &model.PR{
+		Owner: "o", Repo: "r", Number: 1,
+		Files: []*model.FileEntry{{Path: "src/foo.go", Status: model.ChangeModified}},
+		Comments: []*model.ReviewComment{t1Root, t1Reply, t2Root},
+	}
+	m.state.SelectedFile = "src/foo.go"
+	m.state.DiffCache[diffKey("", "src/foo.go")] = strings.Join([]string{
+		"@@ -1,3 +1,5 @@",
+		" line1",
+		"+addedLine2",
+		"+addedLine3",
+		" line4",
+		" line5",
+	}, "\n")
+	m.paneWidthComments = 50
+	return m
+}
+
+// TestCommentsViewEmptyWhenCursorNotOnAnchor pins the new contract: if the
+// Diff cursor row is NOT a ◆ row, the Comments column shows a placeholder
+// instead of the previous "all anchored threads" listing.
+func TestCommentsViewEmptyWhenCursorNotOnAnchor(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 0 // header row, no anchor
+
+	got := m.commentsView()
+	if !strings.Contains(got, "(no comment at cursor)") {
+		t.Errorf("expected placeholder when cursor is off-anchor, got:\n%s", got)
+	}
+	if strings.Contains(got, "carol") || strings.Contains(got, "dave") {
+		t.Errorf("comments must not leak when cursor is off-anchor:\n%s", got)
+	}
+}
+
+// TestCommentsViewShowsOnlyCursorAnchorThreads pins that exactly the threads
+// anchored at the Diff cursor's buffer line are visible — no others.
+func TestCommentsViewShowsOnlyCursorAnchorThreads(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 2 // ◆ for thread T1 (carol root + alice reply)
+
+	got := m.commentsView()
+	if !strings.Contains(got, "carol") {
+		t.Errorf("T1 root (carol) should be visible at cursor line 2:\n%s", got)
+	}
+	if !strings.Contains(got, "alice") {
+		t.Errorf("T1 reply (alice) should be visible at cursor line 2:\n%s", got)
+	}
+	if strings.Contains(got, "dave") {
+		t.Errorf("T2 (dave) is anchored at line 4 and must NOT leak to line 2:\n%s", got)
+	}
+
+	m.state.DiffCursor.Line = 4 // ◆ for thread T2
+	got = m.commentsView()
+	if !strings.Contains(got, "dave") {
+		t.Errorf("T2 (dave) should be visible at cursor line 4:\n%s", got)
+	}
+	if strings.Contains(got, "carol") || strings.Contains(got, "alice") {
+		t.Errorf("T1 must not leak to line 4:\n%s", got)
+	}
+}
+
+// TestCommentsHeaderUsesNewFormat pins the header shape:
+//
+//	<name>: <yyyy-mm-dd hh:mm> <hash>
+//
+// (no trailing " — " body separator) and that the body is on its own row.
+func TestCommentsHeaderUsesNewFormat(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 2
+
+	got := m.commentsView()
+	// Use the local-TZ formatted timestamp so the assertion is robust against
+	// the test machine's TZ. The fixture stores CreatedAt with a synthetic
+	// fixed zone, but Format(local) honors that.
+	wantHeader := "carol: 2024-01-15 13:00 abcdef0"
+	if !strings.Contains(got, wantHeader) {
+		t.Errorf("expected header %q in:\n%s", wantHeader, got)
+	}
+	// Ensure the body is NOT on the same line as the header (new format puts
+	// it on the next row).
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "carol:") && strings.Contains(line, "Consider extracting") {
+			t.Errorf("header and body must be on separate rows; combined row: %q", line)
+		}
+	}
+}
+
+// TestCommentsBodyIndentedAndWrapped pins that the body is indented past the
+// header and wraps within the Comments column width. The fixture body is
+// long enough to require a wrap at paneWidthComments=50.
+func TestCommentsBodyIndentedAndWrapped(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 2
+
+	got := m.commentsView()
+	lines := strings.Split(got, "\n")
+
+	// Find the body row(s) that follow the carol header.
+	headerIdx := -1
+	for i, l := range lines {
+		if strings.Contains(l, "carol:") {
+			headerIdx = i
+			break
+		}
+	}
+	if headerIdx < 0 {
+		t.Fatalf("carol header not found:\n%s", got)
+	}
+	if headerIdx+1 >= len(lines) {
+		t.Fatalf("expected body row after header; got truncated output:\n%s", got)
+	}
+	bodyRow := lines[headerIdx+1]
+	// Body row must start with whitespace (indentation past the header).
+	if !strings.HasPrefix(bodyRow, "  ") {
+		t.Errorf("body row must be indented past the header column; got %q", bodyRow)
+	}
+	// The body fixture is "Consider extracting this into a helper function for clarity"
+	// — at 50-col pane width with body indent, this should wrap onto >= 2 rows.
+	// We verify the head and tail land on distinct rows.
+	headOnRow := strings.Contains(bodyRow, "Consider")
+	if !headOnRow {
+		t.Errorf("first body row should start with 'Consider'; got %q", bodyRow)
+	}
+	tailFound := false
+	for i := headerIdx + 2; i < len(lines); i++ {
+		if strings.Contains(lines[i], "clarity") {
+			tailFound = true
+			// Continuation rows must keep the same indent as the body.
+			if !strings.HasPrefix(lines[i], "  ") {
+				t.Errorf("body continuation row %d must keep the body indent; got %q", i, lines[i])
+			}
+			break
+		}
+	}
+	if !tailFound {
+		t.Errorf("expected body wrap with 'clarity' on a later row; output:\n%s", got)
+	}
+}
+
+// TestCommentsBodyWrapsLongCJKString pins that a body containing a long
+// run of wide (CJK) characters with no whitespace is wrapped so each
+// row's display width fits inside paneWidthComments. wrapText measures
+// in rune count, but lipgloss.Width measures display cells (CJK = 2),
+// so rune-only wrap would overflow visually and renderPaneBox's padTrunc
+// would silently cut each row mid-content — which is what the user
+// reported as "改行なしで長い文章は折り返されない / 途中で切れる".
+func TestCommentsBodyWrapsLongCJKString(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4 // dave's anchor (T2)
+
+	// 60 wide chars × 2 cells = 120 cells, well past paneWidthComments=50.
+	m.state.PR.Comments[2].Body = strings.Repeat("あ", 60)
+
+	got := m.commentsView()
+	bodyRows := []string{}
+	for _, row := range strings.Split(got, "\n") {
+		if strings.Contains(row, "あ") {
+			bodyRows = append(bodyRows, row)
+		}
+	}
+	if len(bodyRows) < 2 {
+		t.Fatalf("expected the long CJK body to wrap onto >=2 rows; got %d:\n%s", len(bodyRows), got)
+	}
+	total := 0
+	for _, r := range bodyRows {
+		total += strings.Count(r, "あ")
+		if w := lipgloss.Width(r); w > m.paneWidthComments {
+			t.Errorf("CJK body row exceeds paneWidthComments=%d (display width %d): %q",
+				m.paneWidthComments, w, r)
+		}
+	}
+	if total != 60 {
+		t.Errorf("full CJK body must reach the pane (60 chars); got %d total:\n%s", total, got)
+	}
+}
+
+// TestCommentsBodyWrapsLongUnbrokenString pins that a body containing a
+// very long string with no whitespace (URL, identifier, etc.) is wrapped
+// onto multiple rows so the full content stays inside the column.
+func TestCommentsBodyWrapsLongUnbrokenString(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4 // dave's anchor (T2)
+
+	// Replace dave's body with a long unbroken string. 200 chars of 'x' is
+	// well past paneWidthComments=50.
+	long := strings.Repeat("x", 200)
+	m.state.PR.Comments[2].Body = long
+
+	got := m.commentsView()
+	bodyRows := []string{}
+	for _, row := range strings.Split(got, "\n") {
+		if strings.Contains(row, "x") {
+			bodyRows = append(bodyRows, row)
+		}
+	}
+	if len(bodyRows) < 2 {
+		t.Fatalf("expected the long body to wrap onto >=2 rows; got %d row(s):\n%s", len(bodyRows), got)
+	}
+	totalX := 0
+	for _, r := range bodyRows {
+		totalX += strings.Count(r, "x")
+		if w := utf8.RuneCountInString(r); w > m.paneWidthComments {
+			t.Errorf("body row exceeds paneWidthComments=%d (got width %d): %q",
+				m.paneWidthComments, w, r)
+		}
+	}
+	if totalX != 200 {
+		t.Errorf("full body must reach the pane (200 'x' chars); got %d total across rows:\n%s",
+			totalX, got)
+	}
+}
+
+// TestCommentsBodyKeepsAsciiCjkWordTogether reproduces the user-reported
+// case where `wrapText` splits on a whitespace whose right side is CJK,
+// stranding the leading ASCII fragment ("slack") on its own row when the
+// following CJK word is too long to fit alongside it.
+//
+// Real fixture (PR DatachainDoC/doc-github#345 comment id 3055362231)
+// body shape:
+//
+//	slackコマンドの後にスペースがないと、…なってしまってた\nslack コマンドの後すぐに…修正
+//	                                                       ^ half-width space
+//
+// At a 55-cell Comments column (bodyWidth=51), the second source line
+// is split into ["slack", "コマンドの後すぐに…修正"] by the default
+// `strings.Fields` rule. word2 (48 cells) plus a sep can't fit after
+// word1 on the same row, so word1 is flushed alone — that's the
+// "slack stranded on its own row" symptom.
+//
+// Desired behavior: an ASCII↔CJK whitespace stays inside the running
+// word, so the whole "slack コマンドの…修正" segment becomes one
+// (long) word that `hardBreak` can wrap mid-CJK without isolating the
+// "slack" prefix.
+func TestCommentsBodyKeepsAsciiCjkWordTogether(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4
+	m.paneWidthComments = 55 // bodyWidth = 51
+
+	m.state.PR.Comments[2].Body = "slackコマンドの後にスペースがないと、コマンド部分が削除されない仕様になってしまってた\nslack コマンドの後すぐに改行しても削除されるように修正"
+
+	got := m.commentsView()
+	rows := strings.Split(got, "\n")
+
+	for i, r := range rows {
+		// Strip the body leader (cursor area + indent) before comparing.
+		trimmed := strings.TrimLeft(r, " ")
+		trimmed = strings.TrimSpace(trimmed)
+		if trimmed == "slack" {
+			t.Errorf("row %d contains only \"slack\" — ASCII fragment was stranded by whitespace word split:\n%s", i, got)
+		}
+	}
+}
+
+// source body is rendered as a row break — matching GitHub PR comment
+// rendering, which converts soft line breaks to <br>. Each source line
+// must occupy its own row (no soft-break collapse). The previous
+// "merge into one paragraph" approach broke the user's two-sentence
+// body by gluing the second sentence to the tail of the first.
+func TestCommentsBodyHonorsSourceLineBreaks(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4 // dave's anchor (T2)
+	m.paneWidthComments = 80
+
+	m.state.PR.Comments[2].Body = "slackコマンドの後にスペースがないと、コマンド部分が削除されない仕様になってしまってた\nslackコマンドの後すぐに改行しても削除されるように修正"
+
+	got := m.commentsView()
+	rows := strings.Split(got, "\n")
+
+	// Line 1 wraps over 2 rows at this width — assert the *tail* of line 1
+	// ("しまってた") and the *head* of line 2 ("slackコマンドの後すぐに改行")
+	// land on adjacent rows, with no blank between and no merge.
+	tail := -1
+	head := -1
+	for i, r := range rows {
+		if tail < 0 && strings.Contains(r, "しまってた") {
+			tail = i
+		}
+		if head < 0 && strings.Contains(r, "改行しても削除されるように修正") {
+			head = i
+		}
+	}
+	if tail < 0 || head < 0 {
+		t.Fatalf("both source lines must reach the rendered output:\n%s", got)
+	}
+	if head != tail+1 {
+		t.Errorf("source line 2 must render on the row immediately after line 1's last row (no merge / no extra blank); got tail row %d / head row %d:\n%s",
+			tail, head, got)
+	}
+	// Tail of line 1 ("…まってた") must NOT be glued onto the start of line 2.
+	for _, r := range rows {
+		if strings.Contains(r, "まってたslack") {
+			t.Errorf("line 1 tail must not be merged with line 2 head; row: %q\nfull:\n%s", r, got)
+		}
+	}
+}
+
+// TestCommentsBodyDoesNotCollapseAsciiSoftBreak pins that an ASCII↔ASCII
+// soft break stays as two rows — i.e. "Hello\nworld" renders as two
+// rows ("Hello", "world"), not as one merged "Hello world" row. This
+// matches GitHub's `<br>`-on-soft-break rendering for PR comments.
+func TestCommentsBodyDoesNotCollapseAsciiSoftBreak(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4
+	m.paneWidthComments = 60
+
+	m.state.PR.Comments[2].Body = "Hello\nworld is fun"
+
+	got := m.commentsView()
+	if strings.Contains(got, "Hello world is fun") {
+		t.Errorf("ASCII↔ASCII soft break must NOT merge into one row; got:\n%s", got)
+	}
+	rows := strings.Split(got, "\n")
+	helloRow, worldRow := -1, -1
+	for i, r := range rows {
+		if helloRow < 0 && strings.Contains(r, "Hello") && !strings.Contains(r, "world") {
+			helloRow = i
+		}
+		if worldRow < 0 && strings.Contains(r, "world is fun") {
+			worldRow = i
+		}
+	}
+	if helloRow < 0 || worldRow < 0 || worldRow != helloRow+1 {
+		t.Errorf("expected adjacent rows: 'Hello' then 'world is fun'; got rows %d / %d:\n%s",
+			helloRow, worldRow, got)
+	}
+}
+
+// TestCommentsBodyPreservesCodeFenceLineBreaks pins that line breaks
+// inside ```...``` fences are kept verbatim — GFM treats fenced code as
+// pre-formatted, so the soft-break collapse must NOT fire there. Reported
+// regression: a fenced quote of @-mentions and a `───` divider rendered
+// as a single soft-joined row.
+func TestCommentsBodyPreservesCodeFenceLineBreaks(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4
+	m.paneWidthComments = 80
+
+	m.state.PR.Comments[2].Body = "こんな感じになるイメージ\n\nもっといいデザインあったら、コメントお願いします 🙏\n```\n@Ryota Fuwa レビューお願いします\n───\nfrom: @Takehiro Arima\n```"
+
+	got := m.commentsView()
+	rows := strings.Split(got, "\n")
+
+	findRow := func(needle string) int {
+		for i, r := range rows {
+			if strings.Contains(r, needle) {
+				return i
+			}
+		}
+		return -1
+	}
+	mention := findRow("@Ryota Fuwa")
+	divider := findRow("───")
+	footer := findRow("from: @Takehiro Arima")
+	if mention < 0 || divider < 0 || footer < 0 {
+		t.Fatalf("all fenced code lines must appear; got:\n%s", got)
+	}
+	if mention >= divider {
+		t.Errorf("mention must come before divider (rows %d, %d):\n%s", mention, divider, got)
+	}
+	if divider >= footer {
+		t.Errorf("divider must come before footer (rows %d, %d):\n%s", divider, footer, got)
+	}
+	// Mention / divider / footer must be on separate rows (no soft-break
+	// collapse inside the fence).
+	if divider-mention != 1 {
+		t.Errorf("mention and divider must be adjacent rows inside fence (got %d, %d):\n%s", mention, divider, got)
+	}
+	if footer-divider != 1 {
+		t.Errorf("divider and footer must be adjacent rows inside fence (got %d, %d):\n%s", divider, footer, got)
+	}
+	// Both fence markers must be present on their own rows.
+	fences := 0
+	for _, r := range rows {
+		trim := strings.TrimSpace(r)
+		if trim == "```" {
+			fences++
+		}
+	}
+	if fences != 2 {
+		t.Errorf("expected 2 fence-marker rows on their own; got %d. full output:\n%s", fences, got)
+	}
+}
+
+// TestCommentsSoftBreakRenderingSnapshot is a human-eye sanity check:
+// it logs the rendered Comments view for the user-reported scenarios so
+// regressions are visible in test output. Run with `-v` to inspect.
+func TestCommentsSoftBreakRenderingSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("snapshot is informational; run with -v to inspect")
+	}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			// Real fixture from PR DatachainDoC/doc-github#345 comment 3055362231.
+			// `slack` ASCII prefix + half-width space + long CJK trailing word.
+			name: "slack-space-CJK at narrow column (real fixture)",
+			body: "slackコマンドの後にスペースがないと、コマンド部分が削除されない仕様になってしまってた\nslack コマンドの後すぐに改行しても削除されるように修正",
+		},
+		{
+			name: "fenced code block with mentions",
+			body: "こんな感じになるイメージ\n\nもっといいデザインあったら、コメントお願いします 🙏\n```\n@Ryota Fuwa レビューお願いします\n───\nfrom: @Takehiro Arima\n```",
+		},
+	}
+	for _, tc := range cases {
+		// Render at two widths so both wrap regimes are visible: 55 cells
+		// reproduces the user-reported narrow column (the 'slack' stranding
+		// case), 80 cells matches the wider real-PR snapshot.
+		for _, w := range []int{55, 80} {
+			m := commentsModelFixture(t)
+			m.state.DiffCursor.Line = 4
+			m.paneWidthComments = w
+			m.state.PR.Comments[2].Body = tc.body
+			t.Logf("[%s @ paneWidthComments=%d]\n%s", tc.name, w, m.commentsView())
+		}
+	}
+}
+
+// TestCommentsBodyKeepsParagraphBreak pins that a blank line between
+// content (\n\n) survives the soft-break collapse — true paragraphs stay
+// on separate rows.
+func TestCommentsBodyKeepsParagraphBreak(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4
+	m.paneWidthComments = 60
+
+	m.state.PR.Comments[2].Body = "first paragraph\n\nsecond paragraph"
+
+	got := m.commentsView()
+	rows := strings.Split(got, "\n")
+	firstIdx, secondIdx := -1, -1
+	for i, r := range rows {
+		if strings.Contains(r, "first paragraph") {
+			firstIdx = i
+		}
+		if strings.Contains(r, "second paragraph") {
+			secondIdx = i
+		}
+	}
+	if firstIdx < 0 || secondIdx < 0 {
+		t.Fatalf("both paragraphs must appear; got:\n%s", got)
+	}
+	if secondIdx-firstIdx < 2 {
+		t.Errorf("a blank row must separate paragraphs (firstIdx=%d, secondIdx=%d); got:\n%s",
+			firstIdx, secondIdx, got)
+	}
+}
+
+// TestCommentsReplyDeeperIndent pins that the reply header is indented
+// further than the root header, matching the user's format example.
+func TestCommentsReplyDeeperIndent(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 2
+
+	got := m.commentsView()
+	lines := strings.Split(got, "\n")
+	rootIdx, replyIdx := -1, -1
+	for i, l := range lines {
+		if strings.Contains(l, "carol:") && rootIdx < 0 {
+			rootIdx = i
+		}
+		if strings.Contains(l, "alice:") && replyIdx < 0 {
+			replyIdx = i
+		}
+	}
+	if rootIdx < 0 || replyIdx < 0 {
+		t.Fatalf("expected both root (carol) and reply (alice):\n%s", got)
+	}
+	indentOf := func(l string) int {
+		// Strip the styledCursor prefix (always 2 cells) before measuring.
+		// Cursor isn't applied in Ascii color profile, so it's literally "  " or "> ".
+		stripped := strings.TrimPrefix(l, "> ")
+		stripped = strings.TrimPrefix(stripped, "  ")
+		n := 0
+		for _, r := range stripped {
+			if r != ' ' {
+				break
+			}
+			n++
+		}
+		return n
+	}
+	if indentOf(lines[replyIdx]) <= indentOf(lines[rootIdx]) {
+		t.Errorf("reply header must be indented deeper than root header; root=%q reply=%q",
+			lines[rootIdx], lines[replyIdx])
+	}
+}

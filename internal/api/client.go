@@ -5,7 +5,7 @@ import (
 
 	gha "github.com/cli/go-gh/v2/pkg/api"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 type Client interface {

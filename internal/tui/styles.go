@@ -4,7 +4,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/mattn/go-runewidth"
+
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 func paneTitle(label string, active bool, suffix string) string {
@@ -164,49 +166,90 @@ func fitPaneTitle(label, suffix string, active bool, width int) string {
 	return ""
 }
 
-// wrapText word-wraps text into lines of at most `width` columns. Words longer
-// than width are hard-broken on rune boundaries. width <= 0 disables wrapping.
+// wrapText word-wraps text into lines of at most `width` display cells.
+// Width is measured in terminal cells (CJK / emoji = 2), not rune count,
+// so the result fits inside a width-`width` column on screen. Words longer
+// than width are hard-broken on rune boundaries with cell accounting; a
+// rune wider than the remaining budget rolls to the next chunk. width <= 0
+// disables wrapping. Word boundaries (see `splitWrapWords`) only fire on
+// whitespace whose both sides are ASCII word runes; an ASCII↔CJK or
+// CJK↔CJK whitespace is preserved inside the running word so a short
+// ASCII prefix can't be stranded on its own row when the following CJK
+// segment exceeds the remaining budget.
 func wrapText(text string, width int) []string {
-	if width <= 0 || utf8.RuneCountInString(text) <= width {
+	if width <= 0 || runewidth.StringWidth(text) <= width {
 		return []string{text}
 	}
-	words := strings.Fields(text)
+	words := splitWrapWords(text)
 	if len(words) == 0 {
 		return []string{text}
 	}
 	var out []string
 	var line strings.Builder
-	lineLen := 0
+	lineW := 0
 	flush := func() {
 		if line.Len() > 0 {
 			out = append(out, line.String())
 			line.Reset()
-			lineLen = 0
+			lineW = 0
 		}
 	}
-	for _, w := range words {
-		runes := []rune(w)
-		for len(runes) > width {
-			flush()
-			out = append(out, string(runes[:width]))
-			runes = runes[width:]
+	// hardBreak splits a wide rune sequence into chunks each fitting within
+	// `width` display cells. Used when a single token exceeds the budget.
+	hardBreak := func(s string) []string {
+		var chunks []string
+		var cur strings.Builder
+		curW := 0
+		for _, r := range s {
+			rw := runewidth.RuneWidth(r)
+			if rw == 0 {
+				continue
+			}
+			if curW+rw > width {
+				chunks = append(chunks, cur.String())
+				cur.Reset()
+				curW = 0
+			}
+			cur.WriteRune(r)
+			curW += rw
 		}
-		w = string(runes)
-		wLen := len(runes)
+		if cur.Len() > 0 {
+			chunks = append(chunks, cur.String())
+		}
+		return chunks
+	}
+	for _, w := range words {
+		wW := runewidth.StringWidth(w)
+		if wW > width {
+			flush()
+			chunks := hardBreak(w)
+			// Push all but the last chunk as their own rows; let the last
+			// chunk become the head of the new accumulator so subsequent
+			// short words can still pack into it.
+			for i, c := range chunks {
+				if i < len(chunks)-1 {
+					out = append(out, c)
+				} else {
+					line.WriteString(c)
+					lineW = runewidth.StringWidth(c)
+				}
+			}
+			continue
+		}
 		sep := 0
-		if lineLen > 0 {
+		if lineW > 0 {
 			sep = 1
 		}
-		if lineLen+sep+wLen <= width {
+		if lineW+sep+wW <= width {
 			if sep == 1 {
 				line.WriteByte(' ')
 			}
 			line.WriteString(w)
-			lineLen += sep + wLen
+			lineW += sep + wW
 		} else {
 			flush()
 			line.WriteString(w)
-			lineLen = wLen
+			lineW = wW
 		}
 	}
 	flush()
@@ -214,4 +257,78 @@ func wrapText(text string, width int) []string {
 		return []string{""}
 	}
 	return out
+}
+
+// splitWrapWords splits text into wrap-aware words. A run of whitespace
+// is treated as a word boundary only when the rune immediately before
+// the run AND the rune immediately after the run are both ASCII word
+// runes (letters, digits, punctuation — anything ASCII that is not
+// whitespace itself). Otherwise the whitespace is collapsed to a single
+// space and kept inside the running word. This mirrors the typographic
+// convention that CJK text doesn't use whitespace as a word boundary,
+// so a short ASCII prefix like "slack" sitting beside a long CJK run
+// ("slack コマンドの…") doesn't get stranded by the wrap algorithm
+// when the CJK side overflows the column on its own.
+func splitWrapWords(text string) []string {
+	if text == "" {
+		return nil
+	}
+	runes := []rune(text)
+	var words []string
+	var cur strings.Builder
+	i := 0
+	for i < len(runes) {
+		r := runes[i]
+		if r != ' ' && r != '\t' {
+			cur.WriteRune(r)
+			i++
+			continue
+		}
+		// Consume the whole whitespace run.
+		j := i
+		for j < len(runes) && (runes[j] == ' ' || runes[j] == '\t') {
+			j++
+		}
+		var prev, next rune
+		if cur.Len() > 0 {
+			for k := len(runes[:i]); k > 0; k-- {
+				rp := runes[k-1]
+				if rp != ' ' && rp != '\t' {
+					prev = rp
+					break
+				}
+			}
+		}
+		if j < len(runes) {
+			next = runes[j]
+		}
+		if isASCIIWordRune(prev) && isASCIIWordRune(next) {
+			if cur.Len() > 0 {
+				words = append(words, cur.String())
+				cur.Reset()
+			}
+		} else {
+			if cur.Len() > 0 || j < len(runes) {
+				cur.WriteByte(' ')
+			}
+		}
+		i = j
+	}
+	if cur.Len() > 0 {
+		words = append(words, cur.String())
+	}
+	return words
+}
+
+// isASCIIWordRune reports whether r is a non-whitespace ASCII rune that
+// can act as a word-boundary anchor for `splitWrapWords`.
+func isASCIIWordRune(r rune) bool {
+	if r == 0 || r >= 128 {
+		return false
+	}
+	switch r {
+	case ' ', '\t':
+		return false
+	}
+	return true
 }

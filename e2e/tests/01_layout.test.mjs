@@ -3,14 +3,14 @@
 import { test, describe, before } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { launchGhRv, waitReady, quit, activePaneLabel, paneText } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, activePaneLabel, paneText } from '../helpers/launch.mjs'
 
 // B1/B2/B6 all observe the same initial-render state. Capture the screen once
 // and run all three assertion sets against it to avoid redundant launches.
 describe('B1+B2+B6: initial-render observations (default 160 cols)', () => {
   let screen
   before(async () => {
-    const s = await launchGhRv()
+    const s = await launchReva()
     await waitReady(s)
     screen = await s.text()
     await quit(s)
@@ -52,7 +52,7 @@ describe('B1+B2+B6: initial-render observations (default 160 cols)', () => {
 })
 
 test('B3: only the focused pane carries the ▶ marker', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   assert.equal(await activePaneLabel(s), 'Files')
   await s.press('tab')
@@ -65,7 +65,7 @@ test('B3: only the focused pane carries the ▶ marker', async () => {
 })
 
 test('B4: a wider terminal still renders all four panes', async () => {
-  const s = await launchGhRv({ cols: 200, rows: 60 })
+  const s = await launchReva({ cols: 200, rows: 60 })
   await waitReady(s)
   const screen = await s.text()
   for (const label of ['Files', 'Commits', 'Diff', 'Comments']) {
@@ -75,7 +75,7 @@ test('B4: a wider terminal still renders all four panes', async () => {
 })
 
 test('B8: each pane shows a horizontal separator under the title (├──┤)', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   const screen = await s.text()
   // Each of the 4 panes should carry a title-bar divider rendered as
@@ -89,7 +89,7 @@ test('B8: each pane shows a horizontal separator under the title (├──┤)'
 })
 
 test('B7: each pane is rendered with a visible border', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   const screen = await s.text()
   // lipgloss.NormalBorder() uses ─│┌┐└┘. Four panes (Files / Commits / Diff /
@@ -101,7 +101,7 @@ test('B7: each pane is rendered with a visible border', async () => {
 })
 
 test('B5: narrow terminal (<100 cols) auto-falls back to unified Diff', async () => {
-  const s = await launchGhRv({ cols: 80, rows: 30 })
+  const s = await launchReva({ cols: 80, rows: 30 })
   await waitReady(s)
   const screen = await s.text()
   // At narrow widths the Diff column is too tight to keep the full title on

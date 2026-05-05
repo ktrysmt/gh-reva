@@ -10,7 +10,7 @@ import (
 
 	gha "github.com/cli/go-gh/v2/pkg/api"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // redirectTransport rewrites every outbound request to the test server so

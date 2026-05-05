@@ -5,7 +5,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// builtinDark is gh-rv's default palette, used both as the "builtin-dark"
+// builtinDark is gh-reva's default palette, used both as the "builtin-dark"
 // theme and as the per-field fallback when a chroma style omits a token.
 // Tuned for 24-bit dark terminals; legibility on 256-color hosts is
 // acceptable (lipgloss downsamples automatically).
@@ -46,5 +46,14 @@ func builtinDark() *Theme {
 
 		LoadingSpinner: lipgloss.Color("#58a6ff"),
 		ErrorText:      lipgloss.Color("#f85149"),
+
+		// "Neon yellow" splash ramp (palette D4 from the visual gallery):
+		// light-yellow highlight, near-neon yellow outline, bright pale-
+		// yellow fill. Tuned so the SVG (full-saturation rects) and the
+		// terminal splash (▓ at ~75% fill against bg) both read as a
+		// luminous yellow glow.
+		LogoShade1: lipgloss.Color("#ffffe0"),
+		LogoShade2: lipgloss.Color("#ffeb3b"),
+		LogoShade3: lipgloss.Color("#fff176"),
 	}
 }

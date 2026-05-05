@@ -1,23 +1,23 @@
-# gh-rv e2e tests
+# gh-reva e2e tests
 
-End-to-end tests for the `gh-rv` TUI using
+End-to-end tests for the `gh-reva` TUI using
 [tuistory](https://github.com/remorses/tuistory) — Playwright for TUIs.
 
 ## Run
 
 ```sh
 # 1. install Node deps (one-time)
-cd gh-rv/e2e
+cd gh-reva/e2e
 pnpm install
 
-# 2. build the gh-rv binary and run all tests
+# 2. build the gh-reva binary and run all tests
 pnpm test
 
 # or only the smoke test
 pnpm run test:smoke
 ```
 
-`pnpm test` rebuilds the binary via the `pretest` hook (`go build -o gh-rv ..`).
+`pnpm test` rebuilds the binary via the `pretest` hook (`go build -o gh-reva ..`).
 
 The tests run with `node --test --test-concurrency=1` so panes don't
 race for the same fixture / terminal.
@@ -31,7 +31,7 @@ race for the same fixture / terminal.
   client for a JSON-fed `FixtureClient`.
 - `testdata/sample-pr.json` ships a representative PR with 3 commits, 5 files,
   4 review comments (including one outdated thread and one root+reply pair).
-- Each test launches `gh-rv --fixture testdata/sample-pr.json`, waits for the
+- Each test launches `gh-reva --fixture testdata/sample-pr.json`, waits for the
   UI to render, drives keys with `tuistory`, and asserts on `session.text()`.
 
 ## UI text conventions (test contract)

@@ -5,10 +5,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 
-import { launchGhRv, waitReady, quit, BIN, FIXTURE_DEFAULT } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, BIN, FIXTURE_DEFAULT } from '../helpers/launch.mjs'
 
 test('A1+B1: launch with fixture renders all four pane labels and PR data', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   const screen = await s.text()
   for (const label of ['Files', 'Commits', 'Diff', 'Comments']) {
@@ -21,13 +21,13 @@ test('A1+B1: launch with fixture renders all four pane labels and PR data', asyn
 })
 
 test('A2: launch accepts a PR number argument', async () => {
-  const s = await launchGhRv({ args: ['42'] })
+  const s = await launchReva({ args: ['42'] })
   await waitReady(s)
   await quit(s)
 })
 
 test('A3: launch accepts a PR URL argument', async () => {
-  const s = await launchGhRv({ args: ['https://github.com/octocat/hello-world/pull/42'] })
+  const s = await launchReva({ args: ['https://github.com/octocat/hello-world/pull/42'] })
   await waitReady(s)
   await quit(s)
 })
@@ -42,14 +42,14 @@ test('A4: invalid arg exits non-zero with a helpful message', () => {
 })
 
 test('A7: q quits cleanly', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.type('q')
   s.close()
 })
 
 test('A8: Ctrl-C quits cleanly', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press(['ctrl', 'c'])
   s.close()
@@ -60,7 +60,7 @@ test('A9: session.text() never carries raw ANSI escape bytes', async () => {
   // the virtual terminal. A raw 0x1b in the captured text means a renderer
   // emitted bytes the parser could not interpret, which would break
   // substring-based assertions across the suite.
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   const screen = await s.text()
   const ESC = String.fromCharCode(0x1b)

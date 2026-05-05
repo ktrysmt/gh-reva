@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 
-import { launchGhRv, waitReady, quit, countSelectedRows } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, countSelectedRows } from '../helpers/launch.mjs'
 
 function pbpaste () {
   const r = spawnSync('pbpaste', { encoding: 'utf8' })
@@ -17,7 +17,7 @@ function clipboardAvailable () {
 }
 
 test('H1: v shows the -- VISUAL -- indicator', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.type('v')
   const screen = await s.text()
@@ -27,7 +27,7 @@ test('H1: v shows the -- VISUAL -- indicator', async () => {
 })
 
 test('H2: visual mode in Files is linewise (j extends selection by line)', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.type('v')
   await s.type('j')
@@ -39,7 +39,7 @@ test('H2: visual mode in Files is linewise (j extends selection by line)', async
 })
 
 test('H3: visual mode in Diff renders linewise selection', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   await s.type('v')
@@ -52,7 +52,7 @@ test('H3: visual mode in Diff renders linewise selection', async () => {
 })
 
 test('H4: j/k extends linewise selection', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.type('v')
   await s.type('j'); await s.type('j')
@@ -66,7 +66,7 @@ test('H4: j/k extends linewise selection', async () => {
 })
 
 test('H5: visual mode in Diff extends with j/k', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   await s.type('v')
@@ -81,7 +81,7 @@ test('H5: visual mode in Diff extends with j/k', async () => {
 })
 
 test('H6: y copies the Files cursor row to the system clipboard', { skip: clipboardAvailable() ? false : 'pbpaste only available on macOS in this test' }, async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.type('v')
   await s.type('y')
@@ -94,7 +94,7 @@ test('H6: y copies the Files cursor row to the system clipboard', { skip: clipbo
 })
 
 test('H7: Esc cancels visual mode without copying', { skip: clipboardAvailable() ? false : 'pbpaste only available on macOS' }, async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   // Pre-set clipboard to a sentinel so we can detect a stray copy.
   spawnSync('pbcopy', { input: 'SENTINEL', encoding: 'utf8' })
@@ -107,10 +107,29 @@ test('H7: Esc cancels visual mode without copying', { skip: clipboardAvailable()
   await quit(s)
 })
 
-test('H8: yanked Commits row is shaped as `<sha> <subject>`', { skip: clipboardAvailable() ? false : 'pbpaste only available on macOS' }, async () => {
-  const s = await launchGhRv()
+test('H7b: Ctrl-C cancels visual mode without copying or quitting', { skip: clipboardAvailable() ? false : 'pbpaste only available on macOS' }, async () => {
+  const s = await launchReva()
   await waitReady(s)
-  await s.press('tab')          // focus Commits
+  spawnSync('pbcopy', { input: 'SENTINEL', encoding: 'utf8' })
+  await s.type('v')
+  let screen = await s.text()
+  assert.match(screen, /-- VISUAL --/, 'visual entered before Ctrl-C')
+  await s.press(['ctrl', 'c'])
+  screen = await s.text()
+  // Ctrl-C in visual mode must dismiss the indicator, leave the program
+  // running (Files pane still visible), and not yank to the clipboard.
+  assert.doesNotMatch(screen, /-- VISUAL --/, 'visual mode should exit after Ctrl-C')
+  assert.match(screen, /Files/, 'program should not have quit on Ctrl-C')
+  const clip = pbpaste()
+  assert.equal(clip, 'SENTINEL', 'Ctrl-C must not have written to the clipboard')
+  await quit(s)
+})
+
+test('H8: yanked Commits row is shaped as `<sha> <subject>`', { skip: clipboardAvailable() ? false : 'pbpaste only available on macOS' }, async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab')          // focus Commits, cursor on All commits virtual row
+  await s.type('j')             // step onto aaa1111 (yank shape is per-commit)
   await s.type('v')
   await s.type('y')
   const clip = pbpaste()

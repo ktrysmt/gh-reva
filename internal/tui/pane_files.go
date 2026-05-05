@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 func (m Model) handleKeyFiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -31,15 +31,12 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.FilesCursor--
 			m.autoSelectFlat()
 		}
+	case " ":
+		m.state.Hover.Show = !m.state.Hover.Show
 	case "t":
 		prev := m.state.FilesTreeMode
 		m.state.FilesTreeMode = !prev
 		m.remapCursorOnTreeToggle(prev)
-	case "enter":
-		if m.state.FilesCursor < len(m.state.PR.Files) {
-			m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
-			m.state.FocusedPane = model.PaneCommits
-		}
 	}
 	return m, nil
 }
@@ -57,26 +54,28 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.FilesCursor--
 			m.autoSelectTree(rows)
 		}
+	case " ":
+		m.state.Hover.Show = !m.state.Hover.Show
 	case "t":
 		prev := m.state.FilesTreeMode
 		m.state.FilesTreeMode = !prev
 		m.remapCursorOnTreeToggle(prev)
 	case "enter":
+		// Enter is bound only to dir fold/unfold in tree mode. File rows are a
+		// no-op — j/k auto-select drives Diff/Comments sync, Tab moves focus.
 		if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(rows) {
 			return m, nil
 		}
 		r := rows[m.state.FilesCursor]
-		if r.Kind == model.FilesRowDir {
-			if m.state.FoldedDirs[r.Path] {
-				delete(m.state.FoldedDirs, r.Path)
-			} else {
-				m.state.FoldedDirs[r.Path] = true
-			}
-			// Cursor stays on the dir row.
+		if r.Kind != model.FilesRowDir {
 			return m, nil
 		}
-		m.selectFile(r.Path)
-		m.state.FocusedPane = model.PaneCommits
+		if m.state.FoldedDirs[r.Path] {
+			delete(m.state.FoldedDirs, r.Path)
+		} else {
+			m.state.FoldedDirs[r.Path] = true
+		}
+		// Cursor stays on the dir row.
 	}
 	return m, nil
 }

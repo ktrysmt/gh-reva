@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 var errNotImplemented = errors.New("not implemented")

@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // TestContextCellRoutesThroughStyledDiffCell pins the contract that context
@@ -28,5 +31,82 @@ func TestContextCellRoutesThroughStyledDiffCell(t *testing.T) {
 	want := m.styledDiffCell(cell, "")
 	if got != want {
 		t.Errorf("context cell should be syntax-highlighted:\n got  = %q\n want = %q", got, want)
+	}
+}
+
+// TestDiffMarkerHasAccentFgAndBold pins the contract that the leading '+' /
+// '-' rune of a diff cell is rendered with the theme's DiffPlus / DiffMinus
+// foreground AND bold. Without this, the marker inherits the terminal
+// default fg (off-white) and gets visually swallowed by syntax-highlighted
+// code on the row, making +/- hard to spot at a glance.
+func TestDiffMarkerHasAccentFgAndBold(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	m.state.SelectedFile = "test.go"
+
+	// DiffPlus = #3fb950 -> SGR foreground "38;2;63;185;80"; bold = "1".
+	plusOut := m.styledDiffCell("+x", m.theme.DiffPlusBg)
+	if !strings.Contains(plusOut, "38;2;63;185;80") {
+		t.Errorf("'+' marker missing DiffPlus fg SGR (38;2;63;185;80): %q", plusOut)
+	}
+	if !strings.Contains(plusOut, "\x1b[1") && !strings.Contains(plusOut, ";1m") {
+		t.Errorf("'+' marker missing bold SGR: %q", plusOut)
+	}
+
+	// DiffMinus = #f85149 -> SGR foreground "38;2;248;81;73".
+	minusOut := m.styledDiffCell("-x", m.theme.DiffMinusBg)
+	if !strings.Contains(minusOut, "38;2;248;81;73") {
+		t.Errorf("'-' marker missing DiffMinus fg SGR (38;2;248;81;73): %q", minusOut)
+	}
+	if !strings.Contains(minusOut, "\x1b[1") && !strings.Contains(minusOut, ";1m") {
+		t.Errorf("'-' marker missing bold SGR: %q", minusOut)
+	}
+
+	// Context cells (leading space) must NOT pick up a bold marker — the
+	// space inherits the surrounding bg/fg with no extra weight.
+	ctxOut := m.styledDiffCell(" x", "")
+	if strings.Contains(ctxOut, "38;2;63;185;80") || strings.Contains(ctxOut, "38;2;248;81;73") {
+		t.Errorf("context cell unexpectedly picked up +/- marker color: %q", ctxOut)
+	}
+}
+
+// TestUnifiedAdditionGetsBgAndSyntax pins the contract that in unified mode,
+// '+' rows pass through styledDiffCell so they receive both a row-wide bg
+// (DiffPlusBg) and per-token syntax highlighting — symmetric with how '-'
+// rows already get DiffMinusBg + syntax. Previously the unified renderer
+// always called colorDiffCell with isRight=false, which routed '+' lines to
+// `return cell` (plain), so additions appeared with no bg and no syntax
+// while deletions were correctly tinted red.
+func TestUnifiedAdditionGetsBgAndSyntax(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	m.state.SelectedFile = "test.go"
+	m.state.DiffViewMode = model.DiffViewUnified
+	m.paneWidthDiff = 80
+
+	// Use distinct idx values; rowCache is keyed on (mode, idx, halfW, commented)
+	// and these two calls would otherwise alias on idx=0.
+	plusRows := m.renderUnifiedBufferLine("+func main() { return }", 0, -1, false)
+	if len(plusRows) == 0 {
+		t.Fatalf("expected at least one row for '+' line")
+	}
+	minusRows := m.renderUnifiedBufferLine("-func main() { return }", 1, -1, false)
+	if len(minusRows) == 0 {
+		t.Fatalf("expected at least one row for '-' line")
+	}
+
+	// '-' is the known-good baseline: it must carry SGR sequences (syntax + bg).
+	if !strings.Contains(minusRows[0], "\x1b[") {
+		t.Fatalf("baseline '-' row missing SGR; styling pipeline is broken: %q", minusRows[0])
+	}
+	// The '+' row must also carry SGR — same styling depth as '-'.
+	if !strings.Contains(plusRows[0], "\x1b[") {
+		t.Errorf("unified '+' row missing SGR (no bg / no syntax): %q", plusRows[0])
 	}
 }

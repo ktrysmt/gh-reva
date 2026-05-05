@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 type fixtureData struct {

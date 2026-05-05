@@ -1,4 +1,4 @@
-// Package theme defines the gh-rv color palette and how it is resolved from
+// Package theme defines the gh-reva color palette and how it is resolved from
 // either the bundled builtin theme or a chroma styles registry entry. The
 // package returns lipgloss.Color values; rendering is the caller's job.
 package theme
@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme is the per-render-role color palette for gh-rv. All fields are
+// Theme is the per-render-role color palette for gh-reva. All fields are
 // lipgloss.Color (TrueColor hex strings or ANSI indices). Dark backgrounds
 // are assumed.
 type Theme struct {
@@ -53,24 +53,39 @@ type Theme struct {
 
 	LoadingSpinner lipgloss.Color
 	ErrorText      lipgloss.Color
+
+	// Logo shades drive the per-glyph coloring of the splash logo on the
+	// loading screen. Shade1 = brightest (█), Shade2 = mid (▓),
+	// Shade3 = dimmest (░). Themes that omit them fall back to builtin.
+	LogoShade1 lipgloss.Color
+	LogoShade2 lipgloss.Color
+	LogoShade3 lipgloss.Color
 }
 
-const builtinDarkName = "builtin-dark"
+const (
+	builtinDarkName  = "builtin-dark"
+	defaultThemeName = "gruvbox"
+)
 
 // Resolve returns the theme registered under name. An empty name resolves
-// to "builtin-dark". Unknown names produce an error so the CLI can fail fast.
+// to defaultThemeName ("gruvbox"). Unknown names produce an error so the CLI
+// can fail fast.
 //
 // Lookup order:
-//  1. "" or "builtin-dark" → builtinDark()
-//  2. chroma styles registry (74 themes) → fromChroma
-//  3. otherwise → error
+//  1. "" → Resolve(defaultThemeName)
+//  2. "builtin-dark" → builtinDark()
+//  3. chroma styles registry (74 themes) → fromChroma
+//  4. otherwise → error
 //
 // Membership is checked against styles.Names() rather than styles.Get's
 // fallback signal because chroma stores some styles under a registry key
 // that differs in case from Style.Name (e.g. registry "rpgle" → Style.Name
 // "RPGLE"). We canonicalize on the registry key so Theme.Name round-trips.
 func Resolve(name string) (*Theme, error) {
-	if name == "" || name == builtinDarkName {
+	if name == "" {
+		name = defaultThemeName
+	}
+	if name == builtinDarkName {
 		return builtinDark(), nil
 	}
 	if !chromaHas(name) {

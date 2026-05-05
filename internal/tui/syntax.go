@@ -39,6 +39,10 @@ func (m Model) currentLexer() chroma.Lexer {
 // space, including the wrap-continuation alignment space) and is excluded
 // from lexer input — it would parse as a syntax error in most languages.
 //
+// The leading `+` / `-` rune itself is rendered in bold with the theme's
+// DiffPlus / DiffMinus foreground (uniform bright green / red across
+// themes) so the marker reads at a glance against syntax-highlighted code.
+//
 // When bg is the zero value the marker keeps the terminal default
 // background and the rest is syntax-highlighted on the default bg
 // (used by context lines).
@@ -54,16 +58,18 @@ func (m Model) styledDiffCell(cell string, bg lipgloss.Color) string {
 	}
 	// Embed the lexer name and bg in the key so cache entries do not bleed
 	// across files of different languages or +/- vs context contexts.
+	// markerPlus / markerMinus are theme-uniform constants so they do not
+	// participate in the cache key.
 	key := lexer.Config().Name + "\x00" + styleName + "\x00" + string(bg) + "\x00" + cell
 	if v, ok := m.syntaxCache.m.Load(key); ok {
 		return v.(string)
 	}
-	out := tokenizeAndStyle(cell, bg, lexer, style)
+	out := tokenizeAndStyle(cell, bg, m.theme.DiffPlus, m.theme.DiffMinus, lexer, style)
 	m.syntaxCache.m.Store(key, out)
 	return out
 }
 
-func tokenizeAndStyle(cell string, bg lipgloss.Color, lexer chroma.Lexer, style *chroma.Style) string {
+func tokenizeAndStyle(cell string, bg, markerPlus, markerMinus lipgloss.Color, lexer chroma.Lexer, style *chroma.Style) string {
 	runes := []rune(cell)
 	marker := string(runes[0])
 	content := string(runes[1:])
@@ -73,8 +79,16 @@ func tokenizeAndStyle(cell string, bg lipgloss.Color, lexer chroma.Lexer, style 
 		bgStyle = bgStyle.Background(bg)
 	}
 
+	markerStyle := bgStyle
+	switch marker {
+	case "+":
+		markerStyle = markerStyle.Foreground(markerPlus).Bold(true)
+	case "-":
+		markerStyle = markerStyle.Foreground(markerMinus).Bold(true)
+	}
+
 	var sb strings.Builder
-	sb.WriteString(bgStyle.Render(marker))
+	sb.WriteString(markerStyle.Render(marker))
 
 	if style == nil {
 		sb.WriteString(bgStyle.Render(content))

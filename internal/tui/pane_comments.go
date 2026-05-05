@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 type commentThread struct {
@@ -27,17 +27,6 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.CommentsCursor > 0 {
 			m.state.CommentsCursor--
 		}
-	case "h", "left":
-		if id := m.threadRootIDForCursor(); id != 0 {
-			m.state.ThreadFolded[id] = true
-			m.clampCommentsCursor()
-		}
-	case "l", "right":
-		if id := m.threadRootIDForCursor(); id != 0 {
-			delete(m.state.ThreadFolded, id)
-		}
-	case "backspace":
-		m.state.FocusedPane = model.PaneDiff
 	}
 	m.syncDiffToCursorComment()
 	return m, nil
@@ -68,29 +57,40 @@ func (m Model) commentsView() string {
 	if m.state.PR == nil || m.state.SelectedFile == "" {
 		return title
 	}
-	threads := m.threadsForView()
+	threads := m.threadsForCursor()
 	if len(threads) == 0 {
-		return title + "\n(no comments)"
+		return title + "\n(no comment at cursor)"
 	}
 	var rows []string
 	idx := 0
-	for _, t := range threads {
-		rows = append(rows, m.renderCommentRow(t.Root, 0, idx))
+	for ti, t := range threads {
+		if ti > 0 {
+			rows = append(rows, "")
+		}
+		rows = append(rows, m.renderCommentRow(t.Root, 0, idx)...)
 		idx++
-		if !m.state.ThreadFolded[t.Root.ID] {
-			for _, r := range t.Replies {
-				rows = append(rows, m.renderCommentRow(r, 1, idx))
-				idx++
-			}
+		for _, r := range t.Replies {
+			rows = append(rows, "")
+			rows = append(rows, m.renderCommentRow(r, 1, idx)...)
+			idx++
 		}
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }
 
-func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
+// renderCommentRow returns one entry rendered as multiple display rows:
+// row 0 is the header `<name>: <yyyy-mm-dd hh:mm> <hash>[ [outdated]]`,
+// rows 1..N are the wrapped body indented past the header by 2 cols
+// (so root body sits at depth+1*2 = 2 cols; reply body at 4 cols). The
+// cursor `>` glyph appears on the header row only — body rows keep the
+// 2-col cursor area blank so the indent visual stays consistent.
+func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string {
 	cursor := m.styledCursor(model.PaneComments, idx, m.state.CommentsCursor)
-	in := indent(depth)
-	date := c.CreatedAt.Format("2006-01-02")
+	headIndent := indent(depth)
+	bodyLeader := "  " + indent(depth+1) // 2 cols for cursor area + body indent
+	bodyLeaderW := utf8.RuneCountInString(bodyLeader)
+
+	date := c.CreatedAt.Local().Format("2006-01-02 15:04")
 	sha := shortSHA(c.CommitID)
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
@@ -99,37 +99,102 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) string {
 	if c.Outdated {
 		tag = " [outdated]"
 	}
-	// Build the header with the original (uncolored) widths first so the
-	// wrap math (headWidth → contIndent) stays driven by visible columns.
-	rawHeader := fmt.Sprintf("%s%s%s: %s %s%s — ",
-		cursorPrefix(idx == m.state.CommentsCursor || m.inVisualRange(model.PaneComments, idx)),
-		in, c.User, date, sha, tag)
-	headWidth := utf8.RuneCountInString(rawHeader)
-	header := fmt.Sprintf("%s%s%s: %s %s%s — ",
-		cursor, in,
+	header := fmt.Sprintf("%s%s%s: %s %s%s",
+		cursor, headIndent,
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
 		fg(tag, m.theme.CommentOutdated),
 	)
+
 	wrapWidth := m.paneWidthComments
 	if wrapWidth <= 0 {
 		wrapWidth = m.width
 	}
+	out := []string{header}
 	if wrapWidth <= 0 {
-		return header + c.Body
+		out = append(out, bodyLeader+c.Body)
+		return out
 	}
-	bodyWidth := wrapWidth - headWidth
+	bodyWidth := wrapWidth - bodyLeaderW
 	if bodyWidth < 10 {
 		bodyWidth = 10
 	}
-	chunks := wrapText(c.Body, bodyWidth)
-	contIndent := strings.Repeat(" ", headWidth)
-	out := []string{header + chunks[0]}
-	for _, ch := range chunks[1:] {
-		out = append(out, contIndent+ch)
+	out = append(out, renderCommentBody(c.Body, bodyLeader, bodyWidth)...)
+	return out
+}
+
+// renderCommentBody turns the comment body into one display row per source
+// line, matching how GitHub renders PR comment bodies: single `\n` is a
+// hard line break (the source line gets its own row), `\n\n+` is a
+// paragraph break (an extra blank row separates the surrounding rows).
+// Lines longer than `bodyWidth` cells are wrapped via `wrapText`. Leading
+// and trailing blank lines are elided so the body never starts or ends
+// with stray empty rows. Fenced code blocks need no special handling: each
+// fence-internal `\n` is already a row break under this rule.
+func renderCommentBody(body, bodyLeader string, bodyWidth int) []string {
+	var out []string
+	emitted := 0
+	pendingBlank := false
+	for _, line := range strings.Split(body, "\n") {
+		if line == "" {
+			if emitted > 0 {
+				pendingBlank = true
+			}
+			continue
+		}
+		if pendingBlank {
+			out = append(out, "")
+			pendingBlank = false
+		}
+		for _, ch := range wrapText(line, bodyWidth) {
+			out = append(out, bodyLeader+ch)
+		}
+		emitted++
 	}
-	return strings.Join(out, "\n")
+	return out
+}
+
+// threadsForCursor returns the comment threads anchored at the current Diff
+// cursor's buffer line. Empty when the cursor is not on a ◆ row, when no
+// patch is loaded, or when no thread targets the cursor's new-file line.
+// Ordering matches threadsForView (chronological by root time).
+func (m Model) threadsForCursor() []*commentThread {
+	all := m.threadsForView()
+	if len(all) == 0 {
+		return nil
+	}
+	mapping := m.patchNewLineNumbers()
+	if len(mapping) == 0 {
+		return nil
+	}
+	cursor := m.state.DiffCursor.Line
+	if cursor < 0 || cursor >= len(mapping) {
+		return nil
+	}
+	target := mapping[cursor]
+	if target <= 0 {
+		return nil
+	}
+	var out []*commentThread
+	for _, t := range all {
+		if anyCommentOnLine(t, target) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func anyCommentOnLine(t *commentThread, line int) bool {
+	if commentNewLine(t.Root) == line {
+		return true
+	}
+	for _, r := range t.Replies {
+		if commentNewLine(r) == line {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Model) commentsForView() []*model.ReviewComment {
@@ -184,47 +249,15 @@ func (m Model) threadsForView() []*commentThread {
 	return roots
 }
 
+// flatComments returns the comment list backing Comments-pane navigation
+// (j/k cursor, visual selection, yank). It mirrors what commentsView is
+// rendering — i.e. only the threads anchored at the current Diff cursor
+// row — so the cursor index never drifts past the visible content.
 func (m Model) flatComments() []*model.ReviewComment {
 	var out []*model.ReviewComment
-	for _, t := range m.threadsForView() {
+	for _, t := range m.threadsForCursor() {
 		out = append(out, t.Root)
-		if !m.state.ThreadFolded[t.Root.ID] {
-			out = append(out, t.Replies...)
-		}
+		out = append(out, t.Replies...)
 	}
 	return out
-}
-
-func (m Model) hasCommentsForCurrentView() bool {
-	return len(m.commentsForView()) > 0
-}
-
-func (m Model) threadRootIDForCursor() int64 {
-	threads := m.threadsForView()
-	idx := 0
-	for _, t := range threads {
-		if idx == m.state.CommentsCursor {
-			return t.Root.ID
-		}
-		idx++
-		if !m.state.ThreadFolded[t.Root.ID] {
-			for range t.Replies {
-				if idx == m.state.CommentsCursor {
-					return t.Root.ID
-				}
-				idx++
-			}
-		}
-	}
-	return 0
-}
-
-func (m *Model) clampCommentsCursor() {
-	max := len(m.flatComments()) - 1
-	if max < 0 {
-		max = 0
-	}
-	if m.state.CommentsCursor > max {
-		m.state.CommentsCursor = max
-	}
 }

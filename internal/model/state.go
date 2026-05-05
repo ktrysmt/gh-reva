@@ -15,8 +15,6 @@ type AppState struct {
 	DiffViewport   DiffViewport
 	CommentsCursor int
 
-	ThreadFolded map[int64]bool
-
 	FilesTreeMode   bool
 	FoldedDirs      map[string]bool
 	FilesViewIndex  []FilesRow
@@ -78,14 +76,11 @@ type VisualState struct {
 	Linewise   bool
 }
 
-// HoverState drives the cursor-row tooltip in Files / Commits. Gen
-// increments on every keypress; the deferred HoverTickMsg compares its
-// snapshotted gen against the current value and only flips Show when
-// they still match — i.e. the user has not moved since the tick was
-// scheduled. Show is reset on every keypress so the tooltip never
-// lingers past a navigation.
+// HoverState drives the cursor-row tooltip in Files / Commits. Show is
+// toggled by `<space>` in those panes; while it is true, the popup
+// re-renders every frame against the live cursor so j / k navigation
+// updates the body without dismissing it.
 type HoverState struct {
-	Gen  int
 	Show bool
 }
 
@@ -93,7 +88,6 @@ func NewAppState() *AppState {
 	return &AppState{
 		FocusedPane:  PaneFiles,
 		DiffViewMode: DiffViewSplit,
-		ThreadFolded: map[int64]bool{},
 		FoldedDirs:   map[string]bool{},
 		DiffCache:    map[string]string{},
 		Loading:      map[string]bool{},

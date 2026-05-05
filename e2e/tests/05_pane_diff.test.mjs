@@ -3,10 +3,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { launchGhRv, waitReady, quit, paneText } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, paneText } from '../helpers/launch.mjs'
 
 test('F1: Diff header shows current file + [split] by default', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   // selectedFile auto = greeting.go at startup; PR-wide diff is shown.
   const screen = await s.text()
@@ -15,7 +15,7 @@ test('F1: Diff header shows current file + [split] by default', async () => {
 })
 
 test('F2: <space> toggles split ⇄ unified inside Diff pane', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   let screen = await s.text()
@@ -30,7 +30,7 @@ test('F2: <space> toggles split ⇄ unified inside Diff pane', async () => {
 })
 
 test('F2c: split mode shows old/new line numbers per side', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   const diff = paneText(await s.text(), 'Diff')
@@ -51,7 +51,7 @@ test('F2c: split mode shows old/new line numbers per side', async () => {
 })
 
 test('F2d: split mode keeps │ vertically aligned across rows with tabs', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   const diff = paneText(await s.text(), 'Diff')
@@ -69,7 +69,7 @@ test('F2d: split mode keeps │ vertically aligned across rows with tabs', async
 })
 
 test('F2b: split mode renders the diff content in two columns separated by │', async () => {
-  const s = await launchGhRv()  // default cols=160 → split mode wide enough
+  const s = await launchReva()  // default cols=160 → split mode wide enough
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   let diff = paneText(await s.text(), 'Diff')
@@ -86,7 +86,7 @@ test('F2b: split mode renders the diff content in two columns separated by │',
 })
 
 test('F3: narrow terminals fall back to unified', async () => {
-  const s = await launchGhRv({ cols: 80 })
+  const s = await launchReva({ cols: 80 })
   await waitReady(s)
   const diff = paneText(await s.text(), 'Diff')
   assert.ok(diff.includes('[unified]'), `expected unified tag in Diff column; slice:\n${diff}`)
@@ -94,7 +94,7 @@ test('F3: narrow terminals fall back to unified', async () => {
 })
 
 test('F4: vertical motion j/k updates Diff state', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   const before = await s.text()
@@ -105,7 +105,7 @@ test('F4: vertical motion j/k updates Diff state', async () => {
 })
 
 test('F4b: gg jumps to first line, G to last', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   await s.type('G')
@@ -117,7 +117,7 @@ test('F4b: gg jumps to first line, G to last', async () => {
 })
 
 test('F4c: Ctrl-d / Ctrl-u half-page; Ctrl-f / Ctrl-b full page', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   const before = await s.text()
@@ -135,7 +135,7 @@ test('F6: H jumps to viewport top after G scrolls down', async () => {
   // --diff-height=4 pins a tiny viewport so G actually scrolls Top away from
   // 0, letting H stand observably apart from gg (which would jump to the
   // file's first line).
-  const s = await launchGhRv({ args: ['--diff-height', '4'] })
+  const s = await launchReva({ args: ['--diff-height', '4'] })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   await s.type('G')
@@ -149,52 +149,37 @@ test('F6: H jumps to viewport top after G scrolls down', async () => {
   await quit(s)
 })
 
-test('F7: Enter on a line with a comment focuses Comments and selects that thread', async () => {
-  const s = await launchGhRv()
+test('F7: Enter on a commented line is a no-op (Phase 2 will rebind to comment input)', async () => {
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Fixture comment 1001 (greeting.go) is anchored at new-file line 3, which
-  // maps to buffer index 5 in the PR-wide patch:
-  //   0: --- a/...    1: +++ b/...    2: @@ ...
-  //   3:  package src 4: +            5: +// Hello returns ...
+  // maps to buffer index 5 in the PR-wide patch. Even on this anchored row,
+  // Enter must not shift focus to Comments — the legacy "drill into thread"
+  // gesture was retired with the column-movement cleanup.
   for (let i = 0; i < 5; i++) await s.type('j')
+  const before = await s.text()
   await s.press('enter')
-  const screen = await s.text()
-  assert.equal((screen.match(/▶ Comments/) || []).length, 1, 'focus should be on Comments')
-  // The selected thread root must be the carol/Consider extracting comment.
-  assert.match(paneText(screen, 'Comments'), /^>[^\n]*Consider extracting/m, 'cursor row should be on the matched thread root')
+  const after = await s.text()
+  assert.equal(before, after, 'Enter on a commented line must be a no-op')
+  assert.match(after, /▶ Diff/, 'focus must remain on Diff')
   await quit(s)
 })
 
-test('F8: Enter on a line without a comment is a no-op (Phase 1)', async () => {
-  const s = await launchGhRv()
+test('F8: Enter on a non-commented line is a no-op', async () => {
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   // First line of the diff (file header) has no comment by construction.
   const before = await s.text()
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on a non-commented line must be a no-op in Phase 1')
-  await quit(s)
-})
-
-test('F8b: Enter on a non-comment line >=3 is also a no-op (no fallback to first thread)', async () => {
-  const s = await launchGhRv()
-  await waitReady(s)
-  await s.press('tab'); await s.press('tab')   // focus Diff
-  // Move to buffer line 4 (the lone "+" blank addition). Line 5 carries
-  // comment 1001 — line 4 sits just before it and has no anchored comment.
-  for (let i = 0; i < 4; i++) await s.type('j')
-  const before = await s.text()
-  await s.press('enter')
-  const after = await s.text()
-  assert.equal(before, after, 'Enter on non-commented line >=3 must NOT shift focus to Comments')
-  assert.match(after, /▶ Diff/, 'focus must remain on Diff')
+  assert.equal(before, after, 'Enter on a non-commented line must be a no-op')
   await quit(s)
 })
 
 test('F11: Diff lines with comments show a ◆ gutter marker (left of content)', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Force unified mode so the regex below asserts ◆ adjacent to the diff
@@ -222,7 +207,7 @@ test('F11: Diff lines with comments show a ◆ gutter marker (left of content)',
 })
 
 test('F10: Shift+J/K in Diff cycles files while keeping Diff focus', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   let screen = await s.text()
@@ -242,7 +227,7 @@ test('F10: Shift+J/K in Diff cycles files while keeping Diff focus', async () =>
 })
 
 test('F10b: Shift+K at first file and Shift+J at last file are clamped', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // At greeting.go (first file). Shift+K must be a no-op for SelectedFile.
@@ -261,7 +246,7 @@ test('F10b: Shift+K at first file and Shift+J at last file are clamped', async (
 })
 
 test('F12: split mode wraps a long content line into multiple display rows', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // greeting.go buffer line 5 = `+// Hello returns a greeting for the given name.`
@@ -276,7 +261,7 @@ test('F12: split mode wraps a long content line into multiple display rows', asy
 })
 
 test('F13: cursor `>` appears only on the first display row of a wrapped line', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Move cursor to the long-wrapping buffer line 5.
@@ -297,7 +282,7 @@ test('F13: cursor `>` appears only on the first display row of a wrapped line', 
 })
 
 test('F15: ◆ marker appears only on the first display row of a wrapped commented line', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Buffer line 5 carries comment 1001 and wraps in default split layout.
@@ -316,7 +301,7 @@ test('F15: ◆ marker appears only on the first display row of a wrapped comment
 })
 
 test('F16: split `│` separator continues on every continuation display row', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   const diff = paneText(await s.text(), 'Diff')
@@ -333,7 +318,7 @@ test('F16: split `│` separator continues on every continuation display row', a
 })
 
 test('F17: unified mode wraps long lines and indents continuation by 5 cols', async () => {
-  const s = await launchGhRv({ cols: 80 })   // forces unified (F3)
+  const s = await launchReva({ cols: 80 })   // forces unified (F3)
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // At cols=80 the unified content area is narrow enough to wrap line 5
@@ -350,18 +335,15 @@ test('F17: unified mode wraps long lines and indents continuation by 5 cols', as
 })
 
 test('F9: split/unified choice persists across file changes', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // Diff
   await s.press('space')                       // unified
   let screen = await s.text()
   assert.match(screen, /Diff:[^\n]*\[unified\]/)
-  // Backspace twice → back to Files
-  await s.press('backspace'); await s.press('backspace')
-  // Move to greeting_test.go and Enter
-  await s.type('j')
-  await s.press('enter')
+  // Shift+J advances to the next file from Diff (focus stays on Diff).
+  await s.type('J')
   screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting_test\.go \[unified\]/, 'unified choice should persist')
+  assert.match(screen, /Diff: src\/greeting_test\.go \[unified\]/, 'unified choice should persist across file changes')
   await quit(s)
 })

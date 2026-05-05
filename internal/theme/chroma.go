@@ -16,6 +16,7 @@ import (
 // "RPGLE") round-trip cleanly.
 func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 	fb := builtinDark()
+	editorBg := s.Get(chroma.Background).Background
 	pick := func(t chroma.TokenType, fallback lipgloss.Color) lipgloss.Color {
 		c := s.Get(t).Colour
 		if !c.IsSet() {
@@ -30,6 +31,36 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 		}
 		return lipgloss.Color(c.Brighten(factor).String())
 	}
+	// pickBgBrighten reads the entry's `.Background` field — the actual
+	// editor bg in `<entry style="bg:#…"/>`. Used for row highlights
+	// (VisualRangeBg) so they sit a few shades above the editor base
+	// instead of next to the editor TEXT color, which would collide with
+	// CursorRow / DiffContext and make the cursor `>` glyph invisible.
+	pickBgBrighten := func(t chroma.TokenType, factor float64, fallback lipgloss.Color) lipgloss.Color {
+		bg := s.Get(t).Background
+		if !bg.IsSet() {
+			return fallback
+		}
+		return lipgloss.Color(bg.Brighten(factor).String())
+	}
+	// pickAccent handles chroma styles (notably the gruvbox family) that
+	// store the bright accent on Background and the editor base on Colour
+	// for diff-related tokens. When the entry's Colour matches the editor
+	// background, fall through to Background instead — otherwise the
+	// resulting Theme color collapses to near-black and renders invisibly.
+	pickAccent := func(t chroma.TokenType, fallback lipgloss.Color) lipgloss.Color {
+		e := s.Get(t)
+		if e.Colour.IsSet() && (!editorBg.IsSet() || e.Colour != editorBg) {
+			return lipgloss.Color(e.Colour.String())
+		}
+		if e.Background.IsSet() && (!editorBg.IsSet() || e.Background != editorBg) {
+			return lipgloss.Color(e.Background.String())
+		}
+		if e.Colour.IsSet() {
+			return lipgloss.Color(e.Colour.String())
+		}
+		return fallback
+	}
 	return &Theme{
 		Name: canonicalName,
 
@@ -38,12 +69,17 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 		PaneTitle:          pick(chroma.Text, fb.PaneTitle),
 		PaneTitleActive:    pick(chroma.GenericStrong, fb.PaneTitleActive),
 
-		DiffPlus: pick(chroma.GenericInserted, fb.DiffPlus),
-		DiffMinus: pick(chroma.GenericDeleted, fb.DiffMinus),
-		// "限りなく黒に近い" — pull each diff bg from a heavily-darkened
-		// fg so the bg always reads as a near-black tint of the same hue.
-		DiffPlusBg:     pickBrighten(chroma.GenericInserted, -0.85, fb.DiffPlusBg),
-		DiffMinusBg:    pickBrighten(chroma.GenericDeleted, -0.85, fb.DiffMinusBg),
+		// Diff +/- marker fg and the row-wide bg are theme-independent.
+		// Marker fg is a saturated bright green / red so the +/- rune is
+		// unambiguous against syntax-highlighted code; bg is a near-black
+		// dark green / dark red so the change extent reads at a glance.
+		// Per-theme derivation could collapse either to the editor base
+		// for inverted-convention styles (gruvbox) or to a hue that does
+		// not read as red/green (rose-pine).
+		DiffPlus:       fb.DiffPlus,
+		DiffMinus:      fb.DiffMinus,
+		DiffPlusBg:     fb.DiffPlusBg,
+		DiffMinusBg:    fb.DiffMinusBg,
 		DiffContext:    pick(chroma.Text, fb.DiffContext),
 		DiffHunkHeader: pick(chroma.GenericSubheading, fb.DiffHunkHeader),
 		DiffFileHeader: pick(chroma.GenericHeading, fb.DiffFileHeader),
@@ -52,13 +88,15 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 
 		SyntaxStyle: s,
 
-		CursorRow:     pick(chroma.GenericInserted, fb.CursorRow),
+		// Cursor "> " uses the same source as the active pane title so
+		// the focus accent stays visually consistent across the UI.
+		CursorRow:     pick(chroma.GenericStrong, fb.CursorRow),
 		CommentAnchor: pick(chroma.GenericEmph, fb.CommentAnchor),
-		VisualRangeBg: pickBrighten(chroma.Background, 0.15, fb.VisualRangeBg),
+		VisualRangeBg: pickBgBrighten(chroma.Background, 0.15, fb.VisualRangeBg),
 
-		StatusAdded:     pick(chroma.GenericInserted, fb.StatusAdded),
+		StatusAdded:     pickAccent(chroma.GenericInserted, fb.StatusAdded),
 		StatusModified:  pick(chroma.GenericSubheading, fb.StatusModified),
-		StatusDeleted:   pick(chroma.GenericDeleted, fb.StatusDeleted),
+		StatusDeleted:   pickAccent(chroma.GenericDeleted, fb.StatusDeleted),
 		StatusRenamed:   pick(chroma.GenericHeading, fb.StatusRenamed),
 		CommitSHA:       pick(chroma.LineNumbers, fb.CommitSHA),
 		CommentAuthor:   pick(chroma.GenericStrong, fb.CommentAuthor),
@@ -67,5 +105,9 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 
 		LoadingSpinner: pick(chroma.GenericStrong, fb.LoadingSpinner),
 		ErrorText:      pick(chroma.GenericError, fb.ErrorText),
+
+		LogoShade1: pick(chroma.GenericStrong, fb.LogoShade1),
+		LogoShade2: pick(chroma.GenericSubheading, fb.LogoShade2),
+		LogoShade3: pickBrighten(chroma.LineNumbers, -0.2, fb.LogoShade3),
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ktrysmt/gh-rv/internal/model"
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // buildFilesTree groups PR.Files by directory and returns a flat list of

@@ -3,13 +3,13 @@
 import { test, describe, before } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { launchGhRv, waitReady, quit, paneText } from '../helpers/launch.mjs'
+import { launchReva, waitReady, quit, paneText } from '../helpers/launch.mjs'
 
 // E1 + E1b + E2 share the initial-render state for greeting.go.
 describe('E1+E1b+E2: Commits pane initial render (greeting.go selected)', () => {
   let screen
   before(async () => {
-    const s = await launchGhRv()
+    const s = await launchReva()
     await waitReady(s)
     screen = await s.text()
     await quit(s)
@@ -40,52 +40,59 @@ describe('E1+E1b+E2: Commits pane initial render (greeting.go selected)', () => 
   })
 })
 
-test('E3: j/k moves the Commits cursor', async () => {
-  const s = await launchGhRv()
+test('E3: j/k moves the Commits cursor (All commits row sits above real commits)', async () => {
+  const s = await launchReva()
   await waitReady(s)
   await s.press('tab')   // focus Commits
   let commits = paneText(await s.text(), 'Commits')
-  assert.match(commits, /^>[^\n]*aaa1111/m, 'cursor should start on first commit')
+  assert.match(commits, /^>[^\n]*All commits/m, 'cursor should start on the All commits virtual row')
+  await s.type('j')
+  commits = paneText(await s.text(), 'Commits')
+  assert.match(commits, /^>[^\n]*aaa1111/m, 'after j → cursor on first real commit aaa1111')
   await s.type('j')
   commits = paneText(await s.text(), 'Commits')
   assert.match(commits, /^>[^\n]*bbb2222/m, 'after j → cursor on bbb2222')
   await s.type('k')
   commits = paneText(await s.text(), 'Commits')
   assert.match(commits, /^>[^\n]*aaa1111/m, 'after k → cursor back on aaa1111')
+  await s.type('k')
+  commits = paneText(await s.text(), 'Commits')
+  assert.match(commits, /^>[^\n]*All commits/m, 'after k → cursor back on the All commits row')
   await quit(s)
 })
 
 // E4/E5: removed — manual `space` filter toggle (and "(filter: …)" title)
 // were superseded by the SelectedFile-driven auto-filter. See E1.
 
-test('E6: Enter on Commits focuses Diff WITHOUT auto-picking a commit (PR-wide diff)', async () => {
-  const s = await launchGhRv()
+test('E6: Enter on Commits is a no-op (Tab is the only focus mover)', async () => {
+  const s = await launchReva()
   await waitReady(s)
-  await s.press('tab')          // focus Commits, no j/k yet
-  await s.press('enter')         // → Diff focus, SelectedRange unchanged
-  const screen = await s.text()
-  assert.match(screen, /▶ Diff/, 'focus should move to Diff')
-  // No "@ <sha>" suffix because no commit was selected. The Diff title is
-  // just "Diff: <path>" + view-mode tag — single-commit drill renders an
-  // additional "@ aaa1111" segment.
-  assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'Enter without j/k must not trigger single-commit drill')
+  await s.press('tab')          // focus Commits
+  const before = await s.text()
+  await s.press('enter')
+  const after = await s.text()
+  assert.equal(before, after, 'Enter on Commits must not change focus or state')
+  assert.match(after, /▶ Commits/, 'focus stays on Commits')
   await quit(s)
 })
 
 test('E7: j/k in Commits auto-selects the commit (Diff updates without Enter)', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
-  await s.press('tab')          // focus Commits
+  await s.press('tab')          // focus Commits, cursor on the All commits row
   let screen = await s.text()
-  // Initially: cursor on aaa1111, no auto-select fired (j/k untouched).
   assert.match(screen, /▶ Commits/)
-  assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'no SingleCommit before j/k')
-  // j → cursor on bbb2222 → Diff must reflect the bbb2222 slice immediately.
+  assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'All commits row → RangeWholePR (no SHA suffix)')
+  // j → cursor on aaa1111 → Diff must reflect SingleCommit aaa1111 immediately.
   await s.type('j')
   screen = await s.text()
-  assert.match(paneText(screen, 'Commits'), /^>[^\n]*bbb2222/m, 'cursor moved to bbb2222')
-  assert.match(screen, /Diff:[^\n]*@\s*bbb2222/, 'Diff title should reflect bbb2222 SingleCommit slice')
+  assert.match(paneText(screen, 'Commits'), /^>[^\n]*aaa1111/m, 'cursor moved to aaa1111')
+  assert.match(screen, /Diff:[^\n]*@\s*aaa1111/, 'Diff title should reflect aaa1111 SingleCommit slice')
   assert.match(screen, /▶ Commits/, 'focus stays on Commits')
+  // j → bbb2222.
+  await s.type('j')
+  screen = await s.text()
+  assert.match(screen, /Diff:[^\n]*@\s*bbb2222/, 'Diff title should reflect bbb2222 after second j')
   // k → back to aaa1111.
   await s.type('k')
   screen = await s.text()
@@ -93,21 +100,79 @@ test('E7: j/k in Commits auto-selects the commit (Diff updates without Enter)', 
   await quit(s)
 })
 
-test('E8: explicit single-commit drill via j+k+Enter (j primes auto-select on aaa1111)', async () => {
-  const s = await launchGhRv()
+test('E8: single-commit drill via j+Tab (auto-select drives SelectedRange, Tab moves focus)', async () => {
+  const s = await launchReva()
   await waitReady(s)
-  await s.press('tab')          // focus Commits
+  await s.press('tab')          // focus Commits, cursor on All commits
+  await s.type('j')             // cursor → aaa1111 (auto: SingleCommit aaa1111)
   await s.type('j')             // cursor → bbb2222 (auto: SingleCommit bbb2222)
   await s.type('k')             // cursor → aaa1111 (auto: SingleCommit aaa1111)
-  await s.press('enter')         // → Diff, SelectedRange unchanged = SingleCommit aaa1111
+  await s.press('tab')          // → Diff, SelectedRange unchanged = SingleCommit aaa1111
   const screen = await s.text()
   assert.match(screen, /▶ Diff/, 'focus on Diff')
-  assert.match(screen, /Diff:[^\n]*@\s*aaa1111/, 'aaa1111 drill preserved through Enter')
+  assert.match(screen, /Diff:[^\n]*@\s*aaa1111/, 'aaa1111 drill preserved through Tab')
+  await quit(s)
+})
+
+test('E10: All commits virtual row renders with file-filtered count', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  // Initial fixture: SelectedFile = src/greeting.go (touched by 2 of 3 commits).
+  const commits = paneText(await s.text(), 'Commits')
+  assert.match(commits, /All commits \(2 of 3\)/, 'filtered form should read "(2 of 3)" when greeting.go is selected')
+  // The virtual row sits above the real commits.
+  const allIdx = commits.indexOf('All commits')
+  const aaaIdx = commits.indexOf('aaa1111')
+  assert.ok(allIdx >= 0 && aaaIdx >= 0 && allIdx < aaaIdx,
+    `All commits row must precede aaa1111; slice:\n${commits}`)
+  await quit(s)
+})
+
+test('E11: returning to All commits row reverts Diff to whole-PR slice', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab')                      // focus Commits, cursor on All commits row
+  await s.type('j')                         // cursor → aaa1111 (SingleCommit)
+  let screen = await s.text()
+  assert.match(screen, /Diff:[^\n]*@\s*aaa1111/, 'Diff drilled into aaa1111')
+  await s.type('k')                         // cursor → All commits row (RangeWholePR)
+  screen = await s.text()
+  assert.match(paneText(screen, 'Commits'), /^>[^\n]*All commits/m, 'cursor back on All commits row')
+  assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'Diff title must drop the SHA suffix on All commits')
+  await quit(s)
+})
+
+test('E12: shift+J resets Commits cursor to the All commits row', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab')                      // focus Commits
+  await s.type('j')                         // cursor → aaa1111 (SingleCommit aaa1111)
+  let screen = await s.text()
+  assert.match(screen, /Diff:[^\n]*@\s*aaa1111/, 'drilled into aaa1111')
+  await s.press('J')                        // advance file → reset CommitsCursor=0
+  screen = await s.text()
+  const commits = paneText(screen, 'Commits')
+  assert.match(commits, /^>[^\n]*All commits/m, 'shift+J must place cursor back on All commits')
+  assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'Diff must show whole-PR slice for the new file')
+  await quit(s)
+})
+
+test('E13: <space> on the All commits row does NOT show the hover popup', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab')                      // focus Commits, cursor on All commits row
+  const before = await s.text()
+  await s.type(' ')                         // toggle Hover.Show
+  const after = await s.text()
+  // Popup uses bordered ┌─┐ chrome; absence of new ┌ characters means no popup
+  // appeared. The exact frame should be byte-identical to the pre-press frame
+  // when hover is suppressed (Hover.Show flips internally but renders nothing).
+  assert.equal(before, after, '<space> on All commits row must render no popup')
   await quit(s)
 })
 
 test('E9: switching SelectedFile re-filters the Commits pane', async () => {
-  const s = await launchGhRv()
+  const s = await launchReva()
   await waitReady(s)
   // Initial: greeting.go selected → Commits = [aaa1111, bbb2222]
   let screen = await s.text()
