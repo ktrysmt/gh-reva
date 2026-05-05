@@ -144,6 +144,7 @@ func (m Model) View() string {
 			m.commentsView(),
 		}, "\n\n")
 		body = m.overlayHover(body)
+		body = m.overlayHelp(body)
 		if m.state.Visual != nil {
 			return body + "\n" + m.visualIndicator()
 		}
@@ -179,6 +180,7 @@ func (m Model) View() string {
 	commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
 	body = m.overlayHover(body)
+	body = m.overlayHelp(body)
 
 	if m.state.Visual != nil {
 		return body + "\n" + m.visualIndicator()

@@ -23,6 +23,8 @@ type AppState struct {
 
 	Hover HoverState
 
+	HelpOpen bool
+
 	DiffCache map[string]string
 	Loading   map[string]bool
 
