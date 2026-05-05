@@ -1,6 +1,5 @@
 # gh-reva
 
-<div align="center">
 <pre>
           <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓</span>
         <span style="color:#ffeb3b">▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span>
@@ -13,7 +12,6 @@
     <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
   <span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffffe0">██████████</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span><span style="color:#fff176">░░</span><span style="color:#ffeb3b">▓▓</span>
 </pre>
-</div>
 
 PR review TUI distributed as a `gh` CLI extension.
 
