@@ -10,6 +10,10 @@
 on per-file review flow: pin a file, then walk only the commits that touch it
 without losing your place in the diff or comments.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="gh-reva screenshot" width="900">
+</p>
+
 ## Install
 
 ```sh
