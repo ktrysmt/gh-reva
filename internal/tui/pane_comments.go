@@ -116,9 +116,15 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 		out = append(out, bodyLeader+c.Body)
 		return out
 	}
+	// bodyWidth is exactly the cells available after the indent. A min-10
+	// floor used to live here as a "readable wrap" defense, but it pushed
+	// rendered rows past paneWidthComments and forced renderPaneBox::padTrunc
+	// to silently truncate. Respect the pane budget instead — at extremely
+	// narrow widths the body collapses to one rune per row, ugly but
+	// non-corrupt; the alternative was a quiet width-violation.
 	bodyWidth := wrapWidth - bodyLeaderW
-	if bodyWidth < 10 {
-		bodyWidth = 10
+	if bodyWidth < 1 {
+		bodyWidth = 1
 	}
 	out = append(out, renderCommentBody(c.Body, bodyLeader, bodyWidth)...)
 	return out

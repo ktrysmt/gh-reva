@@ -11,12 +11,12 @@ session that touches this repo, and update it when an invariant changes.
 ## 1. Build / test commands
 
 ```sh
-# Repo root: /Users/dew/workspace/gh-rv (binary name remains `gh-reva`)
+# Repo root: /Users/dew/workspace/gh-reva
 
 # Go
 go build -o gh-reva .            # produce ./gh-reva binary at repo root
 go vet ./...
-go test ./...                  # currently only internal/api ghclient_errors_test
+go test ./...                  # internal/api (ghclient errors), internal/theme (registry round-trip), internal/tui (pane / loading / padtrunc / syntax)
 
 # Manual TUI
 ./gh-reva --fixture testdata/sample-pr.json
@@ -158,7 +158,10 @@ and several break the user's mental model.
 ### Layout
 1. **3-column bordered layout**: Files+Commits in left column stacked vertically; Diff fills middle; Comments fills right. Each pane is its own `┌─┐ │ ├─┤ │ └─┘` box with a horizontal divider under the title.
 2. **Pane box structure**: 4 + N rows — top border `┌─┐` / title `│…│` / divider `├─┤` / N content rows / bottom border `└─┘`. Inner width = outer − 2; inner height = outer − 4.
-3. **`splitColumnWidths` (total ≥ 130)**: left = 42, right = 57, mid = total − 99. Inner targets Files/Commits = 40, Comments = 55, Diff = remainder.
+3. **`splitColumnWidths`** has three branches keyed on terminal width:
+   - **total ≥ 130**: `left = 42`, `right = 57`, `mid = total − 99`. Inner targets Files/Commits = 40, Comments = 55, Diff = remainder. This is the canonical layout that all e2e tests assume.
+   - **80 ≤ total < 130**: proportional — `left = clamp(total/4, 22, 38)`, `right = max(total*2/5, 28)`, `mid = total − left − right` with a `mid ≥ 25` floor (Diff steals from `right` when needed; `right` is itself clamped at 22). Used so the layout degrades gracefully on a narrower-than-default terminal.
+   - **total < 80**: degenerate fallback — `left = total/4`, `mid = total/2`, `right = remainder`. No floor; rendering is best-effort. Tests do not pin this branch.
 4. **Active pane**: `▶ ` prefix on its title row. Exactly one pane has it.
 5. **Cursor row**: `> ` prefix in Files / Commits / Diff / Comments. Visual-range rows also carry `> `.
 6. **Visual mode indicator**: `-- VISUAL --` on its own row at the bottom. 1 row reserved when `state.Visual != nil`.
@@ -174,9 +177,9 @@ and several break the user's mental model.
 14. **Diff Enter is a no-op** (reserved for the Phase 2 comment-input modal). Cross-pane navigation is Tab / Shift-Tab only — no key inside the Diff pane drills into Comments.
 
 ### Commits pane
-15. **`visibleCommits` is auto-filtered by `SelectedFile`**. No manual override; the previous `space` toggle and `CommitFilterFile` field were removed. Without `SelectedFile`, all commits show.
+15. **`visibleCommits` is auto-filtered by `SelectedFile`**. No manual override; the previous `space` toggle and `CommitFilterFile` field were removed. `SelectedFile` is set on load (`app.go::Update PRLoadedMsg` assigns `PR.Files[0].Path` whenever the PR has any files), so in live UX the filter is always engaged from the first frame; the `SelectedFile == ""` branch in `visibleCommits` (returns all commits) is kept only as a safety net for the pre-PRLoadedMsg frame and tests that simulate it. The Commits cursor starts at idx 0 (the synthetic "All commits" row → `RangeWholePR`), so the initial Diff still shows the whole-PR diff of `PR.Files[0]` rather than a single commit's slice.
 15a. **Cursor index 0 is the synthetic "All commits" row** representing `RangeWholePR`. It is rendered above the real commits by `commitsView` via `allCommitsRow`, and is the only path back to the whole-PR diff from inside the Commits pane (k past the top lands on it). The cursor space is therefore `[0, len(visibleCommits)]` — `handleKeyCommits` caps `j` at `< len(commits)` (one past the previous bound) and `autoSelectCommit` switches `SelectedRange` to `RangeWholePR` when `idx == 0` and to `RangeSingleCommit{commits[idx-1].SHA}` otherwise. Label form: `All commits (N)` when no file filter is active OR when the filter resolves to M == N (every commit touches the selected file); `All commits (M of N)` only when M < N. The annotation slot mirrors the file's PR-level `Status` (`[A]/[M]/[D]/[R]`) when filtered, blank otherwise. The label is rendered bold via `fgBold(label, "")` to set the row apart from real commits without an extra divider. `selectFile` resets `CommitsCursor = 0` so any file change (including `Shift+J/K`) returns to the All commits row. Hover (`<space>`) is suppressed on this row — `hoverLines` returns nil for `idx == 0`. Visual yank skips this row — `yankString` for Commits iterates the cursor space `len(commits) + 1` and `continue`s on `i == 0`, so the clipboard never includes the `All commits` label. Label rule + behavior contract is locked in by `internal/tui/pane_commits_test.go::TestAllCommitsRowLabel`.
-16. **`j/k` in Commits auto-selects** the cursor commit → `SelectedRange = SingleCommit`. Visual mode gates this.
+16. **`j/k` in Commits auto-selects** the cursor row. The cursor space is `[0, len(visibleCommits)]`: idx 0 maps to `RangeWholePR` (the synthetic "All commits" row described in #15a), idx 1..N maps to `RangeSingleCommit{commits[idx-1].SHA}`. Visual mode gates this so multi-row yank does not mutate the working slice.
 17. **Enter on Commits is a no-op**. The cursor commit is already auto-selected by j/k, and the Diff pane reflects that selection live; pressing Tab is the only way to shift focus to Diff.
 18. **`[A]/[M]/[D]/[R]` annotation** decorates each commit row that touches `SelectedFile`.
 
@@ -290,7 +293,11 @@ describe('group', () => {
 - **Bubbletea v1 has no color profile option**: `lipgloss.SetColorProfile(termenv.Ascii)` and `SetHasDarkBackground(true)` must be called BEFORE `tea.NewProgram`. `cmd/root.go` does this; new entry points must replicate.
 - **Chroma init is eager**: importing `github.com/alecthomas/chroma/v2/styles` parses all 74 embedded XMLs at package init; `chroma/v2/lexers` registers ~250 lexers. Combined cold-start cost is ~500ms. Don't import these from hot-path packages — the theme module is the gateway.
 - **Diff syntax highlighting needs the cache**: `Model.syntaxCache` is the only thing keeping diff rendering snappy. Don't accidentally drop the pointer when restructuring `Model` (e.g. via `NewModel` rewrites) — without the cache, e2e starts intermittently failing on `waitReady`.
-- **`Model` has 3 reference-typed caches that must propagate across Updates**: `syntaxCache`, `patchLinesC.cache`, `rowCache`. They are pointer / map types so Bubbletea's value-copied `Model` shares the same backing storage. If you ever switch `Model` to a struct embedding pattern or change `NewModel` to copy these, regression is silent — caches just miss on every render, lag returns.
+- **`Model` has 3 caches that must propagate across Bubbletea's value-copied Updates**:
+  - `syntaxCache` — pointer (`*syntaxCache`); the wrapped `sync.Map` is shared by pointer identity.
+  - `rowCache` — pointer (`*diffRowCache`); the wrapped `map[string][]string` is shared by pointer identity.
+  - `patchLinesC` — **struct value** (`patchLinesCache`), but its only field `cache` is a `map[string]*patchInfo`. Maps in Go are reference types: copying the struct duplicates the header, but every copy points at the same underlying hash table. So the struct-value embedding is safe **only because** that field is a map — replacing it with a slice / scalar would silently break cache propagation.
+  Do not switch `Model` to struct embedding that re-allocates these fields, do not change `NewModel` to deep-copy them, and do not turn `patchLinesC.cache` into a non-reference type. All three failure modes look identical at the type checker but cause every render to miss the cache, and j/k repeat lag returns.
 - **`s.press` / `s.type` are auto-settled in tests**: `launchReva` wraps the tuistory session so a 120ms wait fires after every keystroke. Don't add manual `await sleep(N)` after presses; if a test still races, the right fix is `await s.waitForText(<expected post-state>)` rather than upping the global settle.
 - **`launchReva` forces TERM=tmux-256color via `sh -c`**: bubbletea v1's `tea_init.go` calls `lipgloss.HasDarkBackground()` at package import, which makes termenv send OSC 11 + DSR queries to stdout and block up to `termenv.OSCTimeout` (5 s) waiting for a terminal that does not exist behind the PTY. termenv's `termStatusReport` short-circuits when `TERM` starts with `screen` / `tmux`, so we set `TERM=tmux-256color` (and keep `COLORTERM=truecolor` so the rendered profile stays TrueColor). Tuistory's `session.js` hard-codes `TERM: 'xterm-truecolor'` AFTER spreading `options.env`, so the value cannot be passed through the `env:` field — `launchReva` instead spawns `/bin/sh -c "TERM=tmux-256color COLORTERM=truecolor exec gh-reva …"` so the child process re-applies the right `TERM` immediately before exec. Removing this wrapper restores the 5 s per-launch idle wait that previously dominated the suite (606 s → 26 s after the fix).
 - **Don't import `chroma/v2/styles` or `chroma/v2/lexers` outside `internal/theme` and `internal/tui/syntax.go`**. Both packages run heavy `init()` work (~500ms cold). The theme module is the single gateway; non-theme code asks `m.theme.SyntaxStyle` / `m.currentLexer()`.

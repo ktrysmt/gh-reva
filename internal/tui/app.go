@@ -126,9 +126,17 @@ func (m Model) View() string {
 	if m.state.Visual != nil && bodyHeight > 0 {
 		bodyHeight--
 	}
-	if m.width <= 0 || bodyHeight <= 0 {
-		// Window size not received yet — fall back to a stacked render
-		// (used by smoke tests and the very first frame).
+	if m.width <= 0 || bodyHeight < 8 {
+		// Stacked fallback fires in two cases:
+		//   1. Pre-WindowSize (m.width <= 0): smoke tests and the very
+		//      first frame before bubbletea has measured the terminal.
+		//   2. Tiny terminal (bodyHeight < 8): each pane box needs 4 rows
+		//      of chrome (top border / title / divider / bottom border),
+		//      so Files + Commits stacked vertically need >= 8 rows just
+		//      for chrome. Below that, the bordered layout would emit
+		//      more rows than bodyHeight allows and visibly overflow.
+		//      Stacked rendering keeps every pane reachable in degenerate
+		//      windows at the cost of layout fidelity.
 		body := strings.Join([]string{
 			m.filesView(),
 			m.commitsView(),

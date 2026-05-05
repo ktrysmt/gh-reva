@@ -25,11 +25,21 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.Visual = nil
 		return m, nil
 	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q":
-		// State-mutating / mode keys are inert in visual mode. Tab / Shift-Tab
-		// would move focus mid-selection; Enter would still toggle Files-tree
-		// dir folds; Space would toggle hover or split⇄unified; v / q would
-		// exit visual or the program. Backspace is unbound today but kept
-		// here so a future re-bind cannot accidentally fire during selection.
+		// State-mutating / mode keys are inert in visual mode:
+		//   Tab / Shift-Tab — would move focus mid-selection.
+		//   Enter           — would still toggle Files-tree dir folds.
+		//   Space           — would toggle hover (Files/Commits) or
+		//                     split⇄unified (Diff) mid-selection.
+		//   v               — would re-enter visual on top of itself.
+		//   q               — the global handler quits the TUI; suppressing
+		//                     it here means a stray `q` during a selection
+		//                     just no-ops instead of dropping the user out
+		//                     of the program with their range unyanked.
+		//                     (Use Esc / Ctrl-C to leave visual without
+		//                     yanking, or `y` to yank and exit.)
+		//   Backspace       — unbound today but kept here so a future
+		//                     re-bind cannot accidentally fire during
+		//                     selection.
 		return m, nil
 	}
 	switch m.state.FocusedPane {
@@ -88,12 +98,21 @@ func (m Model) yankString() string {
 		var rows []string
 		for i := lo; i <= hi && i < len(flat); i++ {
 			c := flat[i]
-			rows = append(rows, fmt.Sprintf("%s @ %s\n%s", c.User, c.CreatedAt.Format("2006-01-02"), c.Body))
+			// Mirror the Comments-pane header timestamp exactly:
+			// local TZ + "yyyy-mm-dd hh:mm". Yanking the same string the
+			// user reads on screen avoids a day-boundary surprise where
+			// the visible date and the clipboard date diverged because
+			// yank was UTC and the header was Local.
+			rows = append(rows, fmt.Sprintf("%s @ %s\n%s", c.User, c.CreatedAt.Local().Format("2006-01-02 15:04"), c.Body))
 		}
 		return strings.Join(rows, "\n")
 	case model.PaneDiff:
-		patch := m.currentPatch()
-		lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
+		// Route through m.patchLines() so the cached split is reused and
+		// the trailing-newline-trim convention stays in one place. An
+		// unloaded patch yields a nil slice, which collapses to an empty
+		// yank via linewiseSelectionRange — same behaviour the manual
+		// strings.Split path produced.
+		lines := m.patchLines()
 		lo, hi := m.linewiseSelectionRange(model.PaneDiff, m.state.DiffCursor.Line, len(lines))
 		var rows []string
 		for i := lo; i <= hi && i < len(lines); i++ {
