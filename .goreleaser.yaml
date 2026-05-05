@@ -17,7 +17,12 @@ builds:
       - -X github.com/ktrysmt/gh-reva/cmd.date={{.Date}}
 archives:
   - formats: [binary]
-    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+    # gh CLI matches release assets by `strings.HasSuffix(name, "<os>-<arch>")`
+    # (cli/cli pkg/cmd/extension/manager.go), so the OS-Arch portion MUST use
+    # a hyphen. An underscore here makes `gh extension install` fail with
+    # "no usable release artifact". Keep the leading `_` between binary name
+    # and OS so disambiguation against checksums.txt stays readable.
+    name_template: "{{ .Binary }}_{{ .Os }}-{{ .Arch }}"
 checksum:
   name_template: "checksums.txt"
 snapshot:
