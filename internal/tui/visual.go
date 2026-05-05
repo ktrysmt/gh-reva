@@ -24,7 +24,7 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		_ = clipboard.Yank(m.yankString())
 		m.state.Visual = nil
 		return m, nil
-	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q":
+	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q", "?":
 		// State-mutating / mode keys are inert in visual mode:
 		//   Tab / Shift-Tab — would move focus mid-selection.
 		//   Enter           — would still toggle Files-tree dir folds.
@@ -40,6 +40,8 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		//   Backspace       — unbound today but kept here so a future
 		//                     re-bind cannot accidentally fire during
 		//                     selection.
+		//   ?               — opening Help mid-selection would drop the
+		//                     range; user must Esc out of visual first.
 		return m, nil
 	}
 	switch m.state.FocusedPane {

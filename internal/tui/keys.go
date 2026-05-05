@@ -7,10 +7,19 @@ import (
 )
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Help modal absorbs all keystrokes except its dismiss set. It takes
+	// precedence over visual / pane routing so the modal can be reached and
+	// dismissed from any prior state without leaking keys to the body.
+	if m.state.HelpOpen {
+		return m.handleKeyHelp(msg)
+	}
 	if m.state.Visual != nil {
 		return m.handleKeyVisual(msg)
 	}
 	switch msg.String() {
+	case "?":
+		m.state.HelpOpen = true
+		return m, nil
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "tab":
@@ -52,6 +61,24 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleKeyDiff(msg)
 	case model.PaneComments:
 		return m.handleKeyComments(msg)
+	}
+	return m, nil
+}
+
+// handleKeyHelp is the keystroke router while the Help modal is open.
+// Dismiss set: `?` (toggle off), `Esc`, `Ctrl+C`, `q`. Every other key is
+// absorbed so the body cursor / focus / visual state cannot move behind
+// the modal — the user reads the keymap, dismisses, then resumes.
+//
+// Note that `q` here closes the modal instead of quitting the program;
+// quitting from the modal would force the user to keep mental state about
+// "did I open help or not" before pressing q. Closing first and quitting
+// on the next q is the less surprising default.
+func (m Model) handleKeyHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "?", "esc", "ctrl+c", "q":
+		m.state.HelpOpen = false
+		return m, nil
 	}
 	return m, nil
 }
