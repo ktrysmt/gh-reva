@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/logo2.png" alt="gh-reva" width="240">
+  <img src="assets/logo2.png" alt="gh-reva">
 </h1>
 
 <p align="center">PR review TUI distributed as a <code>gh</code> CLI extension.</p>
