@@ -7,6 +7,33 @@ import (
 )
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Any keystroke clears a transient Notice (e.g. the "cannot edit
+	// others' comments" hint). Cleared BEFORE dispatch so a handler can
+	// re-set Notice in the same tick if it wants to. Compose / Help /
+	// Visual modal handlers also benefit from auto-clear: a stray Esc
+	// while a notice is up doubles as "dismiss notice".
+	if m.state.Notice != "" {
+		m.state.Notice = ""
+	}
+	// PendingConfirm absorbs all keystrokes while a `[y]es / [n]o`
+	// prompt is up so the user cannot accidentally navigate away or
+	// quit. Sits ahead of the Compose absorber because the parked
+	// payload lives in PendingConfirm.Compose, not AppState.Compose,
+	// and the y/n dispatch needs to see raw runes (the textarea
+	// absorber would append them to the body).
+	if m.state.PendingConfirm != nil {
+		return m.handleKeyConfirm(msg)
+	}
+	// Compose absorbs all keystrokes when active so the textarea owns
+	// input (Ctrl+S save, Esc cancel, runes append to body) and any
+	// post-editor state (Submitting / Failed) cannot accidentally
+	// trigger pane navigation behind the modal. The $EDITOR Editing
+	// state cannot reach this branch in practice — bubbletea is
+	// suspended during tea.ExecProcess — but the guard is unconditional
+	// so a future refactor cannot regress the contract.
+	if m.state.Compose != nil {
+		return m.handleKeyTextarea(msg)
+	}
 	// Help modal absorbs all keystrokes except its dismiss set. It takes
 	// precedence over visual / pane routing so the modal can be reached and
 	// dismissed from any prior state without leaking keys to the body.
@@ -19,7 +46,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "?":
 		m.state.DiffPendingPrefix = ""
-		m.state.Modal = nil
+		// Opening Help while a zoom modal is up closes the modal first
+		// (Help layers above), so the post-Help close lands the user
+		// back on the modal's opener pane. closeModal is a no-op when
+		// Modal is already nil.
+		m.closeModal()
 		m.state.HelpOpen = true
 		return m, nil
 	case "q":
@@ -28,10 +59,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// from inside a modal would force the user to keep mental state
 		// about "did I open the modal or not" before pressing q;
 		// closing first and quitting on the next q is the less
-		// surprising default. Ctrl+C still quits unconditionally — it
-		// is the universal "force exit" gesture.
+		// surprising default. closeModal restores focus to the pane the
+		// user opened the modal from (Diff if it was a Diff Enter
+		// handoff, the original pane if it was `<space>`).
 		if m.state.Modal != nil {
-			m.state.Modal = nil
+			m.closeModal()
 			return m, nil
 		}
 		return m, tea.Quit
@@ -43,7 +75,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// when no modal is open. Help modal has its own absorber in
 		// handleKeyHelp; visual mode handles Ctrl+C in handleKeyVisual.
 		if m.state.Modal != nil {
-			m.state.Modal = nil
+			m.closeModal()
 			return m, nil
 		}
 		return m, tea.Quit
@@ -52,17 +84,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Keeping Esc no-op outside the modal preserves the existing
 		// "no surprising side effect" contract elsewhere in the app.
 		if m.state.Modal != nil {
-			m.state.Modal = nil
+			m.closeModal()
 		}
 		return m, nil
 	case "tab":
 		m.state.DiffPendingPrefix = ""
-		m.state.Modal = nil
+		// Tab from inside a modal: first restore focus to the opener
+		// pane via closeModal, then advance from there. Without the
+		// restore, the modal-side FocusedPane (e.g. Comments after a
+		// Diff Enter handoff) would steer the next/prev calculation —
+		// surprising because the user is mentally still on the opener.
+		if m.state.Modal != nil {
+			m.closeModal()
+		}
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
 		return m, nil
 	case "shift+tab":
 		m.state.DiffPendingPrefix = ""
-		m.state.Modal = nil
+		if m.state.Modal != nil {
+			m.closeModal()
+		}
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
 		return m, nil
 	case "v":
@@ -91,6 +132,35 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.DiffPendingPrefix = ""
 		m.advanceFile(false)
 		return m, nil
+	case "enter":
+		// Enter inside a Files / Commits zoom modal hands focus to the
+		// Diff pane (the user has just picked the row they want to
+		// inspect). Files-tree directory rows still fold/unfold via
+		// the per-pane handler — that branch returns to handleKeyFiles
+		// below. Comments modal Enter falls through to the standard
+		// per-pane handler so the new edit/r dispatch (#3) keeps
+		// working inside the modal.
+		if m.state.Modal != nil {
+			switch m.state.Modal.Pane {
+			case model.PaneFiles:
+				// Tree mode + dir row: fall through to the per-pane
+				// handler so the directory fold/unfold gesture stays
+				// available. fileIndexFromTreeCursor returns -1 when
+				// the cursor is on a directory row.
+				if m.state.FilesTreeMode && m.fileIndexFromTreeCursor() < 0 {
+					break
+				}
+				m.state.Modal = nil
+				m.state.FocusedPane = model.PaneDiff
+				m.state.CommentsCursor = 0
+				return m, nil
+			case model.PaneCommits:
+				m.state.Modal = nil
+				m.state.FocusedPane = model.PaneDiff
+				m.state.CommentsCursor = 0
+				return m, nil
+			}
+		}
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
@@ -101,6 +171,31 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleKeyDiff(msg)
 	case model.PaneComments:
 		return m.handleKeyComments(msg)
+	}
+	return m, nil
+}
+
+// handleKeyConfirm absorbs every keystroke while a `[y]es / [n]o`
+// prompt is up for a parked compose payload. The dispatch is narrow on
+// purpose — every other key (j/k, tab, ?, runes) is silently swallowed
+// so the user cannot navigate behind the prompt or accidentally toss
+// the parked payload.
+//
+//   - y          → commit: PendingConfirm clears, Compose receives the
+//     payload, the editor / textarea Cmd starts.
+//   - n          → cancel: payload discarded.
+//   - Esc        → cancel.
+//   - q, Ctrl+C  → cancel (do not quit; symmetric with the modal-close
+//     "soft cancel" contract — a stray q during the prompt should not
+//     drop the user out of the program with a draft inflight).
+//   - other      → absorbed (no-op).
+func (m Model) handleKeyConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y":
+		return m, m.confirmComposeStart()
+	case "n", "esc", "q", "ctrl+c":
+		m.cancelComposeConfirm()
+		return m, nil
 	}
 	return m, nil
 }

@@ -1,8 +1,6 @@
-<h1 align="center">gh-reva</h1>
-
-<p align="center">
-  <img src="assets/logo.png" alt="gh-reva logo" width="240">
-</p>
+<h1 align="center">
+  <img src="assets/logo2.png" alt="gh-reva" width="240">
+</h1>
 
 <p align="center">PR review TUI distributed as a <code>gh</code> CLI extension.</p>
 
@@ -57,12 +55,13 @@ prefixed with `> `. Visual selection extends `> ` across the selected range.
 | `gg` / `G` | Buffer start / end | Diff |
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up | Diff |
 | `Ctrl-f` / `Ctrl-b` | Full-page down / up | Diff |
-| `<space>` | Files / Commits: toggle hover popup • Diff: split⇄unified | Files, Commits, Diff |
+| `<space>` | Files / Commits / Comments: open zoom modal • Diff: split⇄unified | All |
 | `t` | Files: toggle flat ⇄ tree rendering | Files |
-| `Enter` | Tree mode only: fold / unfold directory under cursor | Files |
+| `Enter` | Diff (uncommented row): start a new pending review comment • Diff (commented row): jump into the Comments zoom modal • Comments: edit your own comment in place • Files (tree-mode dir): fold / unfold | Diff, Comments, Files |
+| `r` | Reply to the thread under the cursor | Comments |
 | `v` / `y` / `Esc` | Visual mode + yank to clipboard / cancel | All |
 | `?` | Toggle the help modal (dismiss with `?` / `Esc` / `q` / `Ctrl-C`) | All |
-| `q` / `Ctrl-C` | Quit | All |
+| `q` / `Ctrl-C` | Quit (closes any open modal first) | All |
 
 `tab` / `shift-tab` are the only keys that move focus between panes. `j` / `k`
 in Files and Commits auto-selects the cursor row, so the Diff and Comments
@@ -123,15 +122,32 @@ is allowed but may render with poor contrast.
 | `--no-color` | Disable color output. Also reads `NO_COLOR` / `CLICOLOR` |
 | `--list-themes` | Print every accepted theme name on stdout and exit 0 |
 
-## Cursor row hover
+## Zoom modal
 
-In Files and Commits, press `<space>` to toggle a small bordered popup
-that mirrors the cursor row's full content: path + comment count for
-Files, `<sha> <subject>` plus the commit body for Commits. The popup
-hovers above the cursor row, anchored to the path / SHA column so its
-text lines up with the row below. While the popup is open, `j` / `k`
-update its body to the new cursor row; pressing `<space>` again closes
-it.
+In Files, Commits, and Comments, press `<space>` to open a centered
+zoom modal that re-renders the active pane at a wider width. Files and
+Commits get extra horizontal room for long paths and subjects;
+Comments wraps at up to 80 columns so long bodies stay readable.
+Inside the modal, `j` / `k` propagate to the underlying main state, so
+closing the modal leaves the cursor on the same row you landed on.
+Press `<space>` (or `Esc` / `q` / `Ctrl-C`) to close. The Comments
+modal additionally honors `Enter` (edit your own comment) and `r`
+(reply) so you don't have to close it first to act on a thread. Diff
+keeps `<space>` reserved for the split ⇄ unified toggle.
+
+## Pending review comments
+
+Press `Enter` on a Diff line to start a new pending review comment,
+or `Enter` / `r` on a Comments thread to edit your own comment / reply.
+gh-reva opens the body in `$VISUAL` (or `$EDITOR`) by default and falls
+back to an in-app textarea (`Ctrl-S` save, `Esc` cancel) when neither is
+set. The submitted comment appends to the user's pending review on
+GitHub and renders with a `[pending]` tag in the Comments column until
+finalized. gh-reva does not expose a "submit review" gesture — finalize
+via the GitHub web UI or `gh api graphql` once the draft is ready.
+
+Visual mode in Diff captures a multi-line range: enter `v`, move to the
+other endpoint, then `Enter` to compose against the range.
 
 ## Development
 

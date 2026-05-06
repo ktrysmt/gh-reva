@@ -43,6 +43,7 @@ func builtinDark() *Theme {
 		CommentAuthor:   lipgloss.Color("#79c0ff"),
 		CommentDate:     lipgloss.Color("#6e7681"),
 		CommentOutdated: lipgloss.Color("#f85149"),
+		CommentPending:  lipgloss.Color("#d29922"),
 
 		LoadingSpinner: lipgloss.Color("#58a6ff"),
 		ErrorText:      lipgloss.Color("#f85149"),

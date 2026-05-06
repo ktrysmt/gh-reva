@@ -3,6 +3,15 @@ package model
 type AppState struct {
 	PR *PR
 
+	// ViewerLogin is the authenticated GitHub user's login, populated
+	// during the load sequence via Client.ViewerLogin. Used by the
+	// Comments-pane Enter dispatch to gate the "edit own comment" path
+	// (vs the "reply only on others" hint). Empty until the first
+	// successful viewer fetch — the Comments pane treats empty as
+	// "ownership unknown, fall back to reply" so an early Enter before
+	// the viewer arrives degrades safely instead of misrouting to edit.
+	ViewerLogin string
+
 	FocusedPane PaneID
 
 	SelectedFile  string
@@ -23,7 +32,33 @@ type AppState struct {
 
 	Modal *ModalState
 
+	// Compose drives the PR-comment input flow (Diff Enter / Comments
+	// Enter). Non-nil while the user is composing, submitting, or viewing
+	// a submission failure; nil otherwise. The handleKey dispatcher in
+	// keys.go absorbs keystrokes when Compose != nil && UseTextarea so
+	// the textarea owns input; the $EDITOR path returns to nil control
+	// the moment tea.ExecProcess exits and the resulting message is
+	// processed.
+	Compose *ComposeState
+
+	// PendingConfirm holds a built-but-not-yet-started Compose payload
+	// while the user is shown a `[y]es / [n]o` prompt. The actual editor
+	// launch is deferred until the user presses `y`; `n` / `Esc` / `q` /
+	// `Ctrl+C` discard the payload. While PendingConfirm is non-nil the
+	// keystroke router routes every key through handleKeyConfirm so
+	// background panes are frozen and the prompt cannot be missed.
+	// Compose stays nil during the confirm step — only on `y` does the
+	// payload move into Compose and the editor / textarea start.
+	PendingConfirm *PendingConfirm
+
 	HelpOpen bool
+
+	// Notice is a transient single-line message shown in the status bar
+	// (replacing the per-pane context, suffix dropped). Set by handlers
+	// that need to surface a soft warning — e.g. "Comments Enter on a
+	// foreign user's comment is reply-only" — and cleared by the next
+	// keystroke at the top of handleKey. Empty string means "no notice".
+	Notice string
 
 	// DiffPendingPrefix holds a pane-scoped key prefix awaiting completion
 	// (vim-style). Currently only `g` is recorded — a follow-up `g` completes
@@ -93,9 +128,98 @@ type VisualState struct {
 // goes through the regular pane handlers, so navigation propagates to the
 // underlying main state and the modal closes onto the same row. Tab,
 // Shift-Tab, Esc, and `?` all close the modal; Diff `<space>` is
-// untouched (split⇄unified). Pane is the pane the modal is showing.
+// untouched (split⇄unified).
+//
+//   - Pane    : the pane the modal is showing.
+//   - Origin  : the pane the user was on when the modal opened. Most close
+//     gestures (space, q, Esc, Ctrl+C) restore focus to Origin so the
+//     user lands back where they started — relevant when the modal was
+//     opened via a handoff (Diff Enter on a commented row → Comments
+//     modal with Origin=Diff): without Origin restore, focus would
+//     linger on Comments after close. Tab / Shift-Tab close the modal
+//     too but advance focus from Origin instead of restoring to it.
 type ModalState struct {
-	Pane PaneID
+	Pane   PaneID
+	Origin PaneID
+}
+
+// ComposeKind tags which GraphQL mutation a ComposeState resolves to:
+//
+//   - ComposeInline → addPullRequestReviewThread on the PR's pending
+//     review (created on demand). Path / CommitSHA / Line / Side
+//     (and StartLine / StartSide for ranges) describe the anchor.
+//   - ComposeReply → addPullRequestReviewThreadReply on the parent
+//     thread. ParentThreadID is the GraphQL node ID of the thread
+//     under the cursor — the only field needed by the reply mutation.
+//   - ComposeEdit → updatePullRequestReviewComment on a single
+//     existing comment (Pending or public, viewer-authored only).
+//     EditCommentNodeID is the comment's GraphQL node ID. The pre-edit
+//     body is preloaded into the editor / textarea so the user starts
+//     from the existing text instead of a blank buffer.
+type ComposeKind int
+
+const (
+	ComposeInline ComposeKind = iota
+	ComposeReply
+	ComposeEdit
+)
+
+// ComposeStatus is the lifecycle of one Compose attempt:
+//   - Editing: body is being collected (editor or textarea).
+//   - Submitting: the GraphQL POST is in flight.
+//   - Failed: the POST returned an error; Body and ErrMsg are
+//     preserved so Ctrl+S retries without re-typing.
+//
+// A successful POST clears Compose entirely (no Succeeded state);
+// the returned ReviewComment is appended to PR.Comments with
+// Pending=true and the user is back in normal navigation.
+type ComposeStatus int
+
+const (
+	ComposeEditing ComposeStatus = iota
+	ComposeSubmitting
+	ComposeFailed
+)
+
+// PendingConfirm is the parking state for a built ComposeState while
+// the user is shown a `[y]es / [n]o` prompt. Holding the built payload
+// here (instead of in Compose) keeps the global Compose absorber from
+// engaging — that absorber routes every key through the textarea, which
+// would intercept the `y` / `n` we need for the confirm dispatch. On
+// `y` the payload moves into AppState.Compose and the editor / textarea
+// starts; on `n` / `Esc` / `q` / `Ctrl+C` the payload is discarded.
+//
+// Kind duplicates Compose.Kind so the status-bar prompt can pick the
+// right label without dereferencing Compose (e.g. "start new comment?"
+// vs "post reply?" vs "edit comment?").
+type PendingConfirm struct {
+	Kind    ComposeKind
+	Compose *ComposeState
+}
+
+// ComposeState is the in-flight state of a comment-input session.
+type ComposeState struct {
+	Kind        ComposeKind
+	Status      ComposeStatus
+	UseTextarea bool
+
+	// Inline target (Kind == ComposeInline).
+	Path      string
+	CommitSHA string
+	Line      int
+	Side      string
+	StartLine *int
+	StartSide string
+
+	// Reply target (Kind == ComposeReply).
+	ParentThreadID string
+
+	// Edit target (Kind == ComposeEdit). Comment NodeID is the GraphQL
+	// identity of the comment whose body is being rewritten.
+	EditCommentNodeID string
+
+	Body   string
+	ErrMsg string
 }
 
 func NewAppState() *AppState {
@@ -107,3 +231,4 @@ func NewAppState() *AppState {
 		Loading:      map[string]bool{},
 	}
 }
+

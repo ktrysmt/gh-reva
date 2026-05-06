@@ -5,8 +5,9 @@ import (
 )
 
 type PRLoadedMsg struct {
-	PR    *model.PR
-	Diffs map[string]string
+	PR          *model.PR
+	Diffs       map[string]string
+	ViewerLogin string
 }
 
 // LoadStageMsg announces the start of a loading stage so the spinner can
@@ -29,4 +30,36 @@ type ScrollDiffToLineMsg struct {
 
 type ErrMsg struct {
 	Err error
+}
+
+// composeBodyMsg fires when the comment-input source produces a body.
+// The $EDITOR path emits this from tea.ExecProcess's exit callback;
+// the textarea fallback emits it from its Ctrl+S save handler.
+// Empty body (after TrimSpace) cancels — Compose state is cleared.
+// A non-empty body transitions Compose to Submitting and the Update
+// handler queues submitComposeCmd to POST it to GitHub as part of the
+// user's pending review.
+type composeBodyMsg struct {
+	body string
+	err  error
+}
+
+// composeSubmittedMsg fires when the GraphQL POST completes.
+// Success: the Update handler appends `comment` (Pending=true since
+// the review is still draft) to PR.Comments and clears Compose.
+// Failure: ComposeStatus is flipped to Failed with ErrMsg populated;
+// the body buffer is preserved so Ctrl+S retries without re-typing.
+type composeSubmittedMsg struct {
+	comment *model.ReviewComment
+	err     error
+}
+
+// commentsRefreshedMsg carries the freshly-fetched comment list after
+// a successful compose POST. The Update handler merges PR.Comments
+// (preserving any locally-known Pending entries the refresh response
+// has not seen yet) and recomputes per-file CommentCount so the pane
+// chrome stays in sync.
+type commentsRefreshedMsg struct {
+	comments []*model.ReviewComment
+	err      error
 }

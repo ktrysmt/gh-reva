@@ -142,14 +142,40 @@ test('G8: h/l are no-ops in Comments — threads are always expanded', async () 
   await quit(s)
 })
 
-test('G9: Enter is a no-op in Phase 1', async () => {
-  const s = await launchReva()
+test('G9: r on Comments opens the reply compose modal (after y confirm)', async () => {
+  // The reply gesture moved from Enter to `r`; Enter is now in-place
+  // edit (own-author only). carol's comment is foreign so Enter
+  // surfaces a Notice — covered by G9b. r still works for replies on
+  // any author. The compose flow is now gated by a `[y]es / [n]o`
+  // confirm prompt, so the reply textarea only opens after `y`.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
-  await s.press('tab'); await s.press('tab'); await s.press('tab')   // focus Comments
-  const before = await s.text()
+  await s.press('tab'); await s.press('tab')                          // focus Diff
+  for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
+  await s.press('tab')                                                // → Comments
+  await s.type('r')
+  await s.waitForText('post reply? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
+  await s.waitForText('Reply', { timeout: 5000 })
+  await s.press('esc')                                                // close modal
+  const after = await s.text()
+  assert.match(after, /▶ Comments/, 'focus stays on Comments after compose closes')
+  await quit(s)
+})
+
+test('G9b: Enter on Comments without a thread is a no-op (no notice either)', async () => {
+  // Buffer 0 (file header) has no anchored thread → buildComposeEdit
+  // refuses without setting Notice (the foreign-author message would
+  // mislead when the cursor is off-thread entirely).
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab'); await s.press('tab')    // focus Comments
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on Comments must be a no-op in Phase 1')
+  assert.ok(!/New comment|Reply|Edit comment/.test(after),
+    `Comments Enter without a thread must not open compose`)
+  assert.ok(!/cannot edit comments by other users/.test(after),
+    `the foreign-author notice must not surface when there is no thread`)
   await quit(s)
 })
 

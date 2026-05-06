@@ -109,6 +109,34 @@ func TestCommentsViewShowsOnlyCursorAnchorThreads(t *testing.T) {
 	}
 }
 
+// TestCommentsTagsPendingOnRootAndReply pins the contract that a Pending
+// comment carries a `[pending]` tag in its header row regardless of
+// depth (root vs reply). The tag is the user-visible signal that a
+// draft has not yet been submitted via the R-key flow; missing it on
+// either depth would let the user accidentally submit-then-publish a
+// reply they thought was still local.
+func TestCommentsTagsPendingOnRootAndReply(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.PR.Comments[0].Pending = true // root (carol)
+	m.state.PR.Comments[1].Pending = true // reply (alice)
+	m.state.DiffCursor.Line = 2
+
+	got := m.commentsView()
+	rootIdx := strings.Index(got, "carol")
+	replyIdx := strings.Index(got, "alice")
+	if rootIdx < 0 || replyIdx < 0 {
+		t.Fatalf("both root and reply must be visible:\n%s", got)
+	}
+	rootRow := got[rootIdx:replyIdx]
+	if !strings.Contains(rootRow, "[pending]") {
+		t.Errorf("root header must carry [pending]:\n%s", rootRow)
+	}
+	replyRow := got[replyIdx:]
+	if !strings.Contains(replyRow, "[pending]") {
+		t.Errorf("reply header must carry [pending]:\n%s", replyRow)
+	}
+}
+
 // TestCommentsHeaderUsesNewFormat pins the header shape:
 //
 //	<name>: <yyyy-mm-dd hh:mm> <hash>

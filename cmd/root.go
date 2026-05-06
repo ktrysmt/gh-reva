@@ -81,10 +81,6 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if slowLoad > 0 {
-			client = api.WithSlowLoad(client, slowLoad)
-		}
-
 		ref, err := api.ParseTargetArg(ctx, client, args)
 		if err != nil {
 			return err
@@ -107,8 +103,21 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		// Apply --slow-load AFTER the probe so the splash is visible
+		// during preview. The probe re-runs the same call WithSlowLoad
+		// would intercept; if the wrapper sat above the probe (the
+		// previous order), the user would see a black terminal for the
+		// full slow-load duration BEFORE the TUI launches — defeating
+		// the flag's stated purpose ("observe the splash / spinner").
+		// fixtureClient.wait() ignores ctx, so the 10s probe timeout
+		// would not have saved us either.
+		if slowLoad > 0 {
+			client = api.WithSlowLoad(client, slowLoad)
+		}
+
 		m := tui.NewModel(client, ref)
 		m.SetTheme(th)
+		m.SetVersion(version)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}

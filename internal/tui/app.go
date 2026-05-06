@@ -27,6 +27,14 @@ type Model struct {
 	height      int
 	err         error
 
+	// Splash variants are picked once at NewModel time and held for the
+	// life of the program so the loading view does not flicker through
+	// designs during the few seconds of PR load. version is rendered
+	// between the splash block and the spinner; empty → omitted.
+	version      string
+	splashLayout splashLayout
+	splashArtIdx int
+
 	// Per-pane render budgets, set by View() before delegating to the
 	// pane renderers. Each pane uses these for width-aware wrapping
 	// (Comments) or viewport sizing (Diff).
@@ -57,16 +65,23 @@ func (m *Model) SetTheme(t *theme.Theme) {
 	m.theme = t
 }
 
+// SetVersion stores the version string rendered on the loading splash.
+// Empty string suppresses the version line entirely. cmd/root.go passes
+// the ldflag-injected version (e.g. "v0.4.2" or "dev").
+func (m *Model) SetVersion(v string) { m.version = v }
+
 func NewModel(client api.Client, target *api.Target) Model {
 	t, _ := theme.Resolve("")
 	return Model{
-		client:      client,
-		target:      target,
-		state:       model.NewAppState(),
-		theme:       t,
-		syntaxCache: &syntaxCache{},
-		patchLinesC: patchLinesCache{cache: map[string]*patchInfo{}},
-		rowCache:    &diffRowCache{m: map[string][]string{}},
+		client:       client,
+		target:       target,
+		state:        model.NewAppState(),
+		theme:        t,
+		syntaxCache:  &syntaxCache{},
+		patchLinesC:  patchLinesCache{cache: map[string]*patchInfo{}},
+		rowCache:     &diffRowCache{m: map[string][]string{}},
+		splashLayout: chooseSplashLayout(),
+		splashArtIdx: chooseSplashArt(),
 	}
 }
 
@@ -94,6 +109,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PRLoadedMsg:
 		m.state.PR = msg.PR
 		m.state.DiffCache = msg.Diffs
+		m.state.ViewerLogin = msg.ViewerLogin
 		if len(msg.PR.Files) > 0 {
 			m.state.SelectedFile = msg.PR.Files[0].Path
 		}
@@ -109,6 +125,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollDiffToLine(bufIdx, len(lines))
 		}
 		return m, nil
+	case composeBodyMsg:
+		cmd := m.applyComposeBody(msg)
+		return m, cmd
+	case composeSubmittedMsg:
+		return m, m.applyComposeSubmitted(msg)
+	case commentsRefreshedMsg:
+		m.applyCommentsRefreshed(msg)
+		return m, nil
 	case ErrMsg:
 		m.err = msg.Err
 		return m, tea.Quit
@@ -120,13 +144,15 @@ func (m Model) View() string {
 	if m.state.PR == nil {
 		return m.loadingView(m.state.LoadFrame, m.state.LoadStage)
 	}
-	// Reserve the bottom row for the status bar (CLAUDE.md §4 #6) once
-	// the PR is loaded. The visual hint and the modal/help close hint all
-	// ride this same row, so the previous standalone `-- VISUAL --`
-	// banner is gone.
+	// Reserve the bottom 3 rows for the bordered status bar (CLAUDE.md
+	// §4 #6) once the PR is loaded. The visual hint and the modal /
+	// help close hint all ride the bar's middle row, so the previous
+	// standalone `-- VISUAL --` banner is gone. statusBar() returns ""
+	// when m.height <= statusBarRows, in which case bodyHeight stays
+	// equal to m.height and the body uses the whole screen.
 	bodyHeight := m.height
-	if bodyHeight > 1 {
-		bodyHeight--
+	if bodyHeight > statusBarRows {
+		bodyHeight -= statusBarRows
 	}
 	statusBar := m.statusBar()
 	if m.width <= 0 || bodyHeight < 8 {
@@ -148,6 +174,7 @@ func (m Model) View() string {
 		}, "\n\n")
 		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
+		body = m.overlayCompose(body)
 		if statusBar != "" {
 			return body + "\n" + statusBar
 		}
@@ -184,6 +211,7 @@ func (m Model) View() string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
 	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
+	body = m.overlayCompose(body)
 
 	if statusBar != "" {
 		return body + "\n" + statusBar
@@ -383,21 +411,36 @@ func (m Model) loadingView(frame int, stage model.LoadStage) string {
 	spinnerLine := fmt.Sprintf("%s Loading PR (%s)...", fg(glyph, m.theme.LoadingSpinner), stageLabel(stage))
 	if m.width <= 0 || m.height <= 0 {
 		// Pre-WindowSize fallback: keep the spinner top-left so the very first
-		// frame still emits text. Skip the logo here to avoid emitting a
+		// frame still emits text. Skip the splash here to avoid emitting a
 		// raw-art block before we know the terminal width.
 		return spinnerLine
 	}
-	logo := renderLogo(m.theme)
-	logoRows := strings.Split(logo, "\n")
 
-	// Block = logo + 1 blank gap + spinner line. Center each row by its own
-	// visible width so glyph rows of differing width still align around the
-	// terminal midline.
-	rows := make([]string, 0, len(logoRows)+2)
-	rows = append(rows, logoRows...)
+	// Block = splash + blank + (version + blank if non-empty) + spinner.
+	// The splash variant is chosen at NewModel time and held for the
+	// program's lifetime so the loading view does not flicker between
+	// designs during the few seconds of PR load.
+	var splashRows []string
+	switch m.splashLayout {
+	case splashLayoutAscii:
+		splashRows = strings.Split(m.renderRevaArt(), "\n")
+	case splashLayoutDomeAscii:
+		splashRows = m.composeDomeAndAscii()
+	default: // splashLayoutDome
+		splashRows = strings.Split(renderLogo(m.theme), "\n")
+	}
+
+	rows := make([]string, 0, len(splashRows)+4)
+	rows = append(rows, splashRows...)
 	rows = append(rows, "")
+	if v := m.versionLineFor(m.splashLayout); v != "" {
+		rows = append(rows, v)
+		rows = append(rows, "")
+	}
 	rows = append(rows, spinnerLine)
 
+	// Center each row by its own visible width so glyph rows of differing
+	// width still align around the terminal midline.
 	var sb strings.Builder
 	topPad := 0
 	if m.height > len(rows) {
@@ -503,10 +546,15 @@ func loadPRCmd(c api.Client, t *api.Target) tea.Cmd {
 					}
 				}
 			}
+			// Viewer login is fetched last so a network blip on this
+			// non-critical lookup doesn't block the rest of the load.
+			// Empty string is acceptable — Comments-pane Enter falls
+			// back to reply when ownership is unknown.
+			viewer, _ := c.ViewerLogin(ctx)
 			acc.pr.Commits = acc.commits
 			acc.pr.Files = acc.files
 			acc.pr.Comments = acc.comments
-			return PRLoadedMsg{PR: acc.pr, Diffs: diffs}
+			return PRLoadedMsg{PR: acc.pr, Diffs: diffs, ViewerLogin: viewer}
 		},
 	)
 }

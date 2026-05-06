@@ -35,7 +35,38 @@ func NewFixtureClient(path string) (Client, error) {
 	if d.PR == nil {
 		return nil, fmt.Errorf("fixture missing pr field")
 	}
+	backfillThreadIDs(d.Comments)
 	return &fixtureClient{d: &d}, nil
+}
+
+// backfillThreadIDs populates synthetic GraphQL-style thread IDs on
+// fixture comments so the reply compose flow has something to point
+// at without needing every test JSON file to carry node ids. Roots
+// (InReplyTo == 0) get a per-comment ID; replies inherit their
+// parent's thread ID.
+func backfillThreadIDs(comments []*model.ReviewComment) {
+	rootThread := map[int64]string{}
+	for _, c := range comments {
+		if c.InReplyTo != 0 {
+			continue
+		}
+		if c.ThreadID == "" {
+			c.ThreadID = fmt.Sprintf("PRT_fixture_%d", c.ID)
+		}
+		rootThread[c.ID] = c.ThreadID
+	}
+	for _, c := range comments {
+		if c.InReplyTo == 0 {
+			continue
+		}
+		if c.ThreadID == "" {
+			if id, ok := rootThread[c.InReplyTo]; ok {
+				c.ThreadID = id
+			} else {
+				c.ThreadID = fmt.Sprintf("PRT_fixture_%d", c.ID)
+			}
+		}
+	}
 }
 
 // WithSlowLoad returns a copy of c that injects `d` into every method call so
@@ -89,4 +120,101 @@ func (c *fixtureClient) GetFileDiff(ctx context.Context, owner, repo string, n i
 
 func (c *fixtureClient) ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error) {
 	return c.d.PR.Owner, c.d.PR.Repo, c.d.PR.Number, nil
+}
+
+// CreatePendingReviewThread appends a synthetic ReviewComment
+// (Pending=true) to the in-memory fixture as if it were posted under
+// a pending review on GitHub. ID / NodeID / ThreadID are derived from
+// time.Now().UnixNano() so they are unique within a session yet stay
+// distinct from real GitHub IDs.
+func (c *fixtureClient) CreatePendingReviewThread(ctx context.Context, owner, repo string, n int, in CreatePendingThreadInput) (*model.ReviewComment, error) {
+	c.wait()
+	now := time.Now()
+	id := now.UnixNano()
+	rc := &model.ReviewComment{
+		ID:        id,
+		NodeID:    fmt.Sprintf("PRRC_pending_%d", id),
+		ThreadID:  fmt.Sprintf("PRRT_pending_%d", id),
+		Path:      in.Path,
+		CommitID:  in.CommitOID,
+		Line:      in.Line,
+		Side:      in.Side,
+		User:      "you",
+		CreatedAt: now.UTC(),
+		Body:      in.Body,
+		Pending:   true,
+	}
+	c.d.Comments = append(c.d.Comments, rc)
+	c.bumpFileCommentCount(in.Path)
+	return rc, nil
+}
+
+// CreatePendingReviewThreadReply appends a pending reply that
+// inherits Path / CommitID / Line / Side / ThreadID from the parent
+// thread (looked up by ThreadID across the in-memory comment list).
+func (c *fixtureClient) CreatePendingReviewThreadReply(ctx context.Context, owner, repo string, n int, parentThreadID, body string) (*model.ReviewComment, error) {
+	c.wait()
+	var parent *model.ReviewComment
+	for _, p := range c.d.Comments {
+		if p.ThreadID == parentThreadID {
+			parent = p
+			break
+		}
+	}
+	if parent == nil {
+		return nil, fmt.Errorf("fixture: thread %q not found", parentThreadID)
+	}
+	now := time.Now()
+	id := now.UnixNano()
+	rc := &model.ReviewComment{
+		ID:        id,
+		NodeID:    fmt.Sprintf("PRRC_pending_%d", id),
+		ThreadID:  parent.ThreadID,
+		Path:      parent.Path,
+		CommitID:  parent.CommitID,
+		Line:      parent.Line,
+		Side:      parent.Side,
+		InReplyTo: parent.ID,
+		User:      "you",
+		CreatedAt: now.UTC(),
+		Body:      body,
+		Pending:   true,
+	}
+	c.d.Comments = append(c.d.Comments, rc)
+	c.bumpFileCommentCount(parent.Path)
+	return rc, nil
+}
+
+// UpdateReviewComment edits a comment in the in-memory fixture. Match
+// is by NodeID; mismatch returns an error so tests catch typos rather
+// than silently no-op'ing. Mirrors the real client's behaviour: only
+// the body changes (CreatedAt et al. stay), and the response is the
+// updated comment.
+func (c *fixtureClient) UpdateReviewComment(ctx context.Context, owner, repo string, n int, commentNodeID, body string) (*model.ReviewComment, error) {
+	c.wait()
+	for _, p := range c.d.Comments {
+		if p.NodeID == commentNodeID {
+			p.Body = body
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("fixture: comment %q not found", commentNodeID)
+}
+
+// ViewerLogin returns the synthetic "you" login the fixture uses for
+// locally-authored comments (compose / reply impls set User="you").
+// The string matches the fixture's own writes so the TUI's
+// own-vs-others Enter gate behaves the same against fixtures and live
+// GitHub.
+func (c *fixtureClient) ViewerLogin(ctx context.Context) (string, error) {
+	return "you", nil
+}
+
+func (c *fixtureClient) bumpFileCommentCount(path string) {
+	for _, f := range c.d.Files {
+		if f.Path == path {
+			f.CommentCount++
+			return
+		}
+	}
 }

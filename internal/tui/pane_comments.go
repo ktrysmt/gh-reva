@@ -34,9 +34,41 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.CommentsCursor > 0 {
 			m.state.CommentsCursor--
 		}
+	case "enter":
+		// Edit the cursor comment — only the viewer's own comments are
+		// editable per GitHub's permission model. startComposeEdit
+		// queues PendingConfirm on success; success is detected by
+		// inspecting m.state.PendingConfirm (the call returns nil
+		// either way because the editor launch is held until `y`).
+		// On a foreign comment (or before the viewer login is known),
+		// surface a status-bar notice steering the user to `r` for
+		// reply instead of POSTing into a 403.
+		m.startComposeEdit()
+		if m.state.PendingConfirm != nil {
+			return m, nil
+		}
+		if c := commentAtCursor(flat, m.state.CommentsCursor); c != nil && c.User != m.state.ViewerLogin {
+			m.state.Notice = "cannot edit comments by other users (press r to reply)"
+		}
+		return m, nil
+	case "r":
+		// Reply to the thread under the cursor (the previous Enter
+		// gesture). No-op when no thread is visible. The editor launch
+		// is gated by the y/n confirm prompt; the immediate Cmd is nil.
+		return m, m.startComposeReply()
 	}
 	m.syncDiffToCursorComment()
 	return m, nil
+}
+
+// commentAtCursor returns the flat-list entry at idx, or nil when the
+// index is out of range. Helper for handleKeyComments' notice gate so
+// the bounds check stays out of the dispatch switch.
+func commentAtCursor(flat []*model.ReviewComment, idx int) *model.ReviewComment {
+	if idx < 0 || idx >= len(flat) {
+		return nil
+	}
+	return flat[idx]
 }
 
 // syncDiffToCursorComment auto-scrolls the Diff viewport so the comment under
@@ -102,8 +134,17 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
 	}
-	tag := ""
-	if c.Outdated {
+	// Pending takes precedence over outdated — a pending comment by
+	// definition has not been posted yet, so the outdated bit cannot
+	// fire on it. The tag is colored independently so the user can
+	// tell at a glance which entries are local-only drafts.
+	var tag string
+	tagColor := m.theme.CommentOutdated
+	switch {
+	case c.Pending:
+		tag = " [pending]"
+		tagColor = m.theme.CommentPending
+	case c.Outdated:
 		tag = " [outdated]"
 	}
 	header := fmt.Sprintf("%s%s%s: %s %s%s",
@@ -111,7 +152,7 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
-		fg(tag, m.theme.CommentOutdated),
+		fg(tag, tagColor),
 	)
 
 	wrapWidth := m.paneWidthComments
