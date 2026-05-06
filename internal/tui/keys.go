@@ -7,6 +7,24 @@ import (
 )
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Submit-review modal absorbs every keystroke until dismissed.
+	// Takes precedence over Compose because submitting closes the
+	// pending-review draft as a whole — it cannot be opened on top of
+	// an in-flight compose anyway (the dispatcher routes Compose first
+	// when both are non-nil, see below).
+	if m.state.SubmitReview != nil {
+		return m.handleKeySubmit(msg)
+	}
+	// Compose absorbs all keystrokes when active so the textarea owns
+	// input (Ctrl+S save, Esc cancel, runes append to body) and any
+	// post-editor state (Submitting / Failed) cannot accidentally
+	// trigger pane navigation behind the modal. The $EDITOR Editing
+	// state cannot reach this branch in practice — bubbletea is
+	// suspended during tea.ExecProcess — but the guard is unconditional
+	// so a future refactor cannot regress the contract.
+	if m.state.Compose != nil {
+		return m.handleKeyTextarea(msg)
+	}
 	// Help modal absorbs all keystrokes except its dismiss set. It takes
 	// precedence over visual / pane routing so the modal can be reached and
 	// dismissed from any prior state without leaking keys to the body.
@@ -91,6 +109,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.DiffPendingPrefix = ""
 		m.advanceFile(false)
 		return m, nil
+	case "R":
+		// Open the submit-review modal. Like Compose, this is a global
+		// gesture independent of pane focus.
+		m.state.DiffPendingPrefix = ""
+		return m, m.startSubmitReview()
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:

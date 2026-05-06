@@ -203,32 +203,37 @@ test('F6: H jumps to viewport top after G scrolls down', async () => {
   await quit(s)
 })
 
-test('F7: Enter on a commented line is a no-op (Phase 2 will rebind to comment input)', async () => {
-  const s = await launchReva()
+test('F7: Enter on a commented diff line opens the comment compose modal', async () => {
+  // EDITOR/VISUAL forced empty so the textarea fallback fires deterministically;
+  // the modal title `New comment` is the canonical signal that compose opened.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
-  // Fixture comment 1001 (greeting.go) is anchored at new-file line 3, which
-  // maps to buffer index 5 in the PR-wide patch. Even on this anchored row,
-  // Enter must not shift focus to Comments — the legacy "drill into thread"
-  // gesture was retired with the column-movement cleanup.
+  // Fixture comment 1001 (greeting.go) is anchored at new-file line 3 →
+  // buffer index 5; Enter must open the compose overlay there.
   for (let i = 0; i < 5; i++) await s.type('j')
-  const before = await s.text()
   await s.press('enter')
+  await s.waitForText('New comment', { timeout: 5000 })
+  // Focus stays on Diff behind the modal; the modal absorbs all keys until
+  // dismissed.
+  await s.press('esc')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on a commented line must be a no-op')
-  assert.match(after, /▶ Diff/, 'focus must remain on Diff')
+  assert.match(after, /▶ Diff/, 'focus must remain on Diff after compose closes')
   await quit(s)
 })
 
-test('F8: Enter on a non-commented line is a no-op', async () => {
-  const s = await launchReva()
+test('F8: Enter on a header / hunk row is still a no-op', async () => {
+  // Buffer 0 is `--- a/src/greeting.go` (file header). buildComposeInline
+  // rejects header / hunk rows, so Enter cannot open compose there.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
-  // First line of the diff (file header) has no comment by construction.
   const before = await s.text()
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on a non-commented line must be a no-op')
+  assert.equal(before, after, 'Enter on a header line must be a no-op')
+  // Modal must NOT have appeared.
+  assert.ok(!/New comment/.test(after), 'header row Enter must not open compose')
   await quit(s)
 })
 

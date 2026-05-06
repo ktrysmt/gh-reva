@@ -102,6 +102,7 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 		CommentAuthor:   pick(chroma.GenericStrong, fb.CommentAuthor),
 		CommentDate:     pickBrighten(chroma.Text, -0.4, fb.CommentDate),
 		CommentOutdated: pick(chroma.GenericError, fb.CommentOutdated),
+		CommentPending:  pick(chroma.GenericSubheading, fb.CommentPending),
 
 		LoadingSpinner: pick(chroma.GenericStrong, fb.LoadingSpinner),
 		ErrorText:      pick(chroma.GenericError, fb.ErrorText),

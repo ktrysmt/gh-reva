@@ -34,6 +34,10 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.CommentsCursor > 0 {
 			m.state.CommentsCursor--
 		}
+	case "enter":
+		// Reply to the thread the cursor is sitting on. No-op when no
+		// thread is visible (cursor not on a ◆ row).
+		return m, m.startComposeReply()
 	}
 	m.syncDiffToCursorComment()
 	return m, nil
@@ -102,8 +106,17 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
 	}
-	tag := ""
-	if c.Outdated {
+	// Pending takes precedence over outdated — a pending comment by
+	// definition has not been posted yet, so the outdated bit cannot
+	// fire on it. The tag is colored independently so the user can
+	// tell at a glance which entries are local-only drafts.
+	var tag string
+	tagColor := m.theme.CommentOutdated
+	switch {
+	case c.Pending:
+		tag = " [pending]"
+		tagColor = m.theme.CommentPending
+	case c.Outdated:
 		tag = " [outdated]"
 	}
 	header := fmt.Sprintf("%s%s%s: %s %s%s",
@@ -111,7 +124,7 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
-		fg(tag, m.theme.CommentOutdated),
+		fg(tag, tagColor),
 	)
 
 	wrapWidth := m.paneWidthComments

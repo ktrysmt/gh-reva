@@ -25,7 +25,9 @@ func (r *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 // newTestGHClient wires a ghClient at an httptest.Server. The handler
-// receives every request — distinguish endpoints by req.URL.Path.
+// receives every request — distinguish endpoints by req.URL.Path. Both
+// the REST and the GraphQL clients route to the same server, so a
+// single handler can switch on `/graphql` vs `/repos/...` paths.
 func newTestGHClient(t *testing.T, handler http.HandlerFunc) (*ghClient, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -42,11 +44,22 @@ func newTestGHClient(t *testing.T, handler http.HandlerFunc) (*ghClient, *httpte
 	if err != nil {
 		t.Fatalf("new rest client: %v", err)
 	}
+	gql, err := gha.NewGraphQLClient(gha.ClientOptions{
+		Host:      "test.invalid",
+		AuthToken: "test-token",
+		Transport: &redirectTransport{target: u},
+	})
+	if err != nil {
+		t.Fatalf("new graphql client: %v", err)
+	}
 	return &ghClient{
-		rest:     rest,
-		prFiles:  map[int][]ghFile{},
-		commits:  map[string]*ghCommit{},
-		comments: map[int][]*model.ReviewComment{},
+		rest:            rest,
+		gql:             gql,
+		prFiles:         map[int][]ghFile{},
+		commits:         map[string]*ghCommit{},
+		comments:        map[int][]*model.ReviewComment{},
+		prNodeID:        map[int]string{},
+		pendingReviewID: map[int]string{},
 	}, srv
 }
 
@@ -95,23 +108,26 @@ func TestGHClientListCommits_RateLimit(t *testing.T) {
 }
 
 func TestGHClientListFiles_Pagination(t *testing.T) {
-	// Two-page response: first page exposes a Link rel=next, second page does not.
-	calls := 0
+	// Two-page REST response for /pulls/1/files; GraphQL stub for the
+	// reviewThreads query that ListComments now uses internally.
+	filesCalls := 0
 	c, _ := newTestGHClient(t, func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if !strings.Contains(r.URL.Path, "/pulls/1/files") && !strings.Contains(r.URL.Path, "/pulls/1/comments") {
-			http.NotFound(w, r)
-			return
-		}
-		switch calls {
-		case 1:
-			w.Header().Set("Link", `<https://test.invalid/repos/octocat/hello/pulls/1/files?page=2>; rel="next"`)
-			_, _ = w.Write([]byte(`[{"filename":"a.go","status":"modified","additions":1,"deletions":0,"patch":"@@ -1 +1 @@"}]`))
-		case 2:
-			_, _ = w.Write([]byte(`[{"filename":"b.go","status":"added","additions":2,"deletions":0,"patch":"@@ +1 +1,2 @@"}]`))
+		switch {
+		case r.URL.Path == "/graphql" || strings.HasSuffix(r.URL.Path, "/graphql"):
+			// ListComments call from ListFiles. Return one empty page so
+			// the count loop terminates immediately.
+			_, _ = w.Write([]byte(`{"data":{"repository":{"pullRequest":{"id":"PR_1","reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}`))
+		case strings.Contains(r.URL.Path, "/pulls/1/files"):
+			filesCalls++
+			switch filesCalls {
+			case 1:
+				w.Header().Set("Link", `<https://test.invalid/repos/octocat/hello/pulls/1/files?page=2>; rel="next"`)
+				_, _ = w.Write([]byte(`[{"filename":"a.go","status":"modified","additions":1,"deletions":0,"patch":"@@ -1 +1 @@"}]`))
+			default:
+				_, _ = w.Write([]byte(`[{"filename":"b.go","status":"added","additions":2,"deletions":0,"patch":"@@ +1 +1,2 @@"}]`))
+			}
 		default:
-			// ListFiles also calls ListComments internally; return empty list.
-			_, _ = w.Write([]byte(`[]`))
+			http.NotFound(w, r)
 		}
 	})
 	files, err := c.ListFiles(context.Background(), "octocat", "hello", 1)

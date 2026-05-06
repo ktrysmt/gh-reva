@@ -16,14 +16,59 @@ type Client interface {
 	// GetFileDiff returns the unified diff for a single file. sha == "" means the PR-wide diff.
 	GetFileDiff(ctx context.Context, owner, repo string, n int, sha, path string) (string, error)
 	ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error)
+
+	// CreatePendingReviewThread posts a new inline review comment as
+	// part of the user's pending review on this PR. If no pending
+	// review exists, one is created via addPullRequestReview (event
+	// omitted) on demand. The returned ReviewComment has Pending=true.
+	CreatePendingReviewThread(ctx context.Context, owner, repo string, n int, in CreatePendingThreadInput) (*model.ReviewComment, error)
+
+	// CreatePendingReviewThreadReply posts a reply under an existing
+	// review thread, attached to the same pending review. parentThreadID
+	// is the GraphQL node ID of the thread (NOT a comment node ID — the
+	// reply mutation requires the thread's identity).
+	CreatePendingReviewThreadReply(ctx context.Context, owner, repo string, n int, parentThreadID, body string) (*model.ReviewComment, error)
+
+	// SubmitPendingReview finalizes the user's pending review on this
+	// PR with the chosen event. After success, callers should refetch
+	// ListComments so the just-published comments lose their Pending
+	// flag (the GraphQL response only carries the new review state, not
+	// every comment under it).
+	SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error
+}
+
+// CreatePendingThreadInput is the payload for CreatePendingReviewThread.
+// StartLine == nil and StartSide == "" mark a single-line comment;
+// non-nil values trigger the multi-line API path.
+type CreatePendingThreadInput struct {
+	Path      string
+	CommitOID string
+	Line      int
+	Side      string
+	StartLine *int
+	StartSide string
+	Body      string
 }
 
 type ghClient struct {
 	rest *gha.RESTClient
+	gql  *gha.GraphQLClient
 
 	prFiles  map[int][]ghFile
 	commits  map[string]*ghCommit
 	comments map[int][]*model.ReviewComment
+
+	// prNodeID caches the GraphQL node ID for each PR number we've
+	// touched. Mutations need a node ID, not the integer number, so we
+	// fetch it lazily on first ListComments / pending-POST call.
+	prNodeID map[int]string
+
+	// pendingReviewID caches the GraphQL node ID of the user's current
+	// pending review on each PR. Empty entry means "no pending review
+	// known yet" — the next compose POST will run viewerLatestReview to
+	// reuse an existing one or create one. Cleared by SubmitPendingReview
+	// on success.
+	pendingReviewID map[int]string
 }
 
 func NewGHClient() (Client, error) {
@@ -31,10 +76,17 @@ func NewGHClient() (Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	gql, err := gha.DefaultGraphQLClient()
+	if err != nil {
+		return nil, err
+	}
 	return &ghClient{
-		rest:     rest,
-		prFiles:  map[int][]ghFile{},
-		commits:  map[string]*ghCommit{},
-		comments: map[int][]*model.ReviewComment{},
+		rest:            rest,
+		gql:             gql,
+		prFiles:         map[int][]ghFile{},
+		commits:         map[string]*ghCommit{},
+		comments:        map[int][]*model.ReviewComment{},
+		prNodeID:        map[int]string{},
+		pendingReviewID: map[int]string{},
 	}, nil
 }

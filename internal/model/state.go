@@ -23,6 +23,22 @@ type AppState struct {
 
 	Modal *ModalState
 
+	// Compose drives the PR-comment input flow (Diff Enter / Comments
+	// Enter). Non-nil while the user is composing, submitting, or viewing
+	// a submission failure; nil otherwise. The handleKey dispatcher in
+	// keys.go absorbs keystrokes when Compose != nil && UseTextarea so
+	// the textarea owns input; the $EDITOR path returns to nil control
+	// the moment tea.ExecProcess exits and the resulting message is
+	// processed.
+	Compose *ComposeState
+
+	// SubmitReview is non-nil while the submit-review modal is open
+	// (key `R`) or while submitPullRequestReview is in flight. The
+	// modal asks the user to pick an event (approve / comment /
+	// request_changes) for their pending review. handleKey absorbs all
+	// keystrokes while SubmitReview != nil.
+	SubmitReview *SubmitReviewState
+
 	HelpOpen bool
 
 	// DiffPendingPrefix holds a pane-scoped key prefix awaiting completion
@@ -98,6 +114,96 @@ type ModalState struct {
 	Pane PaneID
 }
 
+// ComposeKind tags which GraphQL mutation a ComposeState resolves to:
+//
+//   - ComposeInline → addPullRequestReviewThread on the PR's pending
+//     review (created on demand). Path / CommitSHA / Line / Side
+//     (and StartLine / StartSide for ranges) describe the anchor.
+//   - ComposeReply → addPullRequestReviewThreadReply on the parent
+//     thread. ParentThreadID is the GraphQL node ID of the thread
+//     under the cursor; ParentDBID is the integer DB id of the root
+//     comment, kept for InReplyTo round-tripping.
+type ComposeKind int
+
+const (
+	ComposeInline ComposeKind = iota
+	ComposeReply
+)
+
+// ComposeStatus is the lifecycle of one Compose attempt:
+//   - Editing: body is being collected (editor or textarea).
+//   - Submitting: the GraphQL POST is in flight.
+//   - Failed: the POST returned an error; Body and ErrMsg are
+//     preserved so Ctrl+S retries without re-typing.
+//
+// A successful POST clears Compose entirely (no Succeeded state);
+// the returned ReviewComment is appended to PR.Comments with
+// Pending=true and the user is back in normal navigation.
+type ComposeStatus int
+
+const (
+	ComposeEditing ComposeStatus = iota
+	ComposeSubmitting
+	ComposeFailed
+)
+
+// SubmitEvent is the GitHub PullRequestReviewEvent the user picks
+// when finalizing their pending review. Only the three submission
+// values are exposed (DISMISS is for dismissing other reviewers'
+// reviews via a separate mutation, not relevant here).
+type SubmitEvent string
+
+const (
+	SubmitApprove        SubmitEvent = "APPROVE"
+	SubmitComment        SubmitEvent = "COMMENT"
+	SubmitRequestChanges SubmitEvent = "REQUEST_CHANGES"
+)
+
+// SubmitReviewStatus tracks the submit-review modal lifecycle:
+// Choosing → user picks event; Submitting → GraphQL submit in flight;
+// Failed → submit returned an error, modal stays open with retry.
+// On success the modal closes and PR.Comments is refetched so the
+// just-submitted comments lose their Pending flag.
+type SubmitReviewStatus int
+
+const (
+	SubmitChoosing SubmitReviewStatus = iota
+	SubmitSubmitting
+	SubmitFailed
+)
+
+// SubmitReviewState is the modal state for the "finish your review"
+// flow. PendingCount is captured at modal-open time so the user sees
+// what they are about to submit even if they background the modal.
+type SubmitReviewState struct {
+	Status       SubmitReviewStatus
+	PendingCount int
+	Event        SubmitEvent
+	ErrMsg       string
+}
+
+// ComposeState is the in-flight state of a comment-input session.
+type ComposeState struct {
+	Kind        ComposeKind
+	Status      ComposeStatus
+	UseTextarea bool
+
+	// Inline target (Kind == ComposeInline).
+	Path      string
+	CommitSHA string
+	Line      int
+	Side      string
+	StartLine *int
+	StartSide string
+
+	// Reply target (Kind == ComposeReply).
+	ParentThreadID string
+	ParentDBID     int64
+
+	Body   string
+	ErrMsg string
+}
+
 func NewAppState() *AppState {
 	return &AppState{
 		FocusedPane:  PaneFiles,
@@ -107,3 +213,4 @@ func NewAppState() *AppState {
 		Loading:      map[string]bool{},
 	}
 }
+

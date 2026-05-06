@@ -33,15 +33,25 @@ type FileEntry struct {
 
 type ReviewComment struct {
 	ID               int64     `json:"id"`
+	NodeID           string    `json:"node_id,omitempty"`
+	ThreadID         string    `json:"thread_id,omitempty"`
 	Path             string    `json:"path"`
 	CommitID         string    `json:"commit_id"`
 	OriginalCommitID string    `json:"original_commit_id"`
 	Line             int       `json:"line"`
 	OriginalLine     int       `json:"original_line"`
+	Side             string    `json:"side,omitempty"`
 	DiffHunk         string    `json:"diff_hunk"`
 	InReplyTo        int64     `json:"in_reply_to"`
 	User             string    `json:"user"`
 	CreatedAt        time.Time `json:"created_at"`
 	Body             string    `json:"body"`
 	Outdated         bool      `json:"outdated"`
+	// Pending marks a comment whose containing review has not been
+	// submitted yet — i.e. `pullRequestReview.state == PENDING` per
+	// GitHub's GraphQL schema. POSTing via the compose flow returns
+	// the comment with Pending=true; SubmitPendingReview flips the
+	// review's state which makes the comment public on the next
+	// ListComments refetch.
+	Pending          bool      `json:"pending,omitempty"`
 }

@@ -49,6 +49,18 @@ func (c *errorClient) GetFileDiff(ctx context.Context, owner, repo string, n int
 	return "", c.err
 }
 
+func (c *errorClient) CreatePendingReviewThread(ctx context.Context, owner, repo string, n int, in CreatePendingThreadInput) (*model.ReviewComment, error) {
+	return nil, c.err
+}
+
+func (c *errorClient) CreatePendingReviewThreadReply(ctx context.Context, owner, repo string, n int, parentThreadID, body string) (*model.ReviewComment, error) {
+	return nil, c.err
+}
+
+func (c *errorClient) SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error {
+	return c.err
+}
+
 func (c *errorClient) ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error) {
 	// Errors surface here for the no-arg flow. For the explicit-PR-arg flow,
 	// ParseTargetArg's recovery branch (resolve.go:36-44) silently swallows

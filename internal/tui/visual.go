@@ -26,10 +26,20 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.Visual = nil
 		m.state.DiffPendingPrefix = ""
 		return m, nil
-	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q", "?":
+	case "enter":
+		// Diff visual + Enter opens a multi-line comment compose;
+		// buildComposeInline reads Visual.AnchorLine + DiffCursor.Line
+		// and clears Visual on success. Enter in any other pane stays
+		// inert (Files-tree dir fold would interfere with selection,
+		// Comments has no thread-level action that should fire mid
+		// selection).
+		if m.state.Visual.OriginPane == model.PaneDiff {
+			return m, m.startComposeInline()
+		}
+		return m, nil
+	case "tab", "shift+tab", "backspace", "v", " ", "q", "?":
 		// State-mutating / mode keys are inert in visual mode:
 		//   Tab / Shift-Tab — would move focus mid-selection.
-		//   Enter           — would still toggle Files-tree dir folds.
 		//   Space           — would toggle the pane modal (Files / Commits /
 		//                     Comments) or split⇄unified (Diff) mid-selection.
 		//   v               — would re-enter visual on top of itself.

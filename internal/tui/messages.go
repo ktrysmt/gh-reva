@@ -30,3 +30,43 @@ type ScrollDiffToLineMsg struct {
 type ErrMsg struct {
 	Err error
 }
+
+// composeBodyMsg fires when the comment-input source produces a body.
+// The $EDITOR path emits this from tea.ExecProcess's exit callback;
+// the textarea fallback emits it from its Ctrl+S save handler.
+// Empty body (after TrimSpace) cancels — Compose state is cleared.
+// A non-empty body transitions Compose to Submitting and the Update
+// handler queues submitComposeCmd to POST it to GitHub as part of the
+// user's pending review.
+type composeBodyMsg struct {
+	body string
+	err  error
+}
+
+// composeSubmittedMsg fires when the GraphQL POST completes.
+// Success: the Update handler appends `comment` (Pending=true since
+// the review is still draft) to PR.Comments and clears Compose.
+// Failure: ComposeStatus is flipped to Failed with ErrMsg populated;
+// the body buffer is preserved so Ctrl+S retries without re-typing.
+type composeSubmittedMsg struct {
+	comment *model.ReviewComment
+	err     error
+}
+
+// submitReviewDoneMsg fires when submitPullRequestReview completes.
+// Success: AppState.SubmitReview is cleared and a refetch of
+// ListComments is queued so every just-published comment loses its
+// Pending flag. Failure: SubmitReview.Status flips to Failed and
+// ErrMsg is shown in the modal; user can retry or cancel.
+type submitReviewDoneMsg struct {
+	err error
+}
+
+// commentsRefreshedMsg carries the freshly-fetched comment list after
+// a SubmitPendingReview success. The Update handler replaces
+// PR.Comments wholesale and recomputes per-file CommentCount so the
+// pane chrome stays in sync.
+type commentsRefreshedMsg struct {
+	comments []*model.ReviewComment
+	err      error
+}

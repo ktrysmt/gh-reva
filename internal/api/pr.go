@@ -61,22 +61,6 @@ type ghCommit struct {
 	} `json:"author"`
 }
 
-type ghReviewComment struct {
-	ID                 int64     `json:"id"`
-	Path               string    `json:"path"`
-	CommitID           string    `json:"commit_id"`
-	OriginalCommitID   string    `json:"original_commit_id"`
-	Line               int       `json:"line"`
-	OriginalLine       int       `json:"original_line"`
-	DiffHunk           string    `json:"diff_hunk"`
-	InReplyToID        int64     `json:"in_reply_to_id"`
-	User               struct{ Login string } `json:"user"`
-	CreatedAt          time.Time `json:"created_at"`
-	Body               string    `json:"body"`
-	Position           *int      `json:"position"`
-	OriginalPosition   int       `json:"original_position"`
-}
-
 func (c *ghClient) GetPR(ctx context.Context, owner, repo string, n int) (*model.PR, error) {
 	var r ghPRResp
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d", owner, repo, n)
@@ -145,31 +129,21 @@ func (c *ghClient) ListFiles(ctx context.Context, owner, repo string, n int) ([]
 	return out, nil
 }
 
+// ListComments fetches the PR's review comments via GraphQL so we
+// capture the GraphQL node ID + thread ID needed by the
+// addPullRequestReviewThreadReply mutation. The REST endpoint cannot
+// return thread IDs (REST has no "thread" abstraction), so the
+// migration to GraphQL is mandatory once we want pending-review POSTs.
 func (c *ghClient) ListComments(ctx context.Context, owner, repo string, n int) ([]*model.ReviewComment, error) {
 	if cached, ok := c.comments[n]; ok {
 		return cached, nil
 	}
-	var raw []ghReviewComment
-	path := fmt.Sprintf("repos/%s/%s/pulls/%d/comments?per_page=100", owner, repo, n)
-	if err := c.paginate(ctx, path, &raw); err != nil {
+	out, prID, err := c.listCommentsGraphQL(ctx, owner, repo, n)
+	if err != nil {
 		return nil, err
 	}
-	out := make([]*model.ReviewComment, 0, len(raw))
-	for _, r := range raw {
-		out = append(out, &model.ReviewComment{
-			ID:               r.ID,
-			Path:             r.Path,
-			CommitID:         r.CommitID,
-			OriginalCommitID: r.OriginalCommitID,
-			Line:             r.Line,
-			OriginalLine:     r.OriginalLine,
-			DiffHunk:         r.DiffHunk,
-			InReplyTo:        r.InReplyToID,
-			User:             r.User.Login,
-			CreatedAt:        r.CreatedAt,
-			Body:             r.Body,
-			Outdated:         r.Position == nil && r.OriginalPosition > 0,
-		})
+	if prID != "" {
+		c.prNodeID[n] = prID
 	}
 	c.comments[n] = out
 	return out, nil

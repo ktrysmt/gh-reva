@@ -96,6 +96,13 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.state.DiffViewMode = model.DiffViewSplit
 		}
+	case "enter":
+		// Diff Enter opens the comment-input modal anchored at the
+		// cursor row (or visual range, handled in handleKeyVisual).
+		// header / hunk rows return nil from buildComposeInline → no-op,
+		// matching the previous "Enter is reserved" contract for those
+		// rows.
+		return m, m.startComposeInline()
 	}
 	m.scrollDiffIntoView(totalLines)
 	return m, nil

@@ -33,6 +33,7 @@ test('S1: Files (flat) status bar shows context + common suffix', async () => {
   assert.match(row, /t:tree/)
   // Common suffix
   assert.match(row, /tab:focus/)
+  assert.match(row, /R:submit/)
   assert.match(row, /\?:help/)
   assert.match(row, /q:quit/)
   await quit(s)
@@ -60,20 +61,21 @@ test('S3: Commits pane drops t:tree, keeps j/k + space', async () => {
   await quit(s)
 })
 
-test('S4: Diff pane shows j/k/ctrl+f/ctrl+b, H/M/L, gg/G, space:split/unified', async () => {
+test('S4: Diff pane shows j/k, H/M/L, gg/G, space:split, enter:comment', async () => {
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab')
   await s.press('tab')
   const row = statusBarRow(await s.text())
-  assert.match(row, /j\/k\/ctrl\+f\/ctrl\+b:move/)
+  assert.match(row, /j\/k:move/)
   assert.match(row, /H\/M\/L:viewport/)
   assert.match(row, /gg\/G:top\/bottom/)
-  assert.match(row, /space:split\/unified/)
+  assert.match(row, /space:split/)
+  assert.match(row, /enter:comment/)
   await quit(s)
 })
 
-test('S5: Comments pane is the same minimal shape as Commits', async () => {
+test('S5: Comments pane is the same minimal shape as Commits, plus enter:reply', async () => {
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab')
@@ -82,6 +84,7 @@ test('S5: Comments pane is the same minimal shape as Commits', async () => {
   const row = statusBarRow(await s.text())
   assert.match(row, /j\/k:move/)
   assert.match(row, /space:zoom/)
+  assert.match(row, /enter:reply/)
   assert.ok(!/H\/M\/L/.test(row), `Diff-only hints must not leak into Comments status bar; got: ${row}`)
   await quit(s)
 })

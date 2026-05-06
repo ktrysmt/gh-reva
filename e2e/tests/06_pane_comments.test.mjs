@@ -142,14 +142,36 @@ test('G8: h/l are no-ops in Comments — threads are always expanded', async () 
   await quit(s)
 })
 
-test('G9: Enter is a no-op in Phase 1', async () => {
-  const s = await launchReva()
+test('G9: Enter on Comments opens the reply compose modal', async () => {
+  // EDITOR/VISUAL empty → textarea fallback so we can assert on the modal
+  // title without spawning a real editor. Cursor needs a thread to reply
+  // to: navigate Diff to buffer 5 (carol's anchor on line 3) then Tab to
+  // Comments.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
-  await s.press('tab'); await s.press('tab'); await s.press('tab')   // focus Comments
+  await s.press('tab'); await s.press('tab')                          // focus Diff
+  for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
+  await s.press('tab')                                                // → Comments
+  await s.press('enter')
+  await s.waitForText('Reply', { timeout: 5000 })
+  await s.press('esc')                                                // close modal
+  const after = await s.text()
+  assert.match(after, /▶ Comments/, 'focus stays on Comments after compose closes')
+  await quit(s)
+})
+
+test('G9b: Enter on Comments with no thread under the cursor is a no-op', async () => {
+  // Buffer 0 (file header) has no anchored thread → buildComposeReply
+  // returns false → Enter must not open compose.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab'); await s.press('tab')    // focus Comments
+  // Diff cursor still on buffer 0 (header) → no thread visible.
   const before = await s.text()
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on Comments must be a no-op in Phase 1')
+  assert.equal(before, after, 'Comments Enter without a thread must be a no-op')
+  assert.ok(!/Reply/.test(after), 'no compose modal should appear')
   await quit(s)
 })
 

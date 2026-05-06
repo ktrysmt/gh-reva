@@ -109,6 +109,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollDiffToLine(bufIdx, len(lines))
 		}
 		return m, nil
+	case composeBodyMsg:
+		cmd := m.applyComposeBody(msg)
+		return m, cmd
+	case composeSubmittedMsg:
+		m.applyComposeSubmitted(msg)
+		return m, nil
+	case submitReviewDoneMsg:
+		return m, m.applySubmitReviewDone(msg)
+	case commentsRefreshedMsg:
+		m.applyCommentsRefreshed(msg)
+		return m, nil
 	case ErrMsg:
 		m.err = msg.Err
 		return m, tea.Quit
@@ -148,6 +159,8 @@ func (m Model) View() string {
 		}, "\n\n")
 		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
+		body = m.overlayCompose(body)
+		body = m.overlaySubmit(body)
 		if statusBar != "" {
 			return body + "\n" + statusBar
 		}
@@ -184,6 +197,8 @@ func (m Model) View() string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
 	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
+	body = m.overlayCompose(body)
+	body = m.overlaySubmit(body)
 
 	if statusBar != "" {
 		return body + "\n" + statusBar
