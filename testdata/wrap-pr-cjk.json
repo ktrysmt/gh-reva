@@ -1,0 +1,42 @@
+{
+  "pr": {
+    "owner": "octocat",
+    "repo": "hello-world",
+    "number": 100,
+    "title": "CJK wrap fixture",
+    "base_sha": "aaa1111aaaa",
+    "head_sha": "ccc3333cccc"
+  },
+  "commits": [
+    {
+      "sha": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "short_sha": "ccc3333",
+      "message": "Add greeting",
+      "author": "alice",
+      "date": "2026-04-03T09:15:00Z",
+      "changed_files": {"src/greeting.go": 0}
+    }
+  ],
+  "files": [
+    {"path": "src/greeting.go", "status": 0, "additions": 5, "deletions": 0, "comment_count": 1}
+  ],
+  "comments": [
+    {
+      "id": 3001,
+      "path": "src/greeting.go",
+      "commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "original_commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "line": 3,
+      "original_line": 3,
+      "diff_hunk": "@@ -0,0 +1,5 @@",
+      "in_reply_to": 0,
+      "user": "carol",
+      "created_at": "2026-04-03T13:00:00Z",
+      "body": "slack コマンドの後すぐに通知が消えてしまう不具合があります。修正をお願いします。",
+      "outdated": false
+    }
+  ],
+  "diffs": {
+    "pr/src/greeting.go": "--- /dev/null\n+++ b/src/greeting.go\n@@ -0,0 +1,5 @@\n+package src\n+\n+func Hello() string {\n+\treturn \"Hi\"\n+}\n"
+  }
+}
