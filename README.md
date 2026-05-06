@@ -16,6 +16,9 @@ without losing your place in the diff or comments.
 
 ```sh
 gh extension install ktrysmt/gh-reva
+
+# upgrade
+gh extension upgrade reva
 ```
 
 The first run downloads the precompiled binary that matches your OS and
