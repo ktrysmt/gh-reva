@@ -9,10 +9,13 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
-// statusBarRows is the on-screen footprint of the bordered status bar:
-// top border + content row + bottom border. View() reserves this many
-// rows from m.height before computing the body layout.
-const statusBarRows = 3
+// statusBarRows is the on-screen footprint of the status bar: one
+// content row (per-pane keymap + URL) plus one blank row of breathing
+// space below. View() reserves this many rows from m.height before
+// computing the body layout. The bar carries no border glyphs — the
+// blank row replaces what used to be the bottom border, and the body's
+// own bottom border serves as the visual separator above.
+const statusBarRows = 2
 
 // Per-context status bar hints. Kept as bare top-level constants (not a
 // map) so a `git grep` for any of these strings lands on the canonical
@@ -38,6 +41,13 @@ const (
 	hintComposeSubmitting = "posting to GitHub…"
 	hintComposeFailed     = "ctrl+s:retry  esc:cancel"
 
+	// Confirm prompts: shown while a built compose payload is parked in
+	// PendingConfirm awaiting `[y]es / [n]o`. Each compose kind gets its
+	// own verb so the user sees what they are about to commit.
+	hintConfirmInline = "start new comment? [y]es [n]o"
+	hintConfirmReply  = "post reply? [y]es [n]o"
+	hintConfirmEdit   = "edit comment? [y]es [n]o"
+
 	// statusCommonSuffix is the navigation hint group appended to the
 	// per-pane context in normal mode. It lives on the LEFT (joined to
 	// the context with two spaces) so the right side is reserved for
@@ -49,13 +59,13 @@ const (
 	statusCommonSuffix = "tab/shift+tab:pane J/K:file ?:help q:quit"
 )
 
-// statusBar returns the 3-row bordered status block (top border, content
-// row, bottom border) joined by "\n" and padded to m.width on every row.
+// statusBar returns the 2-row borderless status block (keymap / URL
+// content row + a blank row of breathing space below) joined by "\n".
 // Returns an empty string when the terminal is too small to fit the
-// frame plus at least one body row above it; callers should skip
+// bar plus at least one body row above it; callers should skip
 // emitting the trailing newline in that case so the body retains its
-// full height. The body row is composed by composeStatusBar over the
-// inner width (m.width - 2) so the side `│` glyphs stay aligned.
+// full height. composeStatusBar gets the full m.width budget — there
+// are no side `│` glyphs to subtract.
 func (m Model) statusBar() string {
 	if m.width <= 0 || m.height <= statusBarRows {
 		return ""
@@ -70,18 +80,9 @@ func (m Model) statusBar() string {
 	if m.target != nil {
 		urls = m.target.PRShortForms()
 	}
-	innerW := m.width - 2
-	if innerW < 1 {
-		innerW = 1
-	}
-	body := composeStatusBar(left, leftMin, urls, innerW, m.theme.PaneTitle)
-	border := m.theme.PaneBorderInactive
-	bar := strings.Repeat("─", innerW)
-	side := fg("│", border)
-	top := fg("┌"+bar+"┐", border)
-	bottom := fg("└"+bar+"┘", border)
-	middle := side + body + side
-	return top + "\n" + middle + "\n" + bottom
+	body := composeStatusBar(left, leftMin, urls, m.width, m.theme.PaneTitle)
+	blank := strings.Repeat(" ", m.width)
+	return body + "\n" + blank
 }
 
 // statusBarContent picks the context hint and (optionally) common suffix
@@ -95,6 +96,21 @@ func (m Model) statusBarContent() (string, string) {
 	// state.go.
 	if m.state.Notice != "" {
 		return m.state.Notice, ""
+	}
+	// PendingConfirm is checked ahead of Compose because the parked
+	// payload has been moved out of m.state.Compose into PendingConfirm
+	// while the prompt is up — Compose stays nil until the user
+	// presses `y`. Suffix is dropped so the prompt fills the slot
+	// without competing with `?:help`/`q:quit` hints.
+	if pc := m.state.PendingConfirm; pc != nil {
+		switch pc.Kind {
+		case model.ComposeReply:
+			return hintConfirmReply, ""
+		case model.ComposeEdit:
+			return hintConfirmEdit, ""
+		default:
+			return hintConfirmInline, ""
+		}
 	}
 	if cs := m.state.Compose; cs != nil {
 		switch cs.Status {

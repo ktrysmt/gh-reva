@@ -79,7 +79,11 @@ test('J1: spinner / loading marker shown during data fetch', async () => {
 test('J1b: loading marker is centered in the window', async () => {
   const cols = 160
   const rows = 50
-  const s = await launchReva({ args: ['--slow-load', '800ms'], cols, rows })
+  // Pin to the dome-only splash so the dome-glyph anchors below are
+  // present (other variants drop the dome entirely or shift it to the
+  // right of an ASCII REVA block, both of which break the centering
+  // assertions this test owns).
+  const s = await launchReva({ args: ['--slow-load', '800ms'], cols, rows, env: { GH_REVA_SPLASH_LAYOUT: '1' } })
   await s.waitForText('Loading PR', { timeout: 6000 })
   const screen = await s.text()
   const lines = screen.split('\n')
@@ -114,7 +118,11 @@ test('J1b: loading marker is centered in the window', async () => {
 test('J1c: splash logo appears above the spinner during load', async () => {
   const cols = 160
   const rows = 50
-  const s = await launchReva({ args: ['--slow-load', '800ms'], cols, rows })
+  // Pin to the dome-only splash so the dome glyph + diagonal-axis check
+  // can fire — other variants either skip the dome (layout 2) or pair
+  // it with ASCII REVA on the left (layout 3, which shifts row
+  // midpoints).
+  const s = await launchReva({ args: ['--slow-load', '800ms'], cols, rows, env: { GH_REVA_SPLASH_LAYOUT: '1' } })
   await s.waitForText('Loading PR', { timeout: 6000 })
   const screen = await s.text()
   const lines = screen.split('\n')

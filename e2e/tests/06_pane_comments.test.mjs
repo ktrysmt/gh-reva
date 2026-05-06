@@ -142,17 +142,20 @@ test('G8: h/l are no-ops in Comments — threads are always expanded', async () 
   await quit(s)
 })
 
-test('G9: r on Comments opens the reply compose modal', async () => {
+test('G9: r on Comments opens the reply compose modal (after y confirm)', async () => {
   // The reply gesture moved from Enter to `r`; Enter is now in-place
   // edit (own-author only). carol's comment is foreign so Enter
   // surfaces a Notice — covered by G9b. r still works for replies on
-  // any author.
+  // any author. The compose flow is now gated by a `[y]es / [n]o`
+  // confirm prompt, so the reply textarea only opens after `y`.
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')                          // focus Diff
   for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
   await s.press('tab')                                                // → Comments
   await s.type('r')
+  await s.waitForText('post reply? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   await s.waitForText('Reply', { timeout: 5000 })
   await s.press('esc')                                                // close modal
   const after = await s.text()

@@ -1,8 +1,6 @@
-<h1 align="center">gh-reva</h1>
-
-<p align="center">
-  <img src="assets/logo.png" alt="gh-reva logo" width="240">
-</p>
+<h1 align="center">
+  <img src="assets/logo2.png" alt="gh-reva" width="240">
+</h1>
 
 <p align="center">PR review TUI distributed as a <code>gh</code> CLI extension.</p>
 

@@ -26,39 +26,86 @@ var editorEnv = func() string {
 	return os.Getenv("EDITOR")
 }
 
-// startComposeInline opens a Compose session anchored at the current
-// Diff cursor (or visual range if active). Returns nil when the cursor
-// is on a header / hunk row or no patch is loaded — the caller should
-// treat nil as "key was a no-op". Otherwise returns the body-collection
-// Cmd ($EDITOR exec, or nil for the textarea fallback).
+// startComposeInline queues the inline-compose confirm prompt anchored
+// at the current Diff cursor (or visual range if active). Returns nil
+// in every case: the editor / textarea launch is deferred to
+// confirmComposeStart, which fires when the user presses `y`. Returns
+// without queueing when the cursor is on a header / hunk row or no
+// patch is loaded; the caller can detect "no-op" by checking
+// `m.state.PendingConfirm == nil` after the call.
 func (m *Model) startComposeInline() tea.Cmd {
 	if !m.buildComposeInline() {
 		return nil
 	}
-	return m.beginEditing()
+	m.requestComposeConfirm()
+	return nil
 }
 
-// startComposeReply opens a Compose session targeting the thread the
-// Comments cursor is currently sitting on. Returns nil when no thread
-// is under the cursor.
+// startComposeReply queues the reply-compose confirm prompt for the
+// thread the Comments cursor is sitting on. Returns nil; the editor
+// launch is held until `y`. The caller can probe success via
+// `m.state.PendingConfirm != nil`.
 func (m *Model) startComposeReply() tea.Cmd {
 	if !m.buildComposeReply() {
 		return nil
 	}
-	return m.beginEditing()
+	m.requestComposeConfirm()
+	return nil
 }
 
-// startComposeEdit opens a Compose session targeting the comment under
-// the Comments cursor for in-place body editing. Returns nil when the
-// cursor is not on a comment, when the comment lacks a NodeID, or when
-// the comment was authored by a different user (the edit gate is
-// enforced by handleKeyComments before this is called; a defence in
-// depth here returns nil for the same case).
+// startComposeEdit queues the edit-compose confirm prompt for the
+// comment under the Comments cursor. Returns nil; the editor launch is
+// held until `y`. Foreign authors and missing NodeIDs short-circuit
+// inside buildComposeEdit and leave PendingConfirm nil — the caller
+// surfaces a notice in that case.
 func (m *Model) startComposeEdit() tea.Cmd {
 	if !m.buildComposeEdit() {
 		return nil
 	}
+	m.requestComposeConfirm()
+	return nil
+}
+
+// requestComposeConfirm moves the freshly-built Compose payload into
+// PendingConfirm. Compose is cleared so the global Compose absorber in
+// handleKey does NOT engage — that absorber routes every key through
+// the textarea, which would swallow the `y` / `n` keystrokes the
+// confirm dispatcher needs to see.
+func (m *Model) requestComposeConfirm() {
+	cs := m.state.Compose
+	if cs == nil {
+		return
+	}
+	m.state.Compose = nil
+	m.state.PendingConfirm = &model.PendingConfirm{Kind: cs.Kind, Compose: cs}
+}
+
+// confirmComposeStart commits the parked compose payload: PendingConfirm
+// clears, Compose is restored, the visual range banner (if any) is
+// dropped, and the body-collection Cmd is returned. Returns nil when
+// PendingConfirm is unset (defensive — handleKeyConfirm gates on this).
+//
+// Visual is cleared at this point rather than at build time so the
+// highlighted range stays on screen during the confirm prompt; only
+// once the user presses `y` does the banner disappear behind the editor.
+func (m *Model) confirmComposeStart() tea.Cmd {
+	pc := m.state.PendingConfirm
+	if pc == nil || pc.Compose == nil {
+		return nil
+	}
+	m.state.PendingConfirm = nil
+	m.state.Compose = pc.Compose
+	if pc.Compose.Kind == model.ComposeInline && m.state.Visual != nil && m.state.Visual.OriginPane == model.PaneDiff {
+		m.state.Visual = nil
+	}
 	return m.beginEditing()
+}
+
+// cancelComposeConfirm discards the parked payload. The visual range
+// (for inline-range cancels) stays intact so the user can refine the
+// selection and re-issue Enter.
+func (m *Model) cancelComposeConfirm() {
+	m.state.PendingConfirm = nil
 }
 
 // buildComposeInline populates m.state.Compose with the inline target
@@ -92,9 +139,9 @@ func (m *Model) buildComposeInline() bool {
 			cs.StartLine = &sl
 			cs.StartSide = r.StartSide
 		}
-		// Visual selection is consumed by entering Compose; otherwise
-		// the visual banner would linger behind the editor / textarea.
-		m.state.Visual = nil
+		// Visual is left intact here so the highlighted range stays
+		// visible while the confirm prompt is up. confirmComposeStart
+		// clears it the moment the user commits with `y`.
 	} else {
 		a, ok := diff.ResolveAnchor(patch, m.state.DiffCursor.Line)
 		if !ok {

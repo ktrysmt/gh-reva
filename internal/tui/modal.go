@@ -19,12 +19,30 @@ const commentsModalWrapMax = 80
 // twice on the same pane closes; pressing on a different pane is not
 // reachable today (only the active pane's `<space>` opens its own modal),
 // but the same-pane check guards against future bindings.
+//
+// Open path: Origin is recorded as the current focused pane so the
+// matching close gesture (space again, q, Esc, Ctrl+C) can restore
+// focus to where the user was. Close path: defers to closeModal so the
+// restore-focus contract stays in one place.
 func (m *Model) toggleModal(pane model.PaneID) {
 	if m.state.Modal != nil && m.state.Modal.Pane == pane {
-		m.state.Modal = nil
+		m.closeModal()
 		return
 	}
-	m.state.Modal = &model.ModalState{Pane: pane}
+	m.state.Modal = &model.ModalState{Pane: pane, Origin: m.state.FocusedPane}
+}
+
+// closeModal clears Modal and snaps focus back to Origin. Call sites:
+// toggleModal (space close), and the q / Esc / Ctrl+C branches in
+// handleKey. Tab / Shift-Tab use a separate path (they advance focus
+// from Origin instead of restoring to it). No-op when no modal is open.
+func (m *Model) closeModal() {
+	if m.state.Modal == nil {
+		return
+	}
+	origin := m.state.Modal.Origin
+	m.state.Modal = nil
+	m.state.FocusedPane = origin
 }
 
 // modalContent returns the body rows shown inside the modal plus the

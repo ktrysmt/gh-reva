@@ -41,6 +41,16 @@ type AppState struct {
 	// processed.
 	Compose *ComposeState
 
+	// PendingConfirm holds a built-but-not-yet-started Compose payload
+	// while the user is shown a `[y]es / [n]o` prompt. The actual editor
+	// launch is deferred until the user presses `y`; `n` / `Esc` / `q` /
+	// `Ctrl+C` discard the payload. While PendingConfirm is non-nil the
+	// keystroke router routes every key through handleKeyConfirm so
+	// background panes are frozen and the prompt cannot be missed.
+	// Compose stays nil during the confirm step — only on `y` does the
+	// payload move into Compose and the editor / textarea start.
+	PendingConfirm *PendingConfirm
+
 	HelpOpen bool
 
 	// Notice is a transient single-line message shown in the status bar
@@ -118,9 +128,19 @@ type VisualState struct {
 // goes through the regular pane handlers, so navigation propagates to the
 // underlying main state and the modal closes onto the same row. Tab,
 // Shift-Tab, Esc, and `?` all close the modal; Diff `<space>` is
-// untouched (split⇄unified). Pane is the pane the modal is showing.
+// untouched (split⇄unified).
+//
+//   - Pane    : the pane the modal is showing.
+//   - Origin  : the pane the user was on when the modal opened. Most close
+//     gestures (space, q, Esc, Ctrl+C) restore focus to Origin so the
+//     user lands back where they started — relevant when the modal was
+//     opened via a handoff (Diff Enter on a commented row → Comments
+//     modal with Origin=Diff): without Origin restore, focus would
+//     linger on Comments after close. Tab / Shift-Tab close the modal
+//     too but advance focus from Origin instead of restoring to it.
 type ModalState struct {
-	Pane PaneID
+	Pane   PaneID
+	Origin PaneID
 }
 
 // ComposeKind tags which GraphQL mutation a ComposeState resolves to:
@@ -160,6 +180,22 @@ const (
 	ComposeSubmitting
 	ComposeFailed
 )
+
+// PendingConfirm is the parking state for a built ComposeState while
+// the user is shown a `[y]es / [n]o` prompt. Holding the built payload
+// here (instead of in Compose) keeps the global Compose absorber from
+// engaging — that absorber routes every key through the textarea, which
+// would intercept the `y` / `n` we need for the confirm dispatch. On
+// `y` the payload moves into AppState.Compose and the editor / textarea
+// starts; on `n` / `Esc` / `q` / `Ctrl+C` the payload is discarded.
+//
+// Kind duplicates Compose.Kind so the status-bar prompt can pick the
+// right label without dereferencing Compose (e.g. "start new comment?"
+// vs "post reply?" vs "edit comment?").
+type PendingConfirm struct {
+	Kind    ComposeKind
+	Compose *ComposeState
+}
 
 // ComposeState is the in-flight state of a comment-input session.
 type ComposeState struct {

@@ -118,10 +118,12 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // openCommentsModalAtCursor opens the Comments zoom modal so the user
 // can interact with the threads anchored at the current Diff cursor.
 // Focus shifts to PaneComments (the modal renders the active pane's
-// content), CommentsCursor resets to 0 (lands on the first visible
-// thread), and Modal is set so the overlay is drawn.
+// content; j/k inside the modal must reach handleKeyComments),
+// CommentsCursor resets to 0, and Modal is set with Origin = Diff so
+// the close gesture later returns focus to the Diff pane the user
+// arrived from.
 func (m *Model) openCommentsModalAtCursor() {
-	m.state.Modal = &model.ModalState{Pane: model.PaneComments}
+	m.state.Modal = &model.ModalState{Pane: model.PaneComments, Origin: model.PaneDiff}
 	m.state.FocusedPane = model.PaneComments
 	m.state.CommentsCursor = 0
 }

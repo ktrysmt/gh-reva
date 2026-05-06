@@ -23,20 +23,17 @@ import assert from 'node:assert/strict'
 
 import { launchReva, waitReady, quit } from '../helpers/launch.mjs'
 
-// statusBarRow returns the keymap row of the bordered status bar — i.e.
-// the row immediately above the bottom border (`└─...─┘`). Trailing
-// whitespace is stripped so substring asserts don't have to worry about
-// right padding. Falls back to the last non-empty line for tests that
-// observe a screen without a status bar (e.g. loading splash, narrow
-// terminals with the bar suppressed).
+// statusBarRow returns the keymap content row of the borderless status
+// bar. The bar is now 2 rows: content + blank. The blank row trims to
+// "" and is skipped; the content row is the last non-empty row in the
+// screen (and has no `│` / `└┘` border chars). Trailing whitespace is
+// stripped so substring asserts don't have to worry about right
+// padding.
 function statusBarRow (screen) {
   const lines = screen.split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
     const trimmed = lines[i].replace(/\s+$/, '')
     if (trimmed === '') continue
-    if (/^└.*┘$/.test(trimmed) && i > 0) {
-      return (lines[i - 1] || '').replace(/\s+$/, '')
-    }
     return trimmed
   }
   return ''
@@ -158,21 +155,33 @@ test('S11: Comments modal status bar adds enter:edit r:reply before close', asyn
   await quit(s)
 })
 
-test('S12: status bar renders as a 3-row bordered frame', async () => {
+test('S12: status bar renders as a 2-row borderless block (content + blank)', async () => {
   const s = await launchReva()
   await waitReady(s)
   const lines = (await s.text()).split('\n')
-  // Find the bottom border row.
-  let bottom = -1
+  // Find the last non-empty row — that is the keymap content row.
+  let contentIdx = -1
   for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].replace(/\s+$/, '')
-    if (t === '') continue
-    if (/^└.*┘$/.test(t)) { bottom = i; break }
-    break
+    if (lines[i].replace(/\s+$/, '') !== '') { contentIdx = i; break }
   }
-  assert.ok(bottom >= 2, `expected status bar bottom border in last 3 rows; tail:\n${lines.slice(-6).join('\n')}`)
-  assert.match(lines[bottom - 2].replace(/\s+$/, ''), /^┌.*┐$/, `top border row should be ┌─...─┐`)
-  assert.match(lines[bottom - 1].replace(/\s+$/, ''), /^│.*│$/, `keymap row should be wrapped in │ … │`)
+  assert.ok(contentIdx >= 1,
+    `status bar content row not found in tail:\n${lines.slice(-6).join('\n')}`)
+  const content = lines[contentIdx].replace(/\s+$/, '')
+  // No border glyphs may sit on the content row — the bar is borderless now.
+  assert.ok(!/^[┌└]/.test(content), `content row must not start with a border glyph; got: ${content}`)
+  assert.ok(!/^│.*│$/.test(content), `content row must not be wrapped in │…│; got: ${content}`)
+  // The keymap content (or visual / modal / compose / help replacement)
+  // must be present so the row is meaningful — the canonical hints
+  // include `q:quit` in normal mode, but the screen could show `--
+  // VISUAL --` etc.; pick a token that is always part of the bar.
+  assert.match(content, /([a-z]:|--)/,
+    `content row must include a hint token (e.g. \`q:\` or \`--\`); got: ${content}`)
+  // Below the content row there must be a blank row (or nothing — the
+  // terminal renders trailing blanks the same as omitted lines).
+  if (contentIdx + 1 < lines.length) {
+    const next = lines[contentIdx + 1].replace(/\s+$/, '')
+    assert.equal(next, '', `row directly below the bar must be blank; got: ${JSON.stringify(next)}`)
+  }
   await quit(s)
 })
 

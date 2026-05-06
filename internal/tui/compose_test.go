@@ -120,6 +120,10 @@ func TestBuildComposeInline_RejectsHunkHeader(t *testing.T) {
 	}
 }
 
+// Visual range Enter must NOT clear Visual at build time — the user is
+// shown a confirm prompt first, and the highlighted range needs to stay
+// on screen while they decide. The Visual clear happens only when
+// confirmComposeStart fires (i.e. the user pressed `y`).
 func TestBuildComposeInline_VisualRange(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
 	m.state.DiffCursor.Line = 6
@@ -134,8 +138,8 @@ func TestBuildComposeInline_VisualRange(t *testing.T) {
 	if cs.Line != 22 || cs.Side != "RIGHT" || cs.StartSide != "RIGHT" {
 		t.Fatalf("range fields wrong: %+v", cs)
 	}
-	if m.state.Visual != nil {
-		t.Fatalf("visual must be cleared")
+	if m.state.Visual == nil {
+		t.Fatalf("visual must remain set so the highlight stays visible during the confirm prompt")
 	}
 }
 
@@ -457,24 +461,31 @@ func TestHandleKeyDiff_EnterOnCommentedRowOpensModal(t *testing.T) {
 	}
 }
 
-// Diff Enter on a row with NO existing comments still opens the
-// inline-compose flow directly (the previous behaviour). Modal is left
-// untouched so the user starts a brand-new thread without going
-// through the Comments pane.
-func TestHandleKeyDiff_EnterOnUncommentedRowOpensCompose(t *testing.T) {
+// Diff Enter on a row with NO existing comments queues the confirm
+// prompt (PendingConfirm) for inline compose. The actual compose state
+// is held inside PendingConfirm — Compose is not populated until the
+// user presses `y`. Modal is left untouched.
+func TestHandleKeyDiff_EnterOnUncommentedRowQueuesConfirm(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
 	mv.state.DiffCursor.Line = 5
 	mv.paneHeightDiff = 10
 	_, cmd := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatalf("Enter on uncommented row must queue inline compose")
+	if cmd != nil {
+		t.Fatalf("Enter must NOT launch the editor before the user confirms")
 	}
 	if mv.state.Modal != nil {
 		t.Fatalf("Modal must remain nil for uncommented Enter")
 	}
-	if mv.state.Compose == nil || mv.state.Compose.Kind != model.ComposeInline {
-		t.Fatalf("Compose must be ComposeInline, got %+v", mv.state.Compose)
+	if mv.state.Compose != nil {
+		t.Fatalf("Compose must stay nil until the user confirms with y")
+	}
+	pc := mv.state.PendingConfirm
+	if pc == nil || pc.Kind != model.ComposeInline {
+		t.Fatalf("PendingConfirm must be ComposeInline, got %+v", pc)
+	}
+	if pc.Compose == nil || pc.Compose.Kind != model.ComposeInline {
+		t.Fatalf("PendingConfirm.Compose must carry the built ComposeState")
 	}
 }
 
@@ -503,9 +514,10 @@ func TestHandleKeyComments_EnterOnForeignSetsNotice(t *testing.T) {
 	}
 }
 
-// Comments r on any thread (own or foreign) must open the reply
-// Compose flow — the keymap split moved reply from Enter to r.
-func TestHandleKeyComments_RoutesReplyToR(t *testing.T) {
+// Comments r on any thread (own or foreign) must queue the reply
+// confirm prompt — the keymap split moved reply from Enter to r, and
+// confirm gating defers the editor launch until the user presses `y`.
+func TestHandleKeyComments_RQueuesReplyConfirm(t *testing.T) {
 	root := &model.ReviewComment{
 		ID: 100, NodeID: "PRRC_100", ThreadID: "PRT_abc", User: "alice",
 		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
@@ -515,12 +527,347 @@ func TestHandleKeyComments_RoutesReplyToR(t *testing.T) {
 	mv.state.DiffCursor.Line = 5
 	mv.state.CommentsCursor = 0
 	updated, cmd := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
-	if cmd == nil {
-		t.Fatalf("r must queue a reply Compose cmd")
+	if cmd != nil {
+		t.Fatalf("r must NOT launch editing before the user confirms")
 	}
 	got := updated.(Model)
-	if got.state.Compose == nil || got.state.Compose.Kind != model.ComposeReply {
-		t.Fatalf("Compose must be set as ComposeReply, got %+v", got.state.Compose)
+	if got.state.Compose != nil {
+		t.Fatalf("Compose must stay nil until y; got %+v", got.state.Compose)
+	}
+	pc := got.state.PendingConfirm
+	if pc == nil || pc.Kind != model.ComposeReply {
+		t.Fatalf("PendingConfirm must be ComposeReply, got %+v", pc)
+	}
+}
+
+// Confirm gate (Diff Enter / Comments Enter / Comments r) — the editor
+// launch is held until the user presses `y`. `n`, `Esc`, `q`, `Ctrl+C`
+// cancel; other keystrokes are absorbed so navigation stays frozen
+// while the prompt is up.
+
+func TestStartComposeReply_QueuesPendingConfirm(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 100, NodeID: "PRRC_100", ThreadID: "PRT_abc", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	m.state.ViewerLogin = "you"
+	m.state.DiffCursor.Line = 5
+	m.state.CommentsCursor = 0
+	if cmd := m.startComposeReply(); cmd != nil {
+		t.Fatalf("startComposeReply must NOT return an editor cmd before confirm")
+	}
+	if m.state.Compose != nil {
+		t.Fatalf("Compose must stay nil until confirm")
+	}
+	pc := m.state.PendingConfirm
+	if pc == nil || pc.Kind != model.ComposeReply {
+		t.Fatalf("PendingConfirm must be ComposeReply, got %+v", pc)
+	}
+}
+
+func TestStartComposeEdit_QueuesPendingConfirm(t *testing.T) {
+	own := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "draft", CreatedAt: time.Unix(1, 0),
+	}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
+	m.state.ViewerLogin = "you"
+	m.state.DiffCursor.Line = 5
+	m.state.CommentsCursor = 0
+	if cmd := m.startComposeEdit(); cmd != nil {
+		t.Fatalf("startComposeEdit must NOT return an editor cmd before confirm")
+	}
+	if m.state.Compose != nil {
+		t.Fatalf("Compose must stay nil until confirm")
+	}
+	pc := m.state.PendingConfirm
+	if pc == nil || pc.Kind != model.ComposeEdit {
+		t.Fatalf("PendingConfirm must be ComposeEdit, got %+v", pc)
+	}
+}
+
+// y consumes the prompt: PendingConfirm clears, Compose receives the
+// previously-built state, the editor cmd is returned (textarea fallback
+// in this test since EDITOR is unset).
+func TestHandleKey_PendingConfirmYStartsEditing(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	t.Setenv("VISUAL", "")
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	if _, _ = mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter}); mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm must be set after Diff Enter")
+	}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	got := updated.(Model)
+	if got.state.PendingConfirm != nil {
+		t.Fatalf("PendingConfirm must clear on y")
+	}
+	if got.state.Compose == nil || got.state.Compose.Kind != model.ComposeInline {
+		t.Fatalf("Compose must be installed on y, got %+v", got.state.Compose)
+	}
+	if !got.state.Compose.UseTextarea {
+		t.Fatalf("textarea fallback must be set when EDITOR is unset")
+	}
+}
+
+// y on an inline-range confirm must clear Visual at the moment of
+// commit. Until y, the highlighted range stays visible.
+func TestHandleKey_PendingConfirmYClearsVisualOnInlineRange(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	t.Setenv("VISUAL", "")
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 6
+	mv.state.Visual = &model.VisualState{OriginPane: model.PaneDiff, AnchorLine: 5}
+	mv.paneHeightDiff = 10
+	mv.startComposeInline()
+	if mv.state.Visual == nil {
+		t.Fatalf("precondition: Visual must remain set during the confirm prompt")
+	}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	got := updated.(Model)
+	if got.state.Visual != nil {
+		t.Fatalf("y must clear Visual when committing an inline-range compose")
+	}
+}
+
+// n / Esc / q / Ctrl+C cancel the confirm without launching the editor.
+// Compose stays nil, PendingConfirm clears.
+func TestHandleKey_PendingConfirmNCancels(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	mv.startComposeInline()
+	if mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm must be set")
+	}
+	updated, cmd := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatalf("n must not launch editing")
+	}
+	if got.state.PendingConfirm != nil {
+		t.Fatalf("PendingConfirm must clear on n")
+	}
+	if got.state.Compose != nil {
+		t.Fatalf("Compose must stay nil on n")
+	}
+}
+
+func TestHandleKey_PendingConfirmEscCancels(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	mv.startComposeInline()
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(Model)
+	if got.state.PendingConfirm != nil {
+		t.Fatalf("PendingConfirm must clear on Esc")
+	}
+	if got.state.Compose != nil {
+		t.Fatalf("Compose must stay nil on Esc")
+	}
+}
+
+func TestHandleKey_PendingConfirmQCancelsWithoutQuitting(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	mv.startComposeInline()
+	updated, cmd := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatalf("q during confirm must NOT quit the program; got cmd %v", cmd)
+	}
+	if got.state.PendingConfirm != nil {
+		t.Fatalf("PendingConfirm must clear on q")
+	}
+}
+
+// Other keystrokes are absorbed: navigation must not move while the
+// confirm prompt is up. Diff cursor stays at the original row, focus
+// stays where it was.
+func TestHandleKey_PendingConfirmAbsorbsOtherKeys(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.state.FocusedPane = model.PaneDiff
+	mv.paneHeightDiff = 10
+	mv.startComposeInline()
+	if mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm set")
+	}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	got := updated.(Model)
+	if got.state.PendingConfirm == nil {
+		t.Fatalf("j must NOT cancel the confirm prompt")
+	}
+	if got.state.DiffCursor.Line != 5 {
+		t.Fatalf("DiffCursor must not move while confirm prompt is up, got %d", got.state.DiffCursor.Line)
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("FocusedPane must not change, got %v", got.state.FocusedPane)
+	}
+}
+
+// The status bar replaces its per-pane keymap with a confirm prompt
+// while PendingConfirm is set. Each compose kind has its own label.
+func TestStatusBarContent_ShowsConfirmPrompt(t *testing.T) {
+	cases := []struct {
+		kind model.ComposeKind
+		want string
+	}{
+		{model.ComposeInline, "start new comment? [y]es [n]o"},
+		{model.ComposeReply, "post reply? [y]es [n]o"},
+		{model.ComposeEdit, "edit comment? [y]es [n]o"},
+	}
+	for _, c := range cases {
+		mv := newComposeModel(t, composePatch, nil)
+		mv.state.PendingConfirm = &model.PendingConfirm{
+			Kind:    c.kind,
+			Compose: &model.ComposeState{Kind: c.kind, Status: model.ComposeEditing},
+		}
+		ctx, suffix := mv.statusBarContent()
+		if ctx != c.want {
+			t.Fatalf("kind=%v: got %q want %q", c.kind, ctx, c.want)
+		}
+		if suffix != "" {
+			t.Fatalf("kind=%v: confirm prompt must drop the common suffix, got %q", c.kind, suffix)
+		}
+	}
+}
+
+// Modal opened via Diff Enter on a commented row must record Origin =
+// Diff so that the close gesture (space, q, Esc, Ctrl+C) returns focus
+// to Diff. Without this, focus would linger on Comments after the
+// modal closes — non-obvious because the user came from Diff.
+func TestOpenCommentsModalAtCursor_RecordsOriginAsDiff(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.FocusedPane = model.PaneDiff
+	mv.state.DiffCursor.Line = 5
+	mv.openCommentsModalAtCursor()
+	if mv.state.Modal == nil || mv.state.Modal.Origin != model.PaneDiff {
+		t.Fatalf("Origin must be PaneDiff (where the user opened from), got %+v", mv.state.Modal)
+	}
+}
+
+// Toggling the modal via space records Origin = current focused pane,
+// so the close gesture returns the user to where they were.
+func TestToggleModal_RecordsCurrentFocusAsOrigin(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.FocusedPane = model.PaneFiles
+	mv.toggleModal(model.PaneFiles)
+	if mv.state.Modal == nil || mv.state.Modal.Origin != model.PaneFiles {
+		t.Fatalf("Files toggle: Origin must be PaneFiles, got %+v", mv.state.Modal)
+	}
+	mv.state.Modal = nil
+	mv.state.FocusedPane = model.PaneComments
+	mv.toggleModal(model.PaneComments)
+	if mv.state.Modal == nil || mv.state.Modal.Origin != model.PaneComments {
+		t.Fatalf("Comments toggle: Origin must be PaneComments, got %+v", mv.state.Modal)
+	}
+}
+
+// Closing via space (toggleModal again) restores focus to Origin.
+// When Comments modal was opened from Diff (handoff via Enter), the
+// close gesture must return focus to Diff — not leave it on Comments
+// where openCommentsModalAtCursor parked it for in-modal navigation.
+func TestSpaceClose_RestoresFocusToDiffWhenOpenedFromDiff(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.FocusedPane = model.PaneDiff
+	mv.state.DiffCursor.Line = 5
+	mv.openCommentsModalAtCursor()
+	if mv.state.FocusedPane != model.PaneComments {
+		t.Fatalf("precondition: focus must shift to Comments while modal is open")
+	}
+	updated, _ := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got := updated.(Model)
+	if got.state.Modal != nil {
+		t.Fatalf("space must close the Comments modal")
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("focus must return to Diff (the opener), got %v", got.state.FocusedPane)
+	}
+}
+
+// Symmetric case: opened via space from Comments, closed via space —
+// focus stays on Comments.
+func TestSpaceClose_StaysOnCommentsWhenOpenedFromComments(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.FocusedPane = model.PaneComments
+	mv.state.DiffCursor.Line = 5
+	mv.toggleModal(model.PaneComments)
+	if mv.state.Modal == nil || mv.state.FocusedPane != model.PaneComments {
+		t.Fatalf("precondition: Comments modal open, focus on Comments")
+	}
+	updated, _ := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got := updated.(Model)
+	if got.state.Modal != nil {
+		t.Fatalf("space must close the modal")
+	}
+	if got.state.FocusedPane != model.PaneComments {
+		t.Fatalf("focus must stay on Comments (the opener), got %v", got.state.FocusedPane)
+	}
+}
+
+// q close: modal opened from Diff → q returns focus to Diff (without
+// quitting the app).
+func TestQClose_RestoresFocusToOrigin(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.FocusedPane = model.PaneDiff
+	mv.state.DiffCursor.Line = 5
+	mv.openCommentsModalAtCursor()
+	updated, cmd := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatalf("q must not quit while modal is open; got cmd %v", cmd)
+	}
+	if got.state.Modal != nil {
+		t.Fatalf("q must close the modal")
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("focus must return to Diff, got %v", got.state.FocusedPane)
+	}
+}
+
+func TestEscClose_RestoresFocusToOrigin(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.FocusedPane = model.PaneDiff
+	mv.state.DiffCursor.Line = 5
+	mv.openCommentsModalAtCursor()
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(Model)
+	if got.state.Modal != nil {
+		t.Fatalf("Esc must close the modal")
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("focus must return to Diff on Esc, got %v", got.state.FocusedPane)
 	}
 }
 

@@ -36,22 +36,25 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		// Edit the cursor comment — only the viewer's own comments are
-		// editable per GitHub's permission model. On a foreign comment
-		// (or before the viewer login is known), surface a status-bar
-		// notice steering the user to `r` for reply instead of POSTing
-		// into a 403.
-		if cmd := m.startComposeEdit(); cmd != nil {
-			return m, cmd
+		// editable per GitHub's permission model. startComposeEdit
+		// queues PendingConfirm on success; success is detected by
+		// inspecting m.state.PendingConfirm (the call returns nil
+		// either way because the editor launch is held until `y`).
+		// On a foreign comment (or before the viewer login is known),
+		// surface a status-bar notice steering the user to `r` for
+		// reply instead of POSTing into a 403.
+		m.startComposeEdit()
+		if m.state.PendingConfirm != nil {
+			return m, nil
 		}
-		// Compose was not started: either the cursor is off-thread, or
-		// the comment is foreign / NodeID-less. Pick the right notice.
 		if c := commentAtCursor(flat, m.state.CommentsCursor); c != nil && c.User != m.state.ViewerLogin {
 			m.state.Notice = "cannot edit comments by other users (press r to reply)"
 		}
 		return m, nil
 	case "r":
 		// Reply to the thread under the cursor (the previous Enter
-		// gesture). No-op when no thread is visible.
+		// gesture). No-op when no thread is visible. The editor launch
+		// is gated by the y/n confirm prompt; the immediate Cmd is nil.
 		return m, m.startComposeReply()
 	}
 	m.syncDiffToCursorComment()

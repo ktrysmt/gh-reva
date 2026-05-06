@@ -170,6 +170,58 @@ test('F-modal-7: q while a modal is open closes the modal (does not quit)', asyn
   await quit(s)
 })
 
+test('F-modal-9: Diff Enter on commented row → space close returns focus to Diff', async () => {
+  // Comments modal opened via Diff Enter has Origin=Diff. The matching
+  // close gesture (space) must restore focus to Diff so the user lands
+  // back on the row they came from rather than on Comments.
+  const s = await launchReva()
+  await waitReady(s)
+  // Walk Diff cursor to a row with an existing comment (greeting.go has
+  // a thread anchored at new-file line 3 / buffer 5).
+  await s.press('tab') // Files → Commits
+  await s.press('tab') // Commits → Diff
+  for (let i = 0; i < 5; i++) await s.press('j')
+  let screen = await s.text()
+  assert.ok(/▶ Diff/.test(screen), 'precondition: Diff active')
+
+  await s.press('enter') // hands off to Comments modal
+  screen = await s.text()
+  assert.ok(modalVisible(screen), 'precondition: Comments modal open')
+  assert.ok(/Comments/.test(modalTitle(screen) || ''),
+    `precondition: modal title is Comments; got ${JSON.stringify(modalTitle(screen))}`)
+
+  await s.press('space') // close
+  screen = await s.text()
+  assert.ok(!modalVisible(screen), 'space must close the modal')
+  assert.ok(/▶ Diff/.test(screen),
+    `space close must return focus to Diff (the opener); tail:\n${screen.split('\n').slice(-12).join('\n')}`)
+  await quit(s)
+})
+
+test('F-modal-10: Comments space → space stays on Comments', async () => {
+  // Comments modal opened via space from Comments has Origin=Comments;
+  // close gesture must keep focus there.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab') // Commits
+  await s.press('tab') // Diff
+  for (let i = 0; i < 12; i++) await s.press('j') // line a comment lives on
+  await s.press('tab') // Diff → Comments
+  let screen = await s.text()
+  assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')
+
+  await s.press('space') // open from Comments
+  screen = await s.text()
+  assert.ok(modalVisible(screen), 'precondition: modal open')
+
+  await s.press('space') // close
+  screen = await s.text()
+  assert.ok(!modalVisible(screen), 'space must close the modal')
+  assert.ok(/▶ Comments/.test(screen),
+    `space close must keep focus on Comments (the opener); tail:\n${screen.split('\n').slice(-12).join('\n')}`)
+  await quit(s)
+})
+
 test('F-modal-6: visual mode is usable inside the modal', async () => {
   const s = await launchReva()
   await waitReady(s)

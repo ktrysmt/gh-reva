@@ -51,7 +51,7 @@ async function navigateToDiffLine (s, n) {
   }
 }
 
-test('C1: Diff Enter saves the editor body as a pending comment', async () => {
+test('C1: Diff Enter then y saves the editor body as a pending comment', async () => {
   // Buffer 6 = "+func Hello(...)" on greeting.go (newLine 4) — no existing
   // comment in the fixture, so the appended pending body is uniquely visible.
   const editor = await makeStubEditor('c1.sh', 'inline-pending-from-gh-reva')
@@ -59,6 +59,10 @@ test('C1: Diff Enter saves the editor body as a pending comment', async () => {
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
+  // Confirm prompt appears; user presses y to commit. Without this the
+  // editor never launches.
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   // Editor → exit → applyComposeBody appends pending → Comments pane
   // re-renders with both the body and the [pending] tag.
   await s.waitForText('inline-pending-from-gh-reva', { timeout: 8000 })
@@ -68,7 +72,7 @@ test('C1: Diff Enter saves the editor body as a pending comment', async () => {
   await quit(s)
 })
 
-test('C2: Comments r saves a pending reply under the cursor thread', async () => {
+test('C2: Comments r then y saves a pending reply under the cursor thread', async () => {
   // Buffer 5 = first existing comment anchor (carol on line 3). The
   // reply gesture moved from Enter to `r` when Enter was repurposed
   // for in-place edit on the viewer's own comments.
@@ -78,6 +82,8 @@ test('C2: Comments r saves a pending reply under the cursor thread', async () =>
   await navigateToDiffLine(s, 5)
   await s.press('tab') // Diff → Comments
   await s.type('r')
+  await s.waitForText('post reply? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   await s.waitForText('pending-reply-from-gh-reva', { timeout: 8000 })
   const screen = await s.text()
   const comments = paneText(screen, 'Comments')
@@ -115,6 +121,8 @@ test('C3: empty body from $EDITOR cancels — no pending comment is added', asyn
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   // Wait for editor to exit and bubbletea to redraw.
   await s.waitForText('enter:comment', { timeout: 5000 })
   const screen = await s.text()
@@ -132,6 +140,8 @@ test('C5: textarea fallback when $EDITOR is unset saves pending on Ctrl+S', asyn
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   await s.waitForText('New comment', { timeout: 5000 })
   await s.type('inline-textarea-body')
   await s.waitForText('inline-textarea-body', { timeout: 3000 })
@@ -151,6 +161,8 @@ test('C5b: textarea Esc cancels without saving', async () => {
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.type('y')
   await s.waitForText('New comment', { timeout: 5000 })
   await s.type('discard-me')
   await s.press('esc')
@@ -160,5 +172,43 @@ test('C5b: textarea Esc cancels without saving', async () => {
   assert.ok(!/discard-me/.test(comments),
     `discarded body must not appear in Comments pane:\n${comments}`)
   assert.ok(!/\[pending\]/.test(comments), `no pending tag should appear after Esc`)
+  await quit(s)
+})
+
+test('C6: confirm n cancels — no editor opens, no pending comment is added', async () => {
+  // Stub editor would write a body if invoked, so a successful cancel
+  // is provable by the absence of that body in Comments.
+  const editor = await makeStubEditor('c6.sh', 'should-not-appear')
+  const s = await launchReva({ env: { EDITOR: editor, VISUAL: '' } })
+  await waitReady(s)
+  await navigateToDiffLine(s, 6)
+  await s.press('enter')
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.type('n')
+  // Status bar returns to the per-pane Diff keymap; prompt is gone.
+  await s.waitForText('enter:comment', { timeout: 3000 })
+  const screen = await s.text()
+  assert.ok(!/start new comment\?/.test(screen), `confirm prompt must clear after n`)
+  const comments = paneText(screen, 'Comments')
+  assert.ok(!/should-not-appear/.test(comments),
+    `cancelled body must never reach the Comments pane:\n${comments}`)
+  assert.ok(!/\[pending\]/.test(comments), `no pending tag must appear after n`)
+  await quit(s)
+})
+
+test('C6b: confirm Esc cancels (alternative cancel key)', async () => {
+  const editor = await makeStubEditor('c6b.sh', 'should-not-appear-esc')
+  const s = await launchReva({ env: { EDITOR: editor, VISUAL: '' } })
+  await waitReady(s)
+  await navigateToDiffLine(s, 6)
+  await s.press('enter')
+  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.press('esc')
+  await s.waitForText('enter:comment', { timeout: 3000 })
+  const screen = await s.text()
+  assert.ok(!/start new comment\?/.test(screen), `confirm prompt must clear after Esc`)
+  const comments = paneText(screen, 'Comments')
+  assert.ok(!/should-not-appear-esc/.test(comments),
+    `Esc-cancelled body must not reach Comments`)
   await quit(s)
 })
