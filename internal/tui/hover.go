@@ -238,15 +238,16 @@ func (m Model) hoverLayout() (lines []string, top, left, width int, ok bool) {
 }
 
 // hoverAnchorCol returns the absolute screen column where the popup's
-// left border (`│` / `┌` / `└`) should land, so its content column lines
-// up just past the cursor + status prefix on the cursor row.
+// left border (`│` / `┌` / `└`) should land. Both Files and Commits live
+// in the leftmost column so the leading `│` is at screen col 0; the
+// anchor is therefore measured from screen col 0.
 //
-//	Files flat: │ + cursor(2) + ` ` + status(1) + ` ` = col 6
-//	Files tree: │ + cursor(2) + indent + marker(2) | ` ` + status(1) + ` `
-//	Commits:    │ + cursor(2) + annotation(4) + sha(7) + ` ` = col 15
-//
-// Both Files and Commits live in the leftmost column so the leading `│`
-// is at screen col 0; the anchor is therefore measured from screen col 0.
+//	Files flat: │(1) + cursor(2) + ` `(1) + status(1) + ` `(1) → col 6
+//	            (popup left lands at the path column)
+//	Files tree: same prefix + 2*depth indent + marker(2)/(3)
+//	Commits:    │(1) + cursor(2) + annotation(4) → col 7
+//	            (popup left lands at the SHA column so the popup body's
+//	            `<sha> <subject>` lines up with the row below)
 func (m Model) hoverAnchorCol() int {
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
