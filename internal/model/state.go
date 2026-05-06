@@ -25,6 +25,14 @@ type AppState struct {
 
 	HelpOpen bool
 
+	// DiffPendingPrefix holds a pane-scoped key prefix awaiting completion
+	// (vim-style). Currently only `g` is recorded — a follow-up `g` completes
+	// `gg` (gotoTop); any other key cancels the prefix and dispatches as
+	// usual. The slot is forward-compatible with future `gd` / `gh` / `gb`
+	// style mappings inside Diff. Cleared on focus change, visual entry/exit,
+	// help open, and any other key that resolves the sequence.
+	DiffPendingPrefix string
+
 	DiffCache map[string]string
 	Loading   map[string]bool
 

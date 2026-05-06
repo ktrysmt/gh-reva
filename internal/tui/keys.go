@@ -18,17 +18,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "?":
+		m.state.DiffPendingPrefix = ""
 		m.state.HelpOpen = true
 		return m, nil
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "tab":
+		m.state.DiffPendingPrefix = ""
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
 		return m, nil
 	case "shift+tab":
+		m.state.DiffPendingPrefix = ""
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
 		return m, nil
 	case "v":
+		m.state.DiffPendingPrefix = ""
 		vs := &model.VisualState{
 			OriginPane: m.state.FocusedPane,
 			Linewise:   m.state.FocusedPane != model.PaneDiff,
@@ -46,9 +50,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.Visual = vs
 		return m, nil
 	case "J":
+		m.state.DiffPendingPrefix = ""
 		m.advanceFile(true)
 		return m, nil
 	case "K":
+		m.state.DiffPendingPrefix = ""
 		m.advanceFile(false)
 		return m, nil
 	}

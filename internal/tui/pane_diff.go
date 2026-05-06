@@ -20,7 +20,24 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	pageSize := m.diffViewportHeight()
 	half := pageSize / 2
-	switch msg.String() {
+	key := msg.String()
+	// Resolve the `g`-prefix sequence (vim semantics). A pending `g` from
+	// the previous keystroke either completes `gg` (gotoTop) or cancels and
+	// falls through to normal dispatch of the new key. A first-time `g`
+	// records pending and returns without view change.
+	if m.state.DiffPendingPrefix == "g" {
+		m.state.DiffPendingPrefix = ""
+		if key == "g" {
+			m.state.DiffCursor.Line = 0
+			m.scrollDiffIntoView(totalLines)
+			return m, nil
+		}
+		// pending cleared; the new key runs through the normal switch below.
+	} else if key == "g" {
+		m.state.DiffPendingPrefix = "g"
+		return m, nil
+	}
+	switch key {
 	case "j", "down":
 		if m.state.DiffCursor.Line < totalLines-1 {
 			m.state.DiffCursor.Line++
@@ -29,11 +46,6 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.DiffCursor.Line > 0 {
 			m.state.DiffCursor.Line--
 		}
-	case "g":
-		// gg = goto top. Track via small state on Model would be cleaner, but
-		// for Phase 1 we accept that any single g jumps to top (matches G in
-		// vim's behaviour for a single g — close enough for tests).
-		m.state.DiffCursor.Line = 0
 	case "G":
 		m.state.DiffCursor.Line = totalLines - 1
 		if m.state.DiffCursor.Line < 0 {

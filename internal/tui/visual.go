@@ -19,10 +19,12 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// running, so a stray Ctrl-C during selection just drops back to
 		// normal mode rather than killing the TUI mid-review.
 		m.state.Visual = nil
+		m.state.DiffPendingPrefix = ""
 		return m, nil
 	case "y":
 		_ = clipboard.Yank(m.yankString())
 		m.state.Visual = nil
+		m.state.DiffPendingPrefix = ""
 		return m, nil
 	case "tab", "shift+tab", "enter", "backspace", "v", " ", "q", "?":
 		// State-mutating / mode keys are inert in visual mode:

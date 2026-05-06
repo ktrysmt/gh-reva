@@ -26,7 +26,7 @@ var helpSections = []helpSection{
 		title: "Global",
 		entries: []helpEntry{
 			{"?", "Toggle help"},
-			{"q / Ctrl+C", "Quit"},
+			{"q / Ctrl+c", "Quit"},
 			{"Tab", "Next pane"},
 			{"Shift+Tab", "Previous pane"},
 			{"J / K", "Next / previous file"},
@@ -53,9 +53,9 @@ var helpSections = []helpSection{
 		title: "Diff",
 		entries: []helpEntry{
 			{"j / k", "Line down / up"},
-			{"g / G", "Top / bottom"},
-			{"Ctrl+D / Ctrl+U", "Half page down / up"},
-			{"Ctrl+F / Ctrl+B", "Full page down / up"},
+			{"gg / G", "Top / bottom"},
+			{"Ctrl+d / Ctrl+u", "Half page down / up"},
+			{"Ctrl+f / Ctrl+b", "Full page down / up"},
 			{"H / M / L", "Viewport top / middle / bottom"},
 			{"Space", "Toggle split / unified"},
 		},
@@ -70,13 +70,13 @@ var helpSections = []helpSection{
 		title: "Visual",
 		entries: []helpEntry{
 			{"y", "Yank and exit"},
-			{"Esc / Ctrl+C", "Cancel without yanking"},
+			{"Esc / Ctrl+c", "Cancel without yanking"},
 		},
 	},
 }
 
 // helpModalDefaultWidth is the modal's outer width on a comfortably-wide
-// terminal. Sized so the longest key column ("Ctrl+D / Ctrl+U") plus the
+// terminal. Sized so the longest key column ("Ctrl+d / Ctrl+u") plus the
 // longest description fits with a 2-col gap on each side.
 const helpModalDefaultWidth = 60
 

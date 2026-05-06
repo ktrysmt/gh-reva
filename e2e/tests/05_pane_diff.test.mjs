@@ -116,6 +116,60 @@ test('F4b: gg jumps to first line, G to last', async () => {
   await quit(s)
 })
 
+test('F4d: single g is a no-op (it is the prefix of `gg`)', async () => {
+  // Vim-correct semantics: a lone `g` waits for a follow-up. Only the second
+  // `g` triggers gotoTop. This is also forward-compatible with `gd` / `gh` /
+  // `gb` style mappings, which would all share the same pending-prefix slot.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  for (let i = 0; i < 5; i++) await s.press('j')   // move cursor away from top
+  const before = await s.text()
+  await s.press('g')                                // sets pending; no view change
+  const after = await s.text()
+  assert.equal(before, after, 'single g must NOT move the Diff cursor; it is the prefix of `gg`')
+  await s.press('g')                                // completes the sequence
+  const atTop = await s.text()
+  assert.notEqual(after, atTop, 'second g must complete the gg jump to top')
+  await quit(s)
+})
+
+test('F4e: g + non-g cancels the pending prefix and dispatches the second key', async () => {
+  // After `g` is pending, a non-`g` key must cancel pending AND act normally
+  // (k moves cursor up by one). It must NOT cause a top jump.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')
+  for (let i = 0; i < 5; i++) await s.press('j')
+  const atFive = await s.text()
+  await s.press('g')         // pending
+  await s.press('k')         // cancels pending; k moves cursor up
+  const afterK = await s.text()
+  assert.notEqual(atFive, afterK, 'k after pending g must move the cursor up')
+  // Take an explicit "true top" snapshot for comparison.
+  await s.type('gg')
+  const atTop = await s.text()
+  assert.notEqual(afterK, atTop, 'g + k must NOT have jumped to top; afterK should differ from atTop')
+  await quit(s)
+})
+
+test('F4f: pending g is cleared on Tab focus change', async () => {
+  // Leaking the pending prefix across panes would surprise the user — pressing
+  // g, switching focus, and pressing g again would unexpectedly jump to top.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  for (let i = 0; i < 5; i++) await s.press('j')
+  await s.press('g')                            // pending
+  await s.press('tab')                          // focus → Comments (must clear)
+  await s.press('shift+tab')                    // back to Diff
+  const before = await s.text()
+  await s.press('g')                            // fresh single g — must be no-op
+  const after = await s.text()
+  assert.equal(before, after, 'pending g must be cleared on focus change; subsequent single g is a no-op')
+  await quit(s)
+})
+
 test('F4c: Ctrl-d / Ctrl-u half-page; Ctrl-f / Ctrl-b full page', async () => {
   const s = await launchReva()
   await waitReady(s)
