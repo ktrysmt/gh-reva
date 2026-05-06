@@ -20,7 +20,14 @@ func (m Model) handleKeyFiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+	if handled := m.handlePendingG(key, func() {
+		m.state.FilesCursor = 0
+		m.autoSelectFlat()
+	}); handled {
+		return m, nil
+	}
+	switch key {
 	case "j", "down":
 		if m.state.FilesCursor < len(m.state.PR.Files)-1 {
 			m.state.FilesCursor++
@@ -29,6 +36,11 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
+			m.autoSelectFlat()
+		}
+	case "G":
+		if n := len(m.state.PR.Files); n > 0 {
+			m.state.FilesCursor = n - 1
 			m.autoSelectFlat()
 		}
 	case " ":
@@ -43,7 +55,14 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rows := m.filesTreeRows()
-	switch msg.String() {
+	key := msg.String()
+	if handled := m.handlePendingG(key, func() {
+		m.state.FilesCursor = 0
+		m.autoSelectTree(rows)
+	}); handled {
+		return m, nil
+	}
+	switch key {
 	case "j", "down":
 		if m.state.FilesCursor < len(rows)-1 {
 			m.state.FilesCursor++
@@ -52,6 +71,11 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
+			m.autoSelectTree(rows)
+		}
+	case "G":
+		if n := len(rows); n > 0 {
+			m.state.FilesCursor = n - 1
 			m.autoSelectTree(rows)
 		}
 	case " ":
@@ -168,7 +192,8 @@ func (m Model) filesView() string {
 			count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 		}
 		status := m.styledStatus(f.Status)
-		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, f.Path, count))
+		path := m.searchHighlight(f.Path, model.PaneFiles)
+		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, path, count))
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }
@@ -188,7 +213,7 @@ func (m Model) filesTreeRender() string {
 			if m.state.FoldedDirs[r.Path] {
 				marker = "> "
 			}
-			name := baseName(r.Path)
+			name := m.searchHighlight(baseName(r.Path), model.PaneFiles)
 			out = append(out, fmt.Sprintf("%s%s%s%s/", cursor, ind, fg(marker, m.theme.DiffLineNumber), name))
 		default:
 			f := m.state.PR.Files[r.FileIndex]
@@ -197,7 +222,11 @@ func (m Model) filesTreeRender() string {
 				count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 			}
 			status := m.styledStatus(f.Status)
-			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, status, baseName(f.Path), count))
+			// Search matches against the full path; highlight what's
+			// visible in tree mode (basename), so the user still sees
+			// the band when the query lives in the file's leaf segment.
+			name := m.searchHighlight(baseName(f.Path), model.PaneFiles)
+			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, status, name, count))
 		}
 	}
 	return strings.Join(out, "\n")

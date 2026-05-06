@@ -158,11 +158,11 @@ func TestUnifiedAdditionGetsBgAndSyntax(t *testing.T) {
 
 	// Use distinct idx values; rowCache is keyed on (mode, idx, halfW, commented)
 	// and these two calls would otherwise alias on idx=0.
-	plusRows := m.renderUnifiedBufferLine("+func main() { return }", 0, -1, false)
+	plusRows := m.renderUnifiedBufferLine("+func main() { return }", 0, -1, false, false)
 	if len(plusRows) == 0 {
 		t.Fatalf("expected at least one row for '+' line")
 	}
-	minusRows := m.renderUnifiedBufferLine("-func main() { return }", 1, -1, false)
+	minusRows := m.renderUnifiedBufferLine("-func main() { return }", 1, -1, false, false)
 	if len(minusRows) == 0 {
 		t.Fatalf("expected at least one row for '-' line")
 	}

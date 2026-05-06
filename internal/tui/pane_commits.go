@@ -19,7 +19,14 @@ func (m Model) handleKeyCommits(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	commits := m.visibleCommits()
-	switch msg.String() {
+	key := msg.String()
+	if handled := m.handlePendingG(key, func() {
+		m.state.CommitsCursor = 0
+		m.autoSelectCommit(commits)
+	}); handled {
+		return m, nil
+	}
+	switch key {
 	case "j", "down":
 		if m.state.CommitsCursor < len(commits) {
 			m.state.CommitsCursor++
@@ -30,6 +37,9 @@ func (m Model) handleKeyCommits(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.CommitsCursor--
 			m.autoSelectCommit(commits)
 		}
+	case "G":
+		m.state.CommitsCursor = len(commits)
+		m.autoSelectCommit(commits)
 	case " ":
 		m.toggleModal(model.PaneCommits)
 	}
@@ -87,8 +97,13 @@ func (m Model) commitsView() string {
 				annotation = "[" + m.styledStatus(k) + "] "
 			}
 		}
+		// Search highlight on the message text (plain). The short SHA
+		// already carries CommitSHA fg styling and nesting bg under fg
+		// confuses lipgloss's SGR composition; we let the row cursor
+		// `>` carry the visual signal for sha-only matches.
 		sha := fg(c.ShortSHA, m.theme.CommitSHA)
-		rows = append(rows, fmt.Sprintf("%s%s%s %s", cursor, annotation, sha, c.Message))
+		msg := m.searchHighlight(c.Message, model.PaneCommits)
+		rows = append(rows, fmt.Sprintf("%s%s%s %s", cursor, annotation, sha, msg))
 	}
 	return title + "\n" + strings.Join(rows, "\n")
 }

@@ -93,6 +93,10 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 		CursorRow:     pick(chroma.GenericStrong, fb.CursorRow),
 		CommentAnchor: pick(chroma.GenericEmph, fb.CommentAnchor),
 		VisualRangeBg: pickBgBrighten(chroma.Background, 0.15, fb.VisualRangeBg),
+		// Theme-uniform yellow so the match band stays distinct from the
+		// editor bg and the visual-range slate. Per-theme derivation could
+		// collide with syntax fg on warm-palette themes.
+		SearchMatchBg: fb.SearchMatchBg,
 
 		StatusAdded:     pickAccent(chroma.GenericInserted, fb.StatusAdded),
 		StatusModified:  pick(chroma.GenericSubheading, fb.StatusModified),

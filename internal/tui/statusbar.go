@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -22,15 +23,20 @@ const statusBarRows = 2
 // definition. Format: `key:label` separated by single spaces; multiple
 // alternatives in one slot use `/` (e.g. `j/k`, `H/M/L`).
 const (
-	hintFilesFlat     = "j/k:move space:zoom t:tree"
-	hintFilesTree     = "j/k:move enter:fold space:zoom t:tree"
-	hintCommits       = "j/k:move space:zoom"
-	hintDiff          = "j/k:move H/M/L:viewport gg/G:top/bottom space:split enter:comment"
+	hintFilesFlat     = "j/k:move /:search space:zoom t:tree"
+	hintFilesTree     = "j/k:move /:search enter:fold t:tree"
+	hintCommits       = "j/k:move /:search space:zoom"
+	hintDiff          = "j/k:move H/M/L:viewport gg/G:top/bottom /:search space:split enter:comment"
 	hintComments      = "j/k:move space:zoom enter:edit r:reply"
 	hintVisual        = "-- VISUAL --  y:yank esc/ctrl+c:cancel"
 	hintModal         = "space/esc/q/ctrl+c:close"
 	hintModalComments = "enter:edit r:reply space/esc/q/ctrl+c:close"
 	hintHelp          = "?/esc/q:close"
+
+	// Search hints. Editing is the typing phase; Active is post-Enter
+	// where n/N cycle and a fresh `/` re-enters Editing.
+	hintSearchEditing = "type query  enter:confirm  esc:cancel"
+	hintSearchActive  = "n:next  N:prev  /:edit  esc:clear"
 
 	// Compose state hints. Editing covers the textarea fallback and
 	// the brief Editing→Submitting transition for the $EDITOR path.
@@ -127,6 +133,20 @@ func (m Model) statusBarContent() (string, string) {
 	}
 	if m.state.HelpOpen {
 		return hintHelp, ""
+	}
+	// Search Editing replaces the context with the live query so the user
+	// sees what they typed; Active swaps to the n/N hint set. Suffix is
+	// dropped in both so the prompt does not compete with `?:help` etc.
+	if s := m.state.Search; s != nil {
+		if s.Status == model.SearchEditing {
+			return "/" + s.Query + "_", ""
+		}
+		count := len(s.Matches)
+		idx := s.CursorIdx + 1
+		if count == 0 {
+			idx = 0
+		}
+		return hintSearchActive + "  [" + strconv.Itoa(idx) + "/" + strconv.Itoa(count) + "] /" + s.Query, ""
 	}
 	if m.state.Visual != nil {
 		return hintVisual, ""

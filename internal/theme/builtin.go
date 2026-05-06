@@ -34,6 +34,10 @@ func builtinDark() *Theme {
 		CursorRow:     lipgloss.Color("#56d364"),
 		CommentAnchor: lipgloss.Color("#f0883e"),
 		VisualRangeBg: lipgloss.Color("#1f2937"),
+		// Muted dark yellow chosen to read on dark backgrounds without
+		// overpowering syntax foreground colors. Mirrors GitHub web's
+		// search highlight idiom.
+		SearchMatchBg: lipgloss.Color("#574b00"),
 
 		StatusAdded:     lipgloss.Color("#3fb950"),
 		StatusModified:  lipgloss.Color("#d29922"),

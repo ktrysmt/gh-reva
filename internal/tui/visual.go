@@ -19,12 +19,12 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// running, so a stray Ctrl-C during selection just drops back to
 		// normal mode rather than killing the TUI mid-review.
 		m.state.Visual = nil
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		return m, nil
 	case "y":
 		_ = clipboard.Yank(m.yankString())
 		m.state.Visual = nil
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		return m, nil
 	case "enter":
 		// Diff visual + Enter opens a multi-line comment compose;

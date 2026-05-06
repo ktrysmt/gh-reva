@@ -41,6 +41,7 @@ type Theme struct {
 	CursorRow     lipgloss.Color
 	CommentAnchor lipgloss.Color
 	VisualRangeBg lipgloss.Color
+	SearchMatchBg lipgloss.Color
 
 	StatusAdded     lipgloss.Color
 	StatusModified  lipgloss.Color

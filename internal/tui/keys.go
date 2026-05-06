@@ -34,6 +34,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.state.Compose != nil {
 		return m.handleKeyTextarea(msg)
 	}
+	// Search Editing absorbs all keystrokes so the user can type the
+	// query without keys leaking to pane navigation. Active state (post-
+	// Enter) falls through to normal dispatch so n/N can cycle while
+	// j/k / Tab / etc. still work.
+	if m.state.Search != nil && m.state.Search.Status == model.SearchEditing {
+		return m.handleKeySearch(msg)
+	}
 	// Help modal absorbs all keystrokes except its dismiss set. It takes
 	// precedence over visual / pane routing so the modal can be reached and
 	// dismissed from any prior state without leaking keys to the body.
@@ -44,8 +51,41 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleKeyVisual(msg)
 	}
 	switch msg.String() {
+	case "/":
+		// Re-enter Editing while Active too — `/` after a finished search
+		// is the user's gesture to refine the query without losing the
+		// saved-cursor restore path.
+		if m.state.PR == nil {
+			return m, nil
+		}
+		if m.state.Search != nil {
+			// Refine: keep the saved cursors, re-open Editing with the
+			// existing query so the user can extend it without retyping.
+			m.state.Search.Status = model.SearchEditing
+			return m, nil
+		}
+		// Comments-pane search is intentionally disabled until the
+		// "search inside zoom modal vs flat list" UX is decided.
+		// Modeled as a silent no-op so the user sees no prompt; the
+		// per-pane status hint already omits `/:search` for Comments.
+		if m.state.FocusedPane == model.PaneComments {
+			return m, nil
+		}
+		m.state.PendingPrefix = ""
+		m.startSearch()
+		return m, nil
+	case "n":
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.searchAdvance(1)
+			return m, nil
+		}
+	case "N":
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.searchAdvance(-1)
+			return m, nil
+		}
 	case "?":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		// Opening Help while a zoom modal is up closes the modal first
 		// (Help layers above), so the post-Help close lands the user
 		// back on the modal's opener pane. closeModal is a no-op when
@@ -68,6 +108,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "ctrl+c":
+		// Active search ends on Ctrl+C (peer to Esc). Sits ahead of the
+		// modal-close branch so the user can clear the search highlight
+		// without dropping out of any zoom modal that might still be open.
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.state.Search = nil
+			return m, nil
+		}
 		// Mirror q's modal-close behavior: a stray Ctrl+C while a zoom
 		// modal is open should close the modal, not drop the user out of
 		// the program. The two modal-dismiss gestures (q and Ctrl+C) thus
@@ -80,15 +127,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "esc":
-		// Esc dismisses the pane modal but otherwise stays as a no-op.
-		// Keeping Esc no-op outside the modal preserves the existing
-		// "no surprising side effect" contract elsewhere in the app.
+		// Esc clears an Active search so n/N stop cycling. Modal close
+		// stays the prior contract; outside both, Esc is a no-op so
+		// existing flows are not changed.
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.state.Search = nil
+			return m, nil
+		}
 		if m.state.Modal != nil {
 			m.closeModal()
 		}
 		return m, nil
 	case "tab":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
+		// Tab while a search is Active terminates the session: changing
+		// pane focus implies the user already navigated to the row they
+		// were after, so n/N should stop intercepting and the highlight
+		// should clear. Editing-phase search never reaches this branch
+		// (handleKeySearch absorbs Tab earlier).
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.state.Search = nil
+		}
 		// Tab from inside a modal: first restore focus to the opener
 		// pane via closeModal, then advance from there. Without the
 		// restore, the modal-side FocusedPane (e.g. Comments after a
@@ -100,14 +159,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
 		return m, nil
 	case "shift+tab":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
+		if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+			m.state.Search = nil
+		}
 		if m.state.Modal != nil {
 			m.closeModal()
 		}
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
 		return m, nil
 	case "v":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		vs := &model.VisualState{
 			OriginPane: m.state.FocusedPane,
 			Linewise:   m.state.FocusedPane != model.PaneDiff,
@@ -125,11 +187,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.Visual = vs
 		return m, nil
 	case "J":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		m.advanceFile(true)
 		return m, nil
 	case "K":
-		m.state.DiffPendingPrefix = ""
+		m.state.PendingPrefix = ""
 		m.advanceFile(false)
 		return m, nil
 	case "enter":

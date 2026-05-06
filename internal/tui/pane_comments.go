@@ -25,7 +25,16 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	flat := m.flatComments()
-	switch msg.String() {
+	key := msg.String()
+	if handled := m.handlePendingG(key, func() {
+		if len(flat) > 0 {
+			m.state.CommentsCursor = 0
+			m.syncDiffToCursorComment()
+		}
+	}); handled {
+		return m, nil
+	}
+	switch key {
 	case "j", "down":
 		if m.state.CommentsCursor < len(flat)-1 {
 			m.state.CommentsCursor++
@@ -33,6 +42,10 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		if m.state.CommentsCursor > 0 {
 			m.state.CommentsCursor--
+		}
+	case "G":
+		if n := len(flat); n > 0 {
+			m.state.CommentsCursor = n - 1
 		}
 	case "enter":
 		// Edit the cursor comment — only the viewer's own comments are

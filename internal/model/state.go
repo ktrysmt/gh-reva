@@ -60,13 +60,20 @@ type AppState struct {
 	// keystroke at the top of handleKey. Empty string means "no notice".
 	Notice string
 
-	// DiffPendingPrefix holds a pane-scoped key prefix awaiting completion
-	// (vim-style). Currently only `g` is recorded — a follow-up `g` completes
-	// `gg` (gotoTop); any other key cancels the prefix and dispatches as
-	// usual. The slot is forward-compatible with future `gd` / `gh` / `gb`
-	// style mappings inside Diff. Cleared on focus change, visual entry/exit,
-	// help open, and any other key that resolves the sequence.
-	DiffPendingPrefix string
+	// PendingPrefix holds a global key prefix awaiting completion (vim-style).
+	// Currently only `g` is recorded — a follow-up `g` completes `gg` (gotoTop)
+	// in whichever pane currently has focus; any other key cancels the prefix
+	// and dispatches as usual. The slot is forward-compatible with future
+	// `gd` / `gh` / `gb` style mappings. Cleared on focus change, visual
+	// entry/exit, help open, and any other key that resolves the sequence.
+	PendingPrefix string
+
+	// Search drives the global `/` substring search. Editing collects the
+	// query rune-by-rune (incremental); Active is post-Enter and exposes
+	// `n` / `N` to cycle. Each search is scoped to the pane that was
+	// focused when `/` was pressed (TargetPane); the saved cursor fields
+	// let Esc restore the pre-search state on cancel.
+	Search *SearchState
 
 	DiffCache map[string]string
 	Loading   map[string]bool
@@ -195,6 +202,47 @@ const (
 type PendingConfirm struct {
 	Kind    ComposeKind
 	Compose *ComposeState
+}
+
+// SearchStatus is the lifecycle of a `/` search session.
+//
+//   - SearchEditing: query is being typed. Every keystroke updates the
+//     Query and recomputes Matches, jumping the cursor to the first match
+//     (vim-style incsearch).
+//   - SearchActive: query committed via Enter. `n` / `N` cycle through
+//     Matches; further `/` re-enters Editing.
+type SearchStatus int
+
+const (
+	SearchEditing SearchStatus = iota
+	SearchActive
+)
+
+// SearchMatch carries one matched row in TargetPane's content. Index is a
+// pane-local row index (Files: row idx; Commits: cursor idx 0..len(commits);
+// Diff: buffer line idx; Comments: flatComments idx).
+type SearchMatch struct {
+	Index int
+}
+
+// SearchState drives the global `/` search. Saved cursor fields capture
+// the pre-search position so Esc can restore it on cancel.
+type SearchState struct {
+	Status     SearchStatus
+	Query      string
+	TargetPane PaneID
+
+	Matches   []SearchMatch
+	CursorIdx int
+
+	SavedFilesCursor     int
+	SavedCommitsCursor   int
+	SavedDiffCursor      DiffCursor
+	SavedDiffViewportTop int
+	SavedCommentsCursor  int
+	SavedSelectedFile    string
+	SavedSelectedRange   CommitRange
+	SavedFocusedPane     PaneID
 }
 
 // ComposeState is the in-flight state of a comment-input session.

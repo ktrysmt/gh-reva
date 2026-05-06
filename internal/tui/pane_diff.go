@@ -21,20 +21,12 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	pageSize := m.diffViewportHeight()
 	half := pageSize / 2
 	key := msg.String()
-	// Resolve the `g`-prefix sequence (vim semantics). A pending `g` from
-	// the previous keystroke either completes `gg` (gotoTop) or cancels and
-	// falls through to normal dispatch of the new key. A first-time `g`
-	// records pending and returns without view change.
-	if m.state.DiffPendingPrefix == "g" {
-		m.state.DiffPendingPrefix = ""
-		if key == "g" {
-			m.state.DiffCursor.Line = 0
-			m.scrollDiffIntoView(totalLines)
-			return m, nil
-		}
-		// pending cleared; the new key runs through the normal switch below.
-	} else if key == "g" {
-		m.state.DiffPendingPrefix = "g"
+	// Resolve the `g`-prefix sequence (vim semantics). See handlePendingG
+	// for the shared two-key state machine.
+	if handled := m.handlePendingG(key, func() {
+		m.state.DiffCursor.Line = 0
+		m.scrollDiffIntoView(totalLines)
+	}); handled {
 		return m, nil
 	}
 	switch key {
@@ -157,6 +149,7 @@ func (m Model) diffView() string {
 		end = len(lines)
 	}
 	commented := m.commentLineSet()
+	matched := m.searchMatchLines()
 	isSplit, halfW := m.splitLayout()
 	var specs []diffLineSpec
 	if isSplit {
@@ -167,9 +160,9 @@ func (m Model) diffView() string {
 	for i := top; i < end && len(out) < height; i++ {
 		var rows []string
 		if isSplit {
-			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, commented[i])
+			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, commented[i], matched[i])
 		} else {
-			rows = m.renderUnifiedBufferLine(lines[i], i, cursorLine, commented[i])
+			rows = m.renderUnifiedBufferLine(lines[i], i, cursorLine, commented[i], matched[i])
 		}
 		for _, r := range rows {
 			if len(out) >= height {
@@ -186,11 +179,14 @@ func (m Model) diffView() string {
 // the wrap-cell head. Continuation rows are `<4 blanks><wrap-cell tail>`,
 // where the tail's leading blank aligns past the diff marker (`+`/`-`/space)
 // — so total continuation indent is 5 cols (cursor 2 + marker 2 + 1).
-func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, commented bool) []string {
+func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, commented, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
+	// Match-bg rows skip the cache because the match set varies with the
+	// query keystroke-by-keystroke; treating them like cursor / visual
+	// rows keeps the cache consistent without growing its key.
 	cacheKey := ""
-	if !isCursor && !inVisual && m.rowCache != nil {
+	if !isCursor && !inVisual && !matched && m.rowCache != nil {
 		cacheKey = m.rowCacheKey("u", idx, 0, commented)
 		if v, ok := m.rowCache.get(cacheKey); ok {
 			return v
@@ -232,6 +228,8 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 		row := padTrunc(prefix+colored, m.paneWidthDiff)
 		if inVisual {
 			row = bgRow(row, m.theme.VisualRangeBg)
+		} else if matched {
+			row = bgRow(row, m.theme.SearchMatchBg)
 		}
 		out = append(out, row)
 	}
@@ -253,11 +251,13 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 // inputs that actually affect rendering. The cursor and visual rows are
 // not cached (they change every keystroke); everything else is, so 28/30
 // visible rows hit the cache on each redraw.
-func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, commented bool) []string {
+func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, commented, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
+	// Match-bg rows skip the cache for the same reason as the unified
+	// path (#renderUnifiedBufferLine): per-keystroke match-set drift.
 	cacheKey := ""
-	if !isCursor && !inVisual && m.rowCache != nil {
+	if !isCursor && !inVisual && !matched && m.rowCache != nil {
 		cacheKey = m.rowCacheKey("s", idx, halfW, commented)
 		if v, ok := m.rowCache.get(cacheKey); ok {
 			return v
@@ -311,6 +311,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 		row := padTrunc(cursor+marker+oldLn+" "+left+" "+sep+" "+newLn+" "+right, m.paneWidthDiff)
 		if inVisual {
 			row = bgRow(row, m.theme.VisualRangeBg)
+		} else if matched {
+			row = bgRow(row, m.theme.SearchMatchBg)
 		}
 		out = append(out, row)
 	}

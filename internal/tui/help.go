@@ -31,6 +31,9 @@ var helpSections = []helpSection{
 			{"Shift+Tab", "Previous pane"},
 			{"J / K", "Next / previous file"},
 			{"v", "Enter visual mode"},
+			{"gg / G", "Top / bottom (any pane)"},
+			{"/", "Search in current pane"},
+			{"n / N", "Next / previous match"},
 		},
 	},
 	{
@@ -53,7 +56,6 @@ var helpSections = []helpSection{
 		title: "Diff",
 		entries: []helpEntry{
 			{"j / k", "Line down / up"},
-			{"gg / G", "Top / bottom"},
 			{"Ctrl+d / Ctrl+u", "Half page down / up"},
 			{"Ctrl+f / Ctrl+b", "Full page down / up"},
 			{"H / M / L", "Viewport top / middle / bottom"},
