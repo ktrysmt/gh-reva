@@ -184,7 +184,7 @@ func composeStatusBar(leftFull, leftMin string, urls []string, width int, color 
 	if width <= 0 {
 		return ""
 	}
-	const sidePad = 1
+	const sidePad = 2
 	const minGap = 3
 	leftFullW := lipgloss.Width(leftFull)
 	leftMinW := lipgloss.Width(leftMin)
