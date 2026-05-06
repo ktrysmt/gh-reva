@@ -29,12 +29,21 @@ type Client interface {
 	// reply mutation requires the thread's identity).
 	CreatePendingReviewThreadReply(ctx context.Context, owner, repo string, n int, parentThreadID, body string) (*model.ReviewComment, error)
 
-	// SubmitPendingReview finalizes the user's pending review on this
-	// PR with the chosen event. After success, callers should refetch
-	// ListComments so the just-published comments lose their Pending
-	// flag (the GraphQL response only carries the new review state, not
-	// every comment under it).
-	SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error
+	// UpdateReviewComment edits the body of an existing PR review
+	// comment via GraphQL `updatePullRequestReviewComment`. The mutation
+	// is permitted only on comments authored by the viewer; callers must
+	// gate the keystroke with a viewer-vs-comment.User check before
+	// invoking. commentNodeID is the comment's GraphQL node ID (NOT
+	// thread ID — the comment mutation operates on the comment row).
+	UpdateReviewComment(ctx context.Context, owner, repo string, n int, commentNodeID, body string) (*model.ReviewComment, error)
+
+	// ViewerLogin returns the GitHub login of the authenticated user.
+	// Cached per-Client; the first call issues `query { viewer { login } }`
+	// (or piggybacks on ensurePendingReview's response) and subsequent
+	// callers reuse the result. Used by the Comments-pane Enter dispatch
+	// to decide whether the cursor comment is editable (own) or
+	// reply-only (others').
+	ViewerLogin(ctx context.Context) (string, error)
 }
 
 // CreatePendingThreadInput is the payload for CreatePendingReviewThread.
@@ -65,10 +74,17 @@ type ghClient struct {
 
 	// pendingReviewID caches the GraphQL node ID of the user's current
 	// pending review on each PR. Empty entry means "no pending review
-	// known yet" — the next compose POST will run viewerLatestReview to
-	// reuse an existing one or create one. Cleared by SubmitPendingReview
-	// on success.
+	// known yet" — the next compose POST will run the discovery query
+	// to reuse an existing PENDING review or create one. The cache is
+	// per-Client (per-process) — gh-reva no longer exposes a "submit
+	// pending review" gesture, so the entry survives until process exit.
 	pendingReviewID map[int]string
+
+	// viewerLogin caches the authenticated user's GitHub login.
+	// Populated lazily by ViewerLogin (or as a side effect of
+	// ensurePendingReview's discovery query, which already fetches the
+	// viewer alongside the PENDING review filter).
+	viewerLogin string
 }
 
 func NewGHClient() (Client, error) {

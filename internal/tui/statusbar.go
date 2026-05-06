@@ -9,19 +9,25 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
+// statusBarRows is the on-screen footprint of the bordered status bar:
+// top border + content row + bottom border. View() reserves this many
+// rows from m.height before computing the body layout.
+const statusBarRows = 3
+
 // Per-context status bar hints. Kept as bare top-level constants (not a
 // map) so a `git grep` for any of these strings lands on the canonical
 // definition. Format: `key:label` separated by single spaces; multiple
 // alternatives in one slot use `/` (e.g. `j/k`, `H/M/L`).
 const (
-	hintFilesFlat = "j/k:move space:zoom t:tree"
-	hintFilesTree = "j/k:move enter:fold space:zoom t:tree"
-	hintCommits   = "j/k:move space:zoom"
-	hintDiff      = "j/k:move H/M/L:viewport gg/G:top/bottom space:split enter:comment"
-	hintComments  = "j/k:move space:zoom enter:reply"
-	hintVisual    = "-- VISUAL --  y:yank esc/ctrl+c:cancel"
-	hintModal     = "space/esc/q/ctrl+c:close"
-	hintHelp      = "?/esc/q:close"
+	hintFilesFlat     = "j/k:move space:zoom t:tree"
+	hintFilesTree     = "j/k:move enter:fold space:zoom t:tree"
+	hintCommits       = "j/k:move space:zoom"
+	hintDiff          = "j/k:move H/M/L:viewport gg/G:top/bottom space:split enter:comment"
+	hintComments      = "j/k:move space:zoom enter:edit r:reply"
+	hintVisual        = "-- VISUAL --  y:yank esc/ctrl+c:cancel"
+	hintModal         = "space/esc/q/ctrl+c:close"
+	hintModalComments = "enter:edit r:reply space/esc/q/ctrl+c:close"
+	hintHelp          = "?/esc/q:close"
 
 	// Compose state hints. Editing covers the textarea fallback and
 	// the brief Editing→Submitting transition for the $EDITOR path.
@@ -32,29 +38,26 @@ const (
 	hintComposeSubmitting = "posting to GitHub…"
 	hintComposeFailed     = "ctrl+s:retry  esc:cancel"
 
-	// Submit-review modal hints. Choose phase prompts the event;
-	// Submitting + Failed mirror the compose lifecycle.
-	hintSubmitChoosing   = "a:approve  c:comment  r:request-changes  esc:cancel"
-	hintSubmitSubmitting = "submitting review…"
-	hintSubmitFailed     = "ctrl+s:retry  esc:cancel"
-
 	// statusCommonSuffix is the navigation hint group appended to the
-	// per-pane context in normal mode. It now lives on the LEFT (joined
-	// to the context with two spaces) so the right side is reserved for
+	// per-pane context in normal mode. It lives on the LEFT (joined to
+	// the context with two spaces) so the right side is reserved for
 	// the PR URL — the renderer in composeStatusBar drops the suffix
 	// (not the URL) when the bar gets tight, since `?:help`/`q:quit`
 	// remain discoverable via convention while a missing URL would
 	// silently strand the user without a way to copy/share the PR
 	// reference.
-	statusCommonSuffix = "tab:focus J/K:file R:submit ?:help q:quit"
+	statusCommonSuffix = "tab/shift+tab:pane J/K:file ?:help q:quit"
 )
 
-// statusBar returns the bottom-row hint string already padded to m.width.
-// Returns an empty string when the terminal is too small for a meaningful
-// bar; callers should skip emitting the trailing newline in that case so
-// the body retains its full height.
+// statusBar returns the 3-row bordered status block (top border, content
+// row, bottom border) joined by "\n" and padded to m.width on every row.
+// Returns an empty string when the terminal is too small to fit the
+// frame plus at least one body row above it; callers should skip
+// emitting the trailing newline in that case so the body retains its
+// full height. The body row is composed by composeStatusBar over the
+// inner width (m.width - 2) so the side `│` glyphs stay aligned.
 func (m Model) statusBar() string {
-	if m.width <= 0 || m.height <= 1 {
+	if m.width <= 0 || m.height <= statusBarRows {
 		return ""
 	}
 	context, suffix := m.statusBarContent()
@@ -67,7 +70,18 @@ func (m Model) statusBar() string {
 	if m.target != nil {
 		urls = m.target.PRShortForms()
 	}
-	return composeStatusBar(left, leftMin, urls, m.width, m.theme.DiffLineNumber)
+	innerW := m.width - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	body := composeStatusBar(left, leftMin, urls, innerW, m.theme.PaneTitle)
+	border := m.theme.PaneBorderInactive
+	bar := strings.Repeat("─", innerW)
+	side := fg("│", border)
+	top := fg("┌"+bar+"┐", border)
+	bottom := fg("└"+bar+"┘", border)
+	middle := side + body + side
+	return top + "\n" + middle + "\n" + bottom
 }
 
 // statusBarContent picks the context hint and (optionally) common suffix
@@ -75,15 +89,12 @@ func (m Model) statusBar() string {
 // the context AND drop the suffix — those modes have their own narrow
 // keymap surface, so showing the normal-mode suffix would mislead.
 func (m Model) statusBarContent() (string, string) {
-	if sr := m.state.SubmitReview; sr != nil {
-		switch sr.Status {
-		case model.SubmitSubmitting:
-			return hintSubmitSubmitting, ""
-		case model.SubmitFailed:
-			return hintSubmitFailed, ""
-		default:
-			return hintSubmitChoosing, ""
-		}
+	// Transient notice (e.g. "cannot edit comments by other users")
+	// takes precedence over the per-pane keymap so the user cannot miss
+	// it. Cleared by handleKey on the next keystroke; see #notice in
+	// state.go.
+	if m.state.Notice != "" {
+		return m.state.Notice, ""
 	}
 	if cs := m.state.Compose; cs != nil {
 		switch cs.Status {
@@ -105,6 +116,14 @@ func (m Model) statusBarContent() (string, string) {
 		return hintVisual, ""
 	}
 	if m.state.Modal != nil {
+		// The Comments modal is more than a read-only zoom view — Enter
+		// edits the cursor comment and `r` replies, so the per-pane
+		// keymap stays meaningful inside the zoom. Surface those hints
+		// alongside the close gesture set; other panes' modals don't
+		// expose any pane action and keep the close-only hint.
+		if m.state.Modal.Pane == model.PaneComments {
+			return hintModalComments, ""
+		}
 		return hintModal, ""
 	}
 	switch m.state.FocusedPane {

@@ -1,17 +1,16 @@
-// Category C — PR comment compose flow (Diff Enter / Comments Enter).
+// Category C — PR comment compose flow (Diff Enter / Comments r/Enter).
 //
 // Contract (CLAUDE.md §4 Diff #14, Comments #24b, Compose 27a-f):
-//   - Diff Enter opens the comment compose modal anchored at the cursor row.
-//     With $EDITOR set, tea.ExecProcess hands the terminal to the editor;
-//     on exit the body is saved as a pending ReviewComment (no upstream
-//     POST — submission is a separate flow that does not exist yet).
-//     With no $EDITOR, the in-app textarea fallback (Ctrl+S save, Esc
-//     cancel) collects the body inline.
-//   - Comments Enter replies to the thread under the Comments cursor;
-//     the reply is also stored as pending and inherits the parent's anchor.
+//   - Diff Enter on a row WITHOUT existing comments opens the inline
+//     compose modal anchored at that row.
+//   - Diff Enter on a row WITH existing comments hands off to the
+//     Comments zoom modal (no compose). The user picks an action there.
+//   - Comments r replies to the thread under the cursor (any author).
+//   - Comments Enter edits the cursor comment IN PLACE — gated on
+//     viewer ownership; on a foreign-user comment a status-bar notice
+//     is surfaced instead of starting Compose.
 //   - Empty body (TrimSpace) cancels — no pending entry is created.
-//   - The Comments pane header tags pending entries with `[pending]` so
-//     the user can tell at a glance which comments are local-only drafts.
+//   - The Comments pane header tags pending entries with `[pending]`.
 
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
@@ -69,21 +68,43 @@ test('C1: Diff Enter saves the editor body as a pending comment', async () => {
   await quit(s)
 })
 
-test('C2: Comments Enter saves a pending reply under the cursor thread', async () => {
-  // Buffer 5 = first existing comment anchor (carol on line 3); tab to
-  // Comments, Enter reply.
+test('C2: Comments r saves a pending reply under the cursor thread', async () => {
+  // Buffer 5 = first existing comment anchor (carol on line 3). The
+  // reply gesture moved from Enter to `r` when Enter was repurposed
+  // for in-place edit on the viewer's own comments.
   const editor = await makeStubEditor('c2.sh', 'pending-reply-from-gh-reva')
   const s = await launchReva({ env: { EDITOR: editor, VISUAL: '' } })
   await waitReady(s)
   await navigateToDiffLine(s, 5)
   await s.press('tab') // Diff → Comments
-  await s.press('enter')
+  await s.type('r')
   await s.waitForText('pending-reply-from-gh-reva', { timeout: 8000 })
   const screen = await s.text()
   const comments = paneText(screen, 'Comments')
   // Original root + new pending reply must both be visible.
   assert.match(comments, /carol/, `original thread root should remain visible:\n${comments}`)
   assert.match(comments, /\[pending\]/, `pending tag must mark the reply:\n${comments}`)
+  await quit(s)
+})
+
+test('C2b: Comments Enter on a foreign comment surfaces a notice (no compose)', async () => {
+  // carol's comment at buffer 5 line 3 is authored by "carol", not "you".
+  // Enter must set the status-bar notice and refuse to open Compose.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
+  await waitReady(s)
+  await navigateToDiffLine(s, 5)
+  await s.press('tab') // Diff → Comments
+  await s.press('enter')
+  // Notice replaces the per-pane keymap on the status bar.
+  await s.waitForText('cannot edit comments by other users', { timeout: 3000 })
+  const screen = await s.text()
+  const comments = paneText(screen, 'Comments')
+  // No compose modal must have opened — `New comment` / `Reply` / `Edit
+  // comment` titles are the proof of intrusion.
+  assert.ok(!/New comment|Reply|Edit comment/.test(screen),
+    `no compose modal must open on foreign Enter`)
+  // The original carol comment is still visible (we did not navigate away).
+  assert.match(comments, /carol/)
   await quit(s)
 })
 

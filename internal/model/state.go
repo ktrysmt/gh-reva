@@ -3,6 +3,15 @@ package model
 type AppState struct {
 	PR *PR
 
+	// ViewerLogin is the authenticated GitHub user's login, populated
+	// during the load sequence via Client.ViewerLogin. Used by the
+	// Comments-pane Enter dispatch to gate the "edit own comment" path
+	// (vs the "reply only on others" hint). Empty until the first
+	// successful viewer fetch — the Comments pane treats empty as
+	// "ownership unknown, fall back to reply" so an early Enter before
+	// the viewer arrives degrades safely instead of misrouting to edit.
+	ViewerLogin string
+
 	FocusedPane PaneID
 
 	SelectedFile  string
@@ -32,14 +41,14 @@ type AppState struct {
 	// processed.
 	Compose *ComposeState
 
-	// SubmitReview is non-nil while the submit-review modal is open
-	// (key `R`) or while submitPullRequestReview is in flight. The
-	// modal asks the user to pick an event (approve / comment /
-	// request_changes) for their pending review. handleKey absorbs all
-	// keystrokes while SubmitReview != nil.
-	SubmitReview *SubmitReviewState
-
 	HelpOpen bool
+
+	// Notice is a transient single-line message shown in the status bar
+	// (replacing the per-pane context, suffix dropped). Set by handlers
+	// that need to surface a soft warning — e.g. "Comments Enter on a
+	// foreign user's comment is reply-only" — and cleared by the next
+	// keystroke at the top of handleKey. Empty string means "no notice".
+	Notice string
 
 	// DiffPendingPrefix holds a pane-scoped key prefix awaiting completion
 	// (vim-style). Currently only `g` is recorded — a follow-up `g` completes
@@ -122,11 +131,17 @@ type ModalState struct {
 //   - ComposeReply → addPullRequestReviewThreadReply on the parent
 //     thread. ParentThreadID is the GraphQL node ID of the thread
 //     under the cursor — the only field needed by the reply mutation.
+//   - ComposeEdit → updatePullRequestReviewComment on a single
+//     existing comment (Pending or public, viewer-authored only).
+//     EditCommentNodeID is the comment's GraphQL node ID. The pre-edit
+//     body is preloaded into the editor / textarea so the user starts
+//     from the existing text instead of a blank buffer.
 type ComposeKind int
 
 const (
 	ComposeInline ComposeKind = iota
 	ComposeReply
+	ComposeEdit
 )
 
 // ComposeStatus is the lifecycle of one Compose attempt:
@@ -146,41 +161,6 @@ const (
 	ComposeFailed
 )
 
-// SubmitEvent is the GitHub PullRequestReviewEvent the user picks
-// when finalizing their pending review. Only the three submission
-// values are exposed (DISMISS is for dismissing other reviewers'
-// reviews via a separate mutation, not relevant here).
-type SubmitEvent string
-
-const (
-	SubmitApprove        SubmitEvent = "APPROVE"
-	SubmitComment        SubmitEvent = "COMMENT"
-	SubmitRequestChanges SubmitEvent = "REQUEST_CHANGES"
-)
-
-// SubmitReviewStatus tracks the submit-review modal lifecycle:
-// Choosing → user picks event; Submitting → GraphQL submit in flight;
-// Failed → submit returned an error, modal stays open with retry.
-// On success the modal closes and PR.Comments is refetched so the
-// just-submitted comments lose their Pending flag.
-type SubmitReviewStatus int
-
-const (
-	SubmitChoosing SubmitReviewStatus = iota
-	SubmitSubmitting
-	SubmitFailed
-)
-
-// SubmitReviewState is the modal state for the "finish your review"
-// flow. PendingCount is captured at modal-open time so the user sees
-// what they are about to submit even if they background the modal.
-type SubmitReviewState struct {
-	Status       SubmitReviewStatus
-	PendingCount int
-	Event        SubmitEvent
-	ErrMsg       string
-}
-
 // ComposeState is the in-flight state of a comment-input session.
 type ComposeState struct {
 	Kind        ComposeKind
@@ -197,6 +177,10 @@ type ComposeState struct {
 
 	// Reply target (Kind == ComposeReply).
 	ParentThreadID string
+
+	// Edit target (Kind == ComposeEdit). Comment NodeID is the GraphQL
+	// identity of the comment whose body is being rewritten.
+	EditCommentNodeID string
 
 	Body   string
 	ErrMsg string

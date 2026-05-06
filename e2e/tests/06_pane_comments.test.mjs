@@ -142,17 +142,17 @@ test('G8: h/l are no-ops in Comments — threads are always expanded', async () 
   await quit(s)
 })
 
-test('G9: Enter on Comments opens the reply compose modal', async () => {
-  // EDITOR/VISUAL empty → textarea fallback so we can assert on the modal
-  // title without spawning a real editor. Cursor needs a thread to reply
-  // to: navigate Diff to buffer 5 (carol's anchor on line 3) then Tab to
-  // Comments.
+test('G9: r on Comments opens the reply compose modal', async () => {
+  // The reply gesture moved from Enter to `r`; Enter is now in-place
+  // edit (own-author only). carol's comment is foreign so Enter
+  // surfaces a Notice — covered by G9b. r still works for replies on
+  // any author.
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')                          // focus Diff
   for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
   await s.press('tab')                                                // → Comments
-  await s.press('enter')
+  await s.type('r')
   await s.waitForText('Reply', { timeout: 5000 })
   await s.press('esc')                                                // close modal
   const after = await s.text()
@@ -160,18 +160,19 @@ test('G9: Enter on Comments opens the reply compose modal', async () => {
   await quit(s)
 })
 
-test('G9b: Enter on Comments with no thread under the cursor is a no-op', async () => {
-  // Buffer 0 (file header) has no anchored thread → buildComposeReply
-  // returns false → Enter must not open compose.
+test('G9b: Enter on Comments without a thread is a no-op (no notice either)', async () => {
+  // Buffer 0 (file header) has no anchored thread → buildComposeEdit
+  // refuses without setting Notice (the foreign-author message would
+  // mislead when the cursor is off-thread entirely).
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab'); await s.press('tab')    // focus Comments
-  // Diff cursor still on buffer 0 (header) → no thread visible.
-  const before = await s.text()
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Comments Enter without a thread must be a no-op')
-  assert.ok(!/Reply/.test(after), 'no compose modal should appear')
+  assert.ok(!/New comment|Reply|Edit comment/.test(after),
+    `Comments Enter without a thread must not open compose`)
+  assert.ok(!/cannot edit comments by other users/.test(after),
+    `the foreign-author notice must not surface when there is no thread`)
   await quit(s)
 })
 

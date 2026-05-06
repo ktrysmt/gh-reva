@@ -48,6 +48,19 @@ func (m *Model) startComposeReply() tea.Cmd {
 	return m.beginEditing()
 }
 
+// startComposeEdit opens a Compose session targeting the comment under
+// the Comments cursor for in-place body editing. Returns nil when the
+// cursor is not on a comment, when the comment lacks a NodeID, or when
+// the comment was authored by a different user (the edit gate is
+// enforced by handleKeyComments before this is called; a defence in
+// depth here returns nil for the same case).
+func (m *Model) startComposeEdit() tea.Cmd {
+	if !m.buildComposeEdit() {
+		return nil
+	}
+	return m.beginEditing()
+}
+
 // buildComposeInline populates m.state.Compose with the inline target
 // derived from the current Diff cursor / visual range. Returns false
 // when the inputs cannot anchor a comment (header rows, no patch, no
@@ -120,6 +133,45 @@ func (m *Model) buildComposeReply() bool {
 	return true
 }
 
+// buildComposeEdit populates m.state.Compose for an in-place body
+// edit on the comment under the Comments cursor. Returns false when:
+//
+//   - no Comments cursor (no PR / no flatComments)
+//   - the cursor comment has no NodeID (cannot identify on GitHub)
+//   - the cursor comment was authored by a non-viewer (GitHub rejects
+//     the edit anyway; we gate before the POST so the user gets a
+//     fast no-op rather than a roundtrip + 403)
+//
+// The pre-edit body is copied into Compose.Body so the editor /
+// textarea opens with existing text instead of a blank buffer.
+func (m *Model) buildComposeEdit() bool {
+	if m.state == nil || m.state.PR == nil {
+		return false
+	}
+	flat := m.flatComments()
+	if len(flat) == 0 {
+		return false
+	}
+	idx := m.state.CommentsCursor
+	if idx < 0 || idx >= len(flat) {
+		return false
+	}
+	target := flat[idx]
+	if target == nil || target.NodeID == "" {
+		return false
+	}
+	if m.state.ViewerLogin == "" || target.User != m.state.ViewerLogin {
+		return false
+	}
+	m.state.Compose = &model.ComposeState{
+		Kind:              model.ComposeEdit,
+		Status:            model.ComposeEditing,
+		EditCommentNodeID: target.NodeID,
+		Body:              target.Body,
+	}
+	return true
+}
+
 // threadIdentityForCursor returns the GraphQL thread node ID for the
 // thread the Comments cursor is sitting on. Empty signals "no thread
 // visible" so the caller can no-op. The flat ordering is `[root,
@@ -152,13 +204,14 @@ func (m *Model) beginEditing() tea.Cmd {
 		m.state.Compose.UseTextarea = true
 		return nil
 	}
-	return runEditorCmd()
+	return runEditorCmd(m.state.Compose.Body)
 }
 
-// runEditorCmd writes a tempfile, hands the terminal to $EDITOR via
-// tea.ExecProcess, and on exit reads the file back, deletes it, and
-// emits composeBodyMsg with the result. Empty body (after TrimSpace)
-// is the user's signal to cancel.
+// runEditorCmd writes a tempfile (pre-populated with `initialBody` if
+// non-empty so edit flows start on the existing text), hands the
+// terminal to $EDITOR via tea.ExecProcess, and on exit reads the file
+// back, deletes it, and emits composeBodyMsg with the result. Empty
+// body (after TrimSpace) is the user's signal to cancel.
 //
 // Editor invocation goes through `sh -c "<EDITOR> <quoted-path>"` rather
 // than splitting EDITOR on whitespace ourselves: matches the convention
@@ -168,12 +221,19 @@ func (m *Model) beginEditing() tea.Cmd {
 // expects from their shell. The tempfile path is shell-quoted with
 // shellSingleQuote — os.CreateTemp emits alphanumeric paths in
 // practice, but the quote keeps the contract honest.
-func runEditorCmd() tea.Cmd {
+func runEditorCmd(initialBody string) tea.Cmd {
 	f, err := os.CreateTemp("", "gh-reva-compose-*.md")
 	if err != nil {
 		return func() tea.Msg { return composeBodyMsg{err: err} }
 	}
 	tmpPath := f.Name()
+	if initialBody != "" {
+		if _, err := f.WriteString(initialBody); err != nil {
+			_ = f.Close()
+			_ = os.Remove(tmpPath)
+			return func() tea.Msg { return composeBodyMsg{err: err} }
+		}
+	}
 	_ = f.Close()
 	shellCmd := fmt.Sprintf("%s %s", editorEnv(), shellSingleQuote(tmpPath))
 	cmd := exec.Command("sh", "-c", shellCmd)
@@ -226,9 +286,10 @@ func (m *Model) applyComposeBody(msg composeBodyMsg) tea.Cmd {
 
 // submitComposeCmd dispatches the right GraphQL mutation for the
 // compose payload. Inline → CreatePendingReviewThread; Reply →
-// CreatePendingReviewThreadReply. The Compose value is captured by
-// copy at Cmd-build time so a later state mutation (cancel, retry)
-// does not race with the in-flight call.
+// CreatePendingReviewThreadReply; Edit → UpdateReviewComment. The
+// Compose value is captured by copy at Cmd-build time so a later
+// state mutation (cancel, retry) does not race with the in-flight
+// call.
 func submitComposeCmd(client api.Client, target *api.Target, cs model.ComposeState) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -236,6 +297,9 @@ func submitComposeCmd(client api.Client, target *api.Target, cs model.ComposeSta
 		switch cs.Kind {
 		case model.ComposeReply:
 			rc, err := client.CreatePendingReviewThreadReply(ctx, target.Owner, target.Repo, target.Number, cs.ParentThreadID, cs.Body)
+			return composeSubmittedMsg{comment: rc, err: err}
+		case model.ComposeEdit:
+			rc, err := client.UpdateReviewComment(ctx, target.Owner, target.Repo, target.Number, cs.EditCommentNodeID, cs.Body)
 			return composeSubmittedMsg{comment: rc, err: err}
 		default:
 			in := api.CreatePendingThreadInput{
@@ -254,15 +318,15 @@ func submitComposeCmd(client api.Client, target *api.Target, cs model.ComposeSta
 }
 
 // applyComposeSubmitted is the Update side of composeSubmittedMsg.
-// Success optimistically appends the returned comment to PR.Comments,
-// clears Compose, and queues refreshCommentsCmd to repaginate the
-// canonical comment list (mirroring SubmitPendingReview's flow). The
-// optimistic append keeps the just-posted comment visible during the
-// refresh roundtrip; the refresh then replaces the list wholesale so
-// any anchor / pending-state drift between the optimistic copy and
-// GitHub's authoritative state is healed without manual reconciliation.
-// Failure flips status to Failed without dropping the body so the user
-// can retry from the modal.
+// Success optimistically updates PR.Comments and queues
+// refreshCommentsCmd; the kind decides whether to append (Inline /
+// Reply) or replace-by-NodeID (Edit).
+//
+// Edits never bump CommentCount — the comment already existed before
+// the edit. Inline / Reply append a new entry and bump the count for
+// the affected path. The refresh then heals any drift between the
+// optimistic copy and GitHub's authoritative state. Failure flips
+// status to Failed without dropping the body so the user can retry.
 func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) tea.Cmd {
 	if m.state.Compose == nil {
 		return nil
@@ -272,12 +336,39 @@ func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) tea.Cmd {
 		m.state.Compose.ErrMsg = msg.err.Error()
 		return nil
 	}
+	kind := m.state.Compose.Kind
 	if msg.comment != nil && m.state.PR != nil {
-		m.state.PR.Comments = append(m.state.PR.Comments, msg.comment)
-		bumpFileCommentCount(m.state.PR.Files, msg.comment.Path)
+		if kind == model.ComposeEdit {
+			replaceCommentByNodeID(m.state.PR.Comments, msg.comment)
+		} else {
+			m.state.PR.Comments = append(m.state.PR.Comments, msg.comment)
+			bumpFileCommentCount(m.state.PR.Files, msg.comment.Path)
+		}
 	}
 	m.state.Compose = nil
 	return refreshCommentsCmd(m.client, m.target)
+}
+
+// replaceCommentByNodeID swaps the body / pending-state of any comment
+// whose NodeID matches `next`. Used by the Edit flow to apply the
+// optimistic update — anchor (Path / Line / Side) is left as-is
+// because GitHub's edit mutation does not move threads; only the body
+// (and timestamps, indirectly) change.
+func replaceCommentByNodeID(list []*model.ReviewComment, next *model.ReviewComment) {
+	if next == nil || next.NodeID == "" {
+		return
+	}
+	for _, c := range list {
+		if c == nil || c.NodeID != next.NodeID {
+			continue
+		}
+		c.Body = next.Body
+		c.Pending = next.Pending
+		// CreatedAt/Author intentionally left untouched: an edit on
+		// GitHub does not move the comment's posting timestamp, and
+		// the author cannot change.
+		return
+	}
 }
 
 // retryComposeSubmit re-issues the in-flight POST after a failed

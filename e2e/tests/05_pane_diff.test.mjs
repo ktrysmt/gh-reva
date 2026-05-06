@@ -203,22 +203,26 @@ test('F6: H jumps to viewport top after G scrolls down', async () => {
   await quit(s)
 })
 
-test('F7: Enter on a commented diff line opens the comment compose modal', async () => {
-  // EDITOR/VISUAL forced empty so the textarea fallback fires deterministically;
-  // the modal title `New comment` is the canonical signal that compose opened.
+test('F7: Enter on a commented diff line hands off to the Comments zoom modal', async () => {
+  // The keymap was revised: rather than opening compose directly on a
+  // commented row (which silently forks a second thread), Enter now
+  // opens the Comments zoom modal so the user can navigate the
+  // existing comments and pick edit / reply explicitly.
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Fixture comment 1001 (greeting.go) is anchored at new-file line 3 →
-  // buffer index 5; Enter must open the compose overlay there.
+  // buffer index 5.
   for (let i = 0; i < 5; i++) await s.type('j')
   await s.press('enter')
-  await s.waitForText('New comment', { timeout: 5000 })
-  // Focus stays on Diff behind the modal; the modal absorbs all keys until
-  // dismissed.
+  // Modal Comments title row signature: `│ Comments` with single leading
+  // space (the regular pane row uses `▶ ` / `  ` prefix instead).
+  await s.waitForText('│ Comments', { timeout: 5000 })
+  // Compose must NOT have opened — the modal is the entry point now.
+  const screen = await s.text()
+  assert.ok(!/New comment|Reply|Edit comment/.test(screen),
+    `compose modal must not open on Diff Enter; only the Comments zoom modal does`)
   await s.press('esc')
-  const after = await s.text()
-  assert.match(after, /▶ Diff/, 'focus must remain on Diff after compose closes')
   await quit(s)
 })
 

@@ -7,13 +7,13 @@ import (
 )
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Submit-review modal absorbs every keystroke until dismissed.
-	// Takes precedence over Compose because submitting closes the
-	// pending-review draft as a whole — it cannot be opened on top of
-	// an in-flight compose anyway (the dispatcher routes Compose first
-	// when both are non-nil, see below).
-	if m.state.SubmitReview != nil {
-		return m.handleKeySubmit(msg)
+	// Any keystroke clears a transient Notice (e.g. the "cannot edit
+	// others' comments" hint). Cleared BEFORE dispatch so a handler can
+	// re-set Notice in the same tick if it wants to. Compose / Help /
+	// Visual modal handlers also benefit from auto-clear: a stray Esc
+	// while a notice is up doubles as "dismiss notice".
+	if m.state.Notice != "" {
+		m.state.Notice = ""
 	}
 	// Compose absorbs all keystrokes when active so the textarea owns
 	// input (Ctrl+S save, Esc cancel, runes append to body) and any
@@ -109,11 +109,35 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.DiffPendingPrefix = ""
 		m.advanceFile(false)
 		return m, nil
-	case "R":
-		// Open the submit-review modal. Like Compose, this is a global
-		// gesture independent of pane focus.
-		m.state.DiffPendingPrefix = ""
-		return m, m.startSubmitReview()
+	case "enter":
+		// Enter inside a Files / Commits zoom modal hands focus to the
+		// Diff pane (the user has just picked the row they want to
+		// inspect). Files-tree directory rows still fold/unfold via
+		// the per-pane handler — that branch returns to handleKeyFiles
+		// below. Comments modal Enter falls through to the standard
+		// per-pane handler so the new edit/r dispatch (#3) keeps
+		// working inside the modal.
+		if m.state.Modal != nil {
+			switch m.state.Modal.Pane {
+			case model.PaneFiles:
+				// Tree mode + dir row: fall through to the per-pane
+				// handler so the directory fold/unfold gesture stays
+				// available. fileIndexFromTreeCursor returns -1 when
+				// the cursor is on a directory row.
+				if m.state.FilesTreeMode && m.fileIndexFromTreeCursor() < 0 {
+					break
+				}
+				m.state.Modal = nil
+				m.state.FocusedPane = model.PaneDiff
+				m.state.CommentsCursor = 0
+				return m, nil
+			case model.PaneCommits:
+				m.state.Modal = nil
+				m.state.FocusedPane = model.PaneDiff
+				m.state.CommentsCursor = 0
+				return m, nil
+			}
+		}
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:

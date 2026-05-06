@@ -164,6 +164,8 @@ func composeModalTitle(cs *model.ComposeState) string {
 	switch cs.Kind {
 	case model.ComposeReply:
 		return "Reply"
+	case model.ComposeEdit:
+		return "Edit comment"
 	default:
 		return "New comment"
 	}

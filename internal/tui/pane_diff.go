@@ -97,15 +97,33 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.DiffViewMode = model.DiffViewSplit
 		}
 	case "enter":
-		// Diff Enter opens the comment-input modal anchored at the
-		// cursor row (or visual range, handled in handleKeyVisual).
-		// header / hunk rows return nil from buildComposeInline → no-op,
-		// matching the previous "Enter is reserved" contract for those
-		// rows.
+		// On a row that already carries one or more anchored review
+		// threads, Enter hands off to the Comments zoom modal so the
+		// user can navigate the existing comments and act on them
+		// (Enter inside the modal = edit own / r = reply / esc = close
+		// per pane_comments.handleKeyComments). On a row WITHOUT
+		// existing comments, Enter falls through to the original
+		// inline-compose start (creates a brand-new pending thread).
+		// Header / hunk rows still no-op via buildComposeInline.
+		if len(m.threadsForCursor()) > 0 {
+			m.openCommentsModalAtCursor()
+			return m, nil
+		}
 		return m, m.startComposeInline()
 	}
 	m.scrollDiffIntoView(totalLines)
 	return m, nil
+}
+
+// openCommentsModalAtCursor opens the Comments zoom modal so the user
+// can interact with the threads anchored at the current Diff cursor.
+// Focus shifts to PaneComments (the modal renders the active pane's
+// content), CommentsCursor resets to 0 (lands on the first visible
+// thread), and Modal is set so the overlay is drawn.
+func (m *Model) openCommentsModalAtCursor() {
+	m.state.Modal = &model.ModalState{Pane: model.PaneComments}
+	m.state.FocusedPane = model.PaneComments
+	m.state.CommentsCursor = 0
 }
 
 func (m Model) diffView() string {

@@ -57,8 +57,12 @@ func (c *errorClient) CreatePendingReviewThreadReply(ctx context.Context, owner,
 	return nil, c.err
 }
 
-func (c *errorClient) SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error {
-	return c.err
+func (c *errorClient) UpdateReviewComment(ctx context.Context, owner, repo string, n int, commentNodeID, body string) (*model.ReviewComment, error) {
+	return nil, c.err
+}
+
+func (c *errorClient) ViewerLogin(ctx context.Context) (string, error) {
+	return "", c.err
 }
 
 func (c *errorClient) ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error) {

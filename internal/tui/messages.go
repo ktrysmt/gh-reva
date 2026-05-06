@@ -5,8 +5,9 @@ import (
 )
 
 type PRLoadedMsg struct {
-	PR    *model.PR
-	Diffs map[string]string
+	PR          *model.PR
+	Diffs       map[string]string
+	ViewerLogin string
 }
 
 // LoadStageMsg announces the start of a loading stage so the spinner can
@@ -53,19 +54,11 @@ type composeSubmittedMsg struct {
 	err     error
 }
 
-// submitReviewDoneMsg fires when submitPullRequestReview completes.
-// Success: AppState.SubmitReview is cleared and a refetch of
-// ListComments is queued so every just-published comment loses its
-// Pending flag. Failure: SubmitReview.Status flips to Failed and
-// ErrMsg is shown in the modal; user can retry or cancel.
-type submitReviewDoneMsg struct {
-	err error
-}
-
 // commentsRefreshedMsg carries the freshly-fetched comment list after
-// a SubmitPendingReview success. The Update handler replaces
-// PR.Comments wholesale and recomputes per-file CommentCount so the
-// pane chrome stays in sync.
+// a successful compose POST. The Update handler merges PR.Comments
+// (preserving any locally-known Pending entries the refresh response
+// has not seen yet) and recomputes per-file CommentCount so the pane
+// chrome stays in sync.
 type commentsRefreshedMsg struct {
 	comments []*model.ReviewComment
 	err      error

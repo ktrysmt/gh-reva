@@ -35,12 +35,37 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.CommentsCursor--
 		}
 	case "enter":
-		// Reply to the thread the cursor is sitting on. No-op when no
-		// thread is visible (cursor not on a ◆ row).
+		// Edit the cursor comment — only the viewer's own comments are
+		// editable per GitHub's permission model. On a foreign comment
+		// (or before the viewer login is known), surface a status-bar
+		// notice steering the user to `r` for reply instead of POSTing
+		// into a 403.
+		if cmd := m.startComposeEdit(); cmd != nil {
+			return m, cmd
+		}
+		// Compose was not started: either the cursor is off-thread, or
+		// the comment is foreign / NodeID-less. Pick the right notice.
+		if c := commentAtCursor(flat, m.state.CommentsCursor); c != nil && c.User != m.state.ViewerLogin {
+			m.state.Notice = "cannot edit comments by other users (press r to reply)"
+		}
+		return m, nil
+	case "r":
+		// Reply to the thread under the cursor (the previous Enter
+		// gesture). No-op when no thread is visible.
 		return m, m.startComposeReply()
 	}
 	m.syncDiffToCursorComment()
 	return m, nil
+}
+
+// commentAtCursor returns the flat-list entry at idx, or nil when the
+// index is out of range. Helper for handleKeyComments' notice gate so
+// the bounds check stays out of the dispatch switch.
+func commentAtCursor(flat []*model.ReviewComment, idx int) *model.ReviewComment {
+	if idx < 0 || idx >= len(flat) {
+		return nil
+	}
+	return flat[idx]
 }
 
 // syncDiffToCursorComment auto-scrolls the Diff viewport so the comment under

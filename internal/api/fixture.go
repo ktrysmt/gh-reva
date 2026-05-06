@@ -185,18 +185,29 @@ func (c *fixtureClient) CreatePendingReviewThreadReply(ctx context.Context, owne
 	return rc, nil
 }
 
-// SubmitPendingReview flips Pending=false on every previously-saved
-// pending comment in the fixture. Mirrors the real-API behaviour where
-// submitting the review surfaces the comments publicly; ListComments
-// callers see the updated state on the next refetch.
-func (c *fixtureClient) SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error {
+// UpdateReviewComment edits a comment in the in-memory fixture. Match
+// is by NodeID; mismatch returns an error so tests catch typos rather
+// than silently no-op'ing. Mirrors the real client's behaviour: only
+// the body changes (CreatedAt et al. stay), and the response is the
+// updated comment.
+func (c *fixtureClient) UpdateReviewComment(ctx context.Context, owner, repo string, n int, commentNodeID, body string) (*model.ReviewComment, error) {
 	c.wait()
 	for _, p := range c.d.Comments {
-		if p.Pending {
-			p.Pending = false
+		if p.NodeID == commentNodeID {
+			p.Body = body
+			return p, nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("fixture: comment %q not found", commentNodeID)
+}
+
+// ViewerLogin returns the synthetic "you" login the fixture uses for
+// locally-authored comments (compose / reply impls set User="you").
+// The string matches the fixture's own writes so the TUI's
+// own-vs-others Enter gate behaves the same against fixtures and live
+// GitHub.
+func (c *fixtureClient) ViewerLogin(ctx context.Context) (string, error) {
+	return "you", nil
 }
 
 func (c *fixtureClient) bumpFileCommentCount(path string) {

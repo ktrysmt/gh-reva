@@ -6,15 +6,17 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/ktrysmt/gh-reva/internal/api"
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // composeStubClient records what the orchestration layer POSTs and
 // returns canned responses so the state machine can be driven without
-// touching GitHub. Only the Pending* / Submit methods are exercised
-// here; the read-only methods inherit nop behavior from the embedded
-// nil interface (any call would panic, signaling unintended use).
+// touching GitHub. Only the Pending* methods are exercised here; the
+// read-only methods inherit nop behavior from the embedded nil
+// interface (any call would panic, signaling unintended use).
 type composeStubClient struct {
 	api.Client
 	thread       api.CreatePendingThreadInput
@@ -22,9 +24,10 @@ type composeStubClient struct {
 	replyParent  string
 	replyBody    string
 	replyCalls   int
-	submitEvent  model.SubmitEvent
-	submitCalls  int
-	submitErr    error
+	editNodeID   string
+	editBody     string
+	editCalls    int
+	editErr      error
 	resp         *model.ReviewComment
 	threadErr    error
 	replyErr     error
@@ -45,10 +48,15 @@ func (c *composeStubClient) CreatePendingReviewThreadReply(_ context.Context, _,
 	return c.resp, c.replyErr
 }
 
-func (c *composeStubClient) SubmitPendingReview(_ context.Context, _, _ string, _ int, event model.SubmitEvent, _ string) error {
-	c.submitCalls++
-	c.submitEvent = event
-	return c.submitErr
+func (c *composeStubClient) UpdateReviewComment(_ context.Context, _, _ string, _ int, commentNodeID, body string) (*model.ReviewComment, error) {
+	c.editCalls++
+	c.editNodeID = commentNodeID
+	c.editBody = body
+	return c.resp, c.editErr
+}
+
+func (c *composeStubClient) ViewerLogin(_ context.Context) (string, error) {
+	return "you", nil
 }
 
 func (c *composeStubClient) ListComments(_ context.Context, _, _ string, _ int) ([]*model.ReviewComment, error) {
@@ -280,6 +288,239 @@ func TestShellSingleQuote(t *testing.T) {
 		if got := shellSingleQuote(c.in); got != c.want {
 			t.Fatalf("shellSingleQuote(%q): got %q want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// Edit gate: cursor on a foreign user's comment must NOT open Compose.
+// The TUI relies on this to surface the "cannot edit others' comments"
+// hint instead of POSTing into a 403.
+func TestBuildComposeEdit_RejectsForeignAuthor(t *testing.T) {
+	foreign := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "alice", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "old", CreatedAt: time.Unix(1, 0),
+	}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{foreign})
+	m.state.ViewerLogin = "you"
+	m.state.DiffCursor.Line = 5
+	m.state.CommentsCursor = 0
+	if m.buildComposeEdit() {
+		t.Fatalf("buildComposeEdit must refuse foreign authors")
+	}
+	if m.state.Compose != nil {
+		t.Fatalf("Compose must remain nil")
+	}
+}
+
+// Edit happy path: own comment, cursor on it, viewer login known.
+// Compose is populated with the existing body so the editor opens on
+// the previous text rather than a blank buffer.
+func TestBuildComposeEdit_OwnAuthorPreloadsBody(t *testing.T) {
+	own := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "draft body", CreatedAt: time.Unix(1, 0),
+	}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
+	m.state.ViewerLogin = "you"
+	m.state.DiffCursor.Line = 5
+	m.state.CommentsCursor = 0
+	if !m.buildComposeEdit() {
+		t.Fatalf("buildComposeEdit returned false on own comment")
+	}
+	cs := m.state.Compose
+	if cs.Kind != model.ComposeEdit {
+		t.Fatalf("Kind: got %v want ComposeEdit", cs.Kind)
+	}
+	if cs.EditCommentNodeID != "PRRC_5" {
+		t.Fatalf("NodeID: got %q want PRRC_5", cs.EditCommentNodeID)
+	}
+	if cs.Body != "draft body" {
+		t.Fatalf("Body must preload original: got %q", cs.Body)
+	}
+}
+
+// Edit POST routes via UpdateReviewComment; success applies the body
+// in-place on the existing comment (no append, no count bump).
+func TestApplyComposeBody_EditRoutesByNodeID(t *testing.T) {
+	own := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "old", CreatedAt: time.Unix(1, 0),
+	}
+	stub := &composeStubClient{resp: &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Body: "new", Pending: false,
+	}}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
+	m.client = stub
+	m.state.ViewerLogin = "you"
+	m.state.DiffCursor.Line = 5
+	m.state.CommentsCursor = 0
+	if !m.buildComposeEdit() {
+		t.Fatalf("buildComposeEdit returned false")
+	}
+	cmd := m.applyComposeBody(composeBodyMsg{body: "new"})
+	if cmd == nil {
+		t.Fatalf("expected submit cmd")
+	}
+	cmd()
+	if stub.editCalls != 1 {
+		t.Fatalf("expected 1 update call, got %d", stub.editCalls)
+	}
+	if stub.editNodeID != "PRRC_5" || stub.editBody != "new" {
+		t.Fatalf("update payload wrong: nodeID=%q body=%q", stub.editNodeID, stub.editBody)
+	}
+}
+
+// Edit success applies the new body onto the existing comment in-place
+// — no duplicate appended, no CommentCount bump.
+func TestApplyComposeSubmitted_EditReplacesByNodeID(t *testing.T) {
+	own := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Path: "foo.go", Body: "old",
+	}
+	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
+	m.state.PR.Files[0].CommentCount = 1
+	m.state.Compose = &model.ComposeState{
+		Kind: model.ComposeEdit, Status: model.ComposeSubmitting,
+		EditCommentNodeID: "PRRC_5", Body: "new",
+	}
+	rc := &model.ReviewComment{ID: 5, NodeID: "PRRC_5", User: "you", Body: "new", Pending: false}
+	m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
+	if got := len(m.state.PR.Comments); got != 1 {
+		t.Fatalf("edit must not duplicate, got %d", got)
+	}
+	if m.state.PR.Comments[0].Body != "new" {
+		t.Fatalf("body must be updated: %q", m.state.PR.Comments[0].Body)
+	}
+	if m.state.PR.Files[0].CommentCount != 1 {
+		t.Fatalf("edit must not bump CommentCount, got %d", m.state.PR.Files[0].CommentCount)
+	}
+}
+
+// Files modal Enter (flat mode) closes the modal and shifts focus to
+// Diff so the user can immediately scroll the patch they just picked.
+func TestHandleKey_FilesFlatModalEnterShiftsToDiff(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.FocusedPane = model.PaneFiles
+	mv.state.Modal = &model.ModalState{Pane: model.PaneFiles}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+	if got.state.Modal != nil {
+		t.Fatalf("Modal must close on Files-flat Enter, got %+v", got.state.Modal)
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("focus must shift to Diff, got %v", got.state.FocusedPane)
+	}
+}
+
+// Commits modal Enter likewise hands off to Diff.
+func TestHandleKey_CommitsModalEnterShiftsToDiff(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.FocusedPane = model.PaneCommits
+	mv.state.Modal = &model.ModalState{Pane: model.PaneCommits}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+	if got.state.Modal != nil {
+		t.Fatalf("Modal must close on Commits Enter")
+	}
+	if got.state.FocusedPane != model.PaneDiff {
+		t.Fatalf("focus must shift to Diff, got %v", got.state.FocusedPane)
+	}
+}
+
+// Diff Enter on a row that already has anchored comments hands off to
+// the Comments zoom modal instead of opening Compose directly. Lets
+// users see the existing comments before deciding whether to add a new
+// thread (`n`-equivalent through r/Enter inside the modal) or edit /
+// reply.
+func TestHandleKeyDiff_EnterOnCommentedRowOpensModal(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5 // anchored to line 21 in composePatch
+	mv.paneHeightDiff = 10       // viewport height for cursor clamp
+	updated, _ := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+	if got.state.Modal == nil || got.state.Modal.Pane != model.PaneComments {
+		t.Fatalf("expected Comments modal, got %+v", got.state.Modal)
+	}
+	if got.state.FocusedPane != model.PaneComments {
+		t.Fatalf("focus must shift to Comments, got %v", got.state.FocusedPane)
+	}
+	if got.state.Compose != nil {
+		t.Fatalf("Compose must NOT open on commented-row Enter")
+	}
+	if got.state.CommentsCursor != 0 {
+		t.Fatalf("CommentsCursor must reset to 0, got %d", got.state.CommentsCursor)
+	}
+}
+
+// Diff Enter on a row with NO existing comments still opens the
+// inline-compose flow directly (the previous behaviour). Modal is left
+// untouched so the user starts a brand-new thread without going
+// through the Comments pane.
+func TestHandleKeyDiff_EnterOnUncommentedRowOpensCompose(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	_, cmd := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("Enter on uncommented row must queue inline compose")
+	}
+	if mv.state.Modal != nil {
+		t.Fatalf("Modal must remain nil for uncommented Enter")
+	}
+	if mv.state.Compose == nil || mv.state.Compose.Kind != model.ComposeInline {
+		t.Fatalf("Compose must be ComposeInline, got %+v", mv.state.Compose)
+	}
+}
+
+// Comments Enter on a foreign user's comment must surface a status-bar
+// notice instead of opening Compose. The notice steers the user to `r`
+// for reply.
+func TestHandleKeyComments_EnterOnForeignSetsNotice(t *testing.T) {
+	foreign := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "alice", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "from alice", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{foreign})
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.state.CommentsCursor = 0
+	updated, cmd := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("Enter on foreign comment must NOT queue a Compose cmd")
+	}
+	got := updated.(Model)
+	if got.state.Notice == "" {
+		t.Fatalf("Notice must be set on foreign-user Enter")
+	}
+	if got.state.Compose != nil {
+		t.Fatalf("Compose must remain nil")
+	}
+}
+
+// Comments r on any thread (own or foreign) must open the reply
+// Compose flow — the keymap split moved reply from Enter to r.
+func TestHandleKeyComments_RoutesReplyToR(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 100, NodeID: "PRRC_100", ThreadID: "PRT_abc", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.state.CommentsCursor = 0
+	updated, cmd := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if cmd == nil {
+		t.Fatalf("r must queue a reply Compose cmd")
+	}
+	got := updated.(Model)
+	if got.state.Compose == nil || got.state.Compose.Kind != model.ComposeReply {
+		t.Fatalf("Compose must be set as ComposeReply, got %+v", got.state.Compose)
 	}
 }
 

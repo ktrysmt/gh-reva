@@ -94,6 +94,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PRLoadedMsg:
 		m.state.PR = msg.PR
 		m.state.DiffCache = msg.Diffs
+		m.state.ViewerLogin = msg.ViewerLogin
 		if len(msg.PR.Files) > 0 {
 			m.state.SelectedFile = msg.PR.Files[0].Path
 		}
@@ -114,8 +115,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case composeSubmittedMsg:
 		return m, m.applyComposeSubmitted(msg)
-	case submitReviewDoneMsg:
-		return m, m.applySubmitReviewDone(msg)
 	case commentsRefreshedMsg:
 		m.applyCommentsRefreshed(msg)
 		return m, nil
@@ -130,13 +129,15 @@ func (m Model) View() string {
 	if m.state.PR == nil {
 		return m.loadingView(m.state.LoadFrame, m.state.LoadStage)
 	}
-	// Reserve the bottom row for the status bar (CLAUDE.md §4 #6) once
-	// the PR is loaded. The visual hint and the modal/help close hint all
-	// ride this same row, so the previous standalone `-- VISUAL --`
-	// banner is gone.
+	// Reserve the bottom 3 rows for the bordered status bar (CLAUDE.md
+	// §4 #6) once the PR is loaded. The visual hint and the modal /
+	// help close hint all ride the bar's middle row, so the previous
+	// standalone `-- VISUAL --` banner is gone. statusBar() returns ""
+	// when m.height <= statusBarRows, in which case bodyHeight stays
+	// equal to m.height and the body uses the whole screen.
 	bodyHeight := m.height
-	if bodyHeight > 1 {
-		bodyHeight--
+	if bodyHeight > statusBarRows {
+		bodyHeight -= statusBarRows
 	}
 	statusBar := m.statusBar()
 	if m.width <= 0 || bodyHeight < 8 {
@@ -159,7 +160,6 @@ func (m Model) View() string {
 		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
 		body = m.overlayCompose(body)
-		body = m.overlaySubmit(body)
 		if statusBar != "" {
 			return body + "\n" + statusBar
 		}
@@ -197,7 +197,6 @@ func (m Model) View() string {
 	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
 	body = m.overlayCompose(body)
-	body = m.overlaySubmit(body)
 
 	if statusBar != "" {
 		return body + "\n" + statusBar
@@ -517,10 +516,15 @@ func loadPRCmd(c api.Client, t *api.Target) tea.Cmd {
 					}
 				}
 			}
+			// Viewer login is fetched last so a network blip on this
+			// non-critical lookup doesn't block the rest of the load.
+			// Empty string is acceptable — Comments-pane Enter falls
+			// back to reply when ownership is unknown.
+			viewer, _ := c.ViewerLogin(ctx)
 			acc.pr.Commits = acc.commits
 			acc.pr.Files = acc.files
 			acc.pr.Comments = acc.comments
-			return PRLoadedMsg{PR: acc.pr, Diffs: diffs}
+			return PRLoadedMsg{PR: acc.pr, Diffs: diffs, ViewerLogin: viewer}
 		},
 	)
 }

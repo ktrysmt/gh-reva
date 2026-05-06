@@ -7,6 +7,32 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
+// ViewerLogin returns the authenticated user's GitHub login. Cached
+// per-Client; the first call issues a tiny `query { viewer { login } }`
+// (or returns the cache populated as a side effect of
+// ensurePendingReview's discovery query). Subsequent calls reuse the
+// cached value. Used by the Comments-pane Enter dispatch to gate
+// "edit own comment" vs "reply-only on others' comments".
+func (c *ghClient) ViewerLogin(ctx context.Context) (string, error) {
+	if c.viewerLogin != "" {
+		return c.viewerLogin, nil
+	}
+	const q = `query { viewer { login } }`
+	var resp struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
+	}
+	if err := c.gql.DoWithContext(ctx, q, nil, &resp); err != nil {
+		return "", fmt.Errorf("viewer login: %w", err)
+	}
+	if resp.Viewer.Login == "" {
+		return "", fmt.Errorf("viewer login: empty response")
+	}
+	c.viewerLogin = resp.Viewer.Login
+	return resp.Viewer.Login, nil
+}
+
 // ensurePRNodeID returns the GraphQL node ID for the given PR. The
 // listCommentsGraphQL pass populates the cache as a side effect; the
 // fallback path below issues a tiny PR-only query when callers reach
@@ -100,6 +126,12 @@ query($owner: String!, $name: String!, $number: Int!) {
 		return "", fmt.Errorf("query pending review: %w", err)
 	}
 	viewerLogin := pendingResp.Viewer.Login
+	if viewerLogin != "" {
+		// Side-effect cache: ensurePendingReview already pays for the
+		// viewer query, so let ViewerLogin readers reuse the result
+		// instead of double-billing the round trip.
+		c.viewerLogin = viewerLogin
+	}
 	for _, r := range pendingResp.Repository.PullRequest.Reviews.Nodes {
 		if r.Author.Login == viewerLogin {
 			c.pendingReviewID[n] = r.ID
@@ -265,6 +297,90 @@ mutation($input: AddPullRequestReviewThreadReplyInput!) {
 	return rc, nil
 }
 
+// UpdateReviewComment edits the body of an existing PR review comment
+// via GraphQL `updatePullRequestReviewComment`. GitHub only accepts the
+// mutation when the authenticated viewer is the comment's author; the
+// callsite in the TUI (`pane_comments.handleKeyComments`) already gates
+// the keystroke on a viewer-vs-User comparison, so the GraphQL 403 path
+// here is a defence-in-depth signal rather than the primary UX channel.
+//
+// The mutation returns the updated PullRequestReviewComment alone (no
+// thread anchor); we re-stitch Path / Line / DiffSide from the cached
+// pre-edit comment in `c.comments[n]` keyed on the same NodeID. The
+// upstream applyComposeSubmitted handler queues refreshCommentsCmd so
+// any drift from this stitching is healed by the canonical refresh
+// within the same frame.
+func (c *ghClient) UpdateReviewComment(ctx context.Context, owner, repo string, n int, commentNodeID, body string) (*model.ReviewComment, error) {
+	const mut = `
+mutation($input: UpdatePullRequestReviewCommentInput!) {
+  updatePullRequestReviewComment(input: $input) {
+    pullRequestReviewComment {
+      id
+      databaseId
+      author { login }
+      body
+      createdAt
+      diffHunk
+      commit { oid }
+      originalCommit { oid }
+      replyTo { databaseId }
+      pullRequestReview { state }
+    }
+  }
+}`
+	input := map[string]interface{}{
+		"pullRequestReviewCommentId": commentNodeID,
+		"body":                       body,
+	}
+	var resp struct {
+		UpdatePullRequestReviewComment struct {
+			Comment gqlReviewComment `json:"pullRequestReviewComment"`
+		} `json:"updatePullRequestReviewComment"`
+	}
+	if err := c.gql.DoWithContext(ctx, mut, map[string]interface{}{"input": input}, &resp); err != nil {
+		return nil, fmt.Errorf("updatePullRequestReviewComment: %w", err)
+	}
+	thread := c.fallbackThreadFromCache(n, "", gqlReviewThread{})
+	thread = c.threadByCommentNodeID(n, commentNodeID, thread)
+	rc := convertGQLComment(resp.UpdatePullRequestReviewComment.Comment, thread)
+	c.invalidateCommentsCache(n)
+	return rc, nil
+}
+
+// threadByCommentNodeID looks up a cached comment by its NodeID and
+// merges the comment's anchor onto `partial`. Used by
+// UpdateReviewComment to recover Path / Line / DiffSide that the
+// updatePullRequestReviewComment mutation does not return on its own.
+func (c *ghClient) threadByCommentNodeID(n int, commentNodeID string, partial gqlReviewThread) gqlReviewThread {
+	cached, ok := c.comments[n]
+	if !ok {
+		return partial
+	}
+	for _, rc := range cached {
+		if rc.NodeID != commentNodeID {
+			continue
+		}
+		out := partial
+		if out.ID == "" {
+			out.ID = rc.ThreadID
+		}
+		if out.Path == "" {
+			out.Path = rc.Path
+		}
+		if out.Line == 0 {
+			out.Line = rc.Line
+		}
+		if out.OriginalLine == 0 {
+			out.OriginalLine = rc.OriginalLine
+		}
+		if out.DiffSide == "" {
+			out.DiffSide = rc.Side
+		}
+		return out
+	}
+	return partial
+}
+
 // fallbackThreadFromCache rebuilds anchor info (path / line / diffSide)
 // from the cached comment list when fetchThreadInfo errors or returns
 // an empty thread. Looks up any cached comment whose ThreadID matches
@@ -302,48 +418,9 @@ func (c *ghClient) fallbackThreadFromCache(n int, parentThreadID string, partial
 	return partial
 }
 
-// SubmitPendingReview finalizes the cached pending review with the
-// chosen event. The cache is cleared on success so the next compose
-// POST starts a new draft. Body is optional (mirrors the GraphQL
-// schema's nullable body field).
-func (c *ghClient) SubmitPendingReview(ctx context.Context, owner, repo string, n int, event model.SubmitEvent, body string) error {
-	reviewID, err := c.ensurePendingReview(ctx, owner, repo, n)
-	if err != nil {
-		return err
-	}
-	const mut = `
-mutation($input: SubmitPullRequestReviewInput!) {
-  submitPullRequestReview(input: $input) {
-    pullRequestReview { id state }
-  }
-}`
-	input := map[string]interface{}{
-		"pullRequestReviewId": reviewID,
-		"event":               string(event),
-	}
-	if body != "" {
-		input["body"] = body
-	}
-	var resp struct {
-		SubmitPullRequestReview struct {
-			PullRequestReview struct {
-				ID    string `json:"id"`
-				State string `json:"state"`
-			} `json:"pullRequestReview"`
-		} `json:"submitPullRequestReview"`
-	}
-	if err := c.gql.DoWithContext(ctx, mut, map[string]interface{}{"input": input}, &resp); err != nil {
-		return fmt.Errorf("submitPullRequestReview: %w", err)
-	}
-	delete(c.pendingReviewID, n)
-	c.invalidateCommentsCache(n)
-	return nil
-}
-
 // invalidateCommentsCache drops the cached comment listing + files
-// listing for a PR so the next List* refetches state. POST and submit
-// both flip Pending state; the file CommentCount is computed inside
-// ListFiles so that cache must die too.
+// listing for a PR so the next List* refetches state. Called after
+// every pending POST so the next refresh sees fresh data.
 func (c *ghClient) invalidateCommentsCache(n int) {
 	delete(c.comments, n)
 	delete(c.prFiles, n)
