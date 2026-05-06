@@ -136,6 +136,13 @@ mutation($input: AddPullRequestReviewThreadInput!) {
     thread {
       id
       isOutdated
+      path
+      line
+      originalLine
+      startLine
+      originalStartLine
+      diffSide
+      startDiffSide
       comments(first: 1) {
         nodes {
           id
@@ -143,10 +150,6 @@ mutation($input: AddPullRequestReviewThreadInput!) {
           author { login }
           body
           createdAt
-          path
-          line
-          originalLine
-          side
           diffHunk
           commit { oid }
           originalCommit { oid }
@@ -192,10 +195,6 @@ mutation($input: AddPullRequestReviewThreadReplyInput!) {
       author { login }
       body
       createdAt
-      path
-      line
-      originalLine
-      side
       diffHunk
       commit { oid }
       originalCommit { oid }
@@ -217,7 +216,18 @@ mutation($input: AddPullRequestReviewThreadReplyInput!) {
 	if err := c.gql.DoWithContext(ctx, mut, map[string]interface{}{"input": input}, &resp); err != nil {
 		return nil, fmt.Errorf("addPullRequestReviewThreadReply: %w", err)
 	}
-	rc := convertGQLComment(resp.AddPullRequestReviewThreadReply.Comment, gqlReviewThread{ID: parentThreadID})
+	// The reply mutation's payload only carries the comment, not the
+	// thread — anchor info (path / line / diffSide) has to come from a
+	// follow-up node query so the returned ReviewComment is fully
+	// populated. Errors here are non-fatal: the reply still posted
+	// successfully on GitHub; we just lose the cosmetic anchor fields
+	// in the immediate response (the next ListComments refetch heals
+	// them).
+	thread, _ := c.fetchThreadInfo(ctx, parentThreadID)
+	if thread.ID == "" {
+		thread.ID = parentThreadID
+	}
+	rc := convertGQLComment(resp.AddPullRequestReviewThreadReply.Comment, thread)
 	c.invalidateCommentsCache(n)
 	return rc, nil
 }

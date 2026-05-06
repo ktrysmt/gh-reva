@@ -8,11 +8,13 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
-// listCommentsQuery walks pullRequest.reviewThreads via cursor pagination,
-// flattening each thread's comments into a single ReviewComment slice.
-// The thread's `id` is captured on every comment in the thread so the
-// reply mutation has it ready without a separate round-trip. Pending
-// comments are detected via `pullRequestReview.state == PENDING`.
+// listCommentsQuery walks pullRequest.reviewThreads via cursor pagination.
+// Anchor fields (path / line / diffSide) live on the THREAD object in
+// GitHub's GraphQL schema — `PullRequestReviewComment` itself only
+// carries body/author/diffHunk/commit and the deprecated position
+// fields, so we read line/side from the thread and then attach them to
+// every comment in that thread when flattening. Pending state is
+// detected via `pullRequestReview.state == PENDING`.
 const listCommentsQuery = `
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -23,6 +25,13 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
         nodes {
           id
           isOutdated
+          path
+          line
+          originalLine
+          startLine
+          originalStartLine
+          diffSide
+          startDiffSide
           comments(first: 100) {
             nodes {
               id
@@ -30,10 +39,6 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
               author { login }
               body
               createdAt
-              path
-              line
-              originalLine
-              side
               diffHunk
               commit { oid }
               originalCommit { oid }
@@ -48,19 +53,15 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
 }`
 
 type gqlReviewComment struct {
-	ID                string `json:"id"`
-	DatabaseID        int64  `json:"databaseId"`
-	Author            struct {
+	ID         string `json:"id"`
+	DatabaseID int64  `json:"databaseId"`
+	Author     struct {
 		Login string `json:"login"`
 	} `json:"author"`
-	Body           string    `json:"body"`
-	CreatedAt      time.Time `json:"createdAt"`
-	Path           string    `json:"path"`
-	Line           int       `json:"line"`
-	OriginalLine   int       `json:"originalLine"`
-	Side           string    `json:"side"`
-	DiffHunk       string    `json:"diffHunk"`
-	Commit         struct {
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+	DiffHunk  string    `json:"diffHunk"`
+	Commit    struct {
 		OID string `json:"oid"`
 	} `json:"commit"`
 	OriginalCommit struct {
@@ -75,9 +76,16 @@ type gqlReviewComment struct {
 }
 
 type gqlReviewThread struct {
-	ID         string `json:"id"`
-	IsOutdated bool   `json:"isOutdated"`
-	Comments   struct {
+	ID                string `json:"id"`
+	IsOutdated        bool   `json:"isOutdated"`
+	Path              string `json:"path"`
+	Line              int    `json:"line"`
+	OriginalLine      int    `json:"originalLine"`
+	StartLine         int    `json:"startLine"`
+	OriginalStartLine int    `json:"originalStartLine"`
+	DiffSide          string `json:"diffSide"`
+	StartDiffSide     string `json:"startDiffSide"`
+	Comments          struct {
 		Nodes []gqlReviewComment `json:"nodes"`
 	} `json:"comments"`
 }
@@ -136,17 +144,21 @@ func (c *ghClient) listCommentsGraphQL(ctx context.Context, owner, repo string, 
 	return out, prID, nil
 }
 
+// convertGQLComment merges thread-level anchor info (path / line /
+// diffSide) with the per-comment payload to produce a fully-populated
+// model.ReviewComment. Threads expose the line/side; comments
+// themselves only expose body / author / commit metadata.
 func convertGQLComment(gc gqlReviewComment, thread gqlReviewThread) *model.ReviewComment {
 	rc := &model.ReviewComment{
 		ID:               gc.DatabaseID,
 		NodeID:           gc.ID,
 		ThreadID:         thread.ID,
-		Path:             gc.Path,
+		Path:             thread.Path,
 		CommitID:         gc.Commit.OID,
 		OriginalCommitID: gc.OriginalCommit.OID,
-		Line:             gc.Line,
-		OriginalLine:     gc.OriginalLine,
-		Side:             gc.Side,
+		Line:             thread.Line,
+		OriginalLine:     thread.OriginalLine,
+		Side:             thread.DiffSide,
 		DiffHunk:         gc.DiffHunk,
 		User:             gc.Author.Login,
 		CreatedAt:        gc.CreatedAt,
@@ -164,4 +176,35 @@ func convertGQLComment(gc gqlReviewComment, thread gqlReviewThread) *model.Revie
 		rc.Line = rc.OriginalLine
 	}
 	return rc
+}
+
+// fetchThreadInfo loads anchor info for a single thread via
+// `node(id: $id)`. Used by CreatePendingReviewThreadReply to enrich
+// the mutation response — the reply mutation only returns the comment,
+// not the thread, so line / diffSide / path have to come from a
+// separate query.
+func (c *ghClient) fetchThreadInfo(ctx context.Context, threadID string) (gqlReviewThread, error) {
+	const q = `
+query($id: ID!) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+      id
+      isOutdated
+      path
+      line
+      originalLine
+      startLine
+      originalStartLine
+      diffSide
+      startDiffSide
+    }
+  }
+}`
+	var resp struct {
+		Node gqlReviewThread `json:"node"`
+	}
+	if err := c.gql.DoWithContext(ctx, q, map[string]interface{}{"id": threadID}, &resp); err != nil {
+		return gqlReviewThread{}, fmt.Errorf("fetch thread info: %w", err)
+	}
+	return resp.Node, nil
 }
