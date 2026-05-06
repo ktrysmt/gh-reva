@@ -48,15 +48,21 @@ func ResolveAnchor(patch string, bufferLine int) (Anchor, bool) {
 
 // ResolveRange returns the canonical Range for a multi-line review
 // comment spanning the two buffer-line endpoints. Endpoints can be in
-// either order; the returned Range always has start <= line on the same
-// side. When both endpoints land on the same buffer line, StartLine is
-// returned as 0 to signal a single-line comment (caller drops the
-// start_* fields).
+// either order; the returned Range always has the buffer-earlier
+// endpoint as start. When both endpoints land on the same buffer line,
+// StartLine is returned as 0 to signal a single-line comment (caller
+// drops the start_* fields).
 //
 // Mixed-side ranges (e.g. anchor on a '-' row, cursor on a '+' row) are
-// accepted as-is — GitHub's API allows start_side != side. We do not
-// try to "normalize" by collapsing mixed ranges to one side, because
-// that would silently change the user's intent.
+// accepted: GitHub's API allows start_side != side. The user's intent
+// is preserved by ordering endpoints by buffer position rather than by
+// numeric line value — comparing a LEFT oldLine to a RIGHT newLine has
+// no shared coordinate space, but buffer index is the canonical "which
+// row in the diff comes first" answer the user actually clicked on.
+// Without this normalization, anchoring on a later '+' row and
+// dragging cursor up to an earlier '-' row produced a payload with
+// numerically-larger start_line, which GitHub rejects with 422
+// "start_line must be less than end_line".
 func ResolveRange(patch string, anchor, cursor int) (Range, bool) {
 	a, okA := ResolveAnchor(patch, anchor)
 	b, okB := ResolveAnchor(patch, cursor)
@@ -67,7 +73,7 @@ func ResolveRange(patch string, anchor, cursor int) (Range, bool) {
 		return Range{Line: anchorLine(a), Side: a.Side}, true
 	}
 	startSpec, endSpec := a, b
-	if shouldSwap(a, b) {
+	if anchor > cursor {
 		startSpec, endSpec = b, a
 	}
 	return Range{
@@ -85,17 +91,6 @@ func anchorLine(a Anchor) int {
 		return a.OldLine
 	}
 	return a.NewLine
-}
-
-// shouldSwap returns true when (a, b) need to be swapped so the canonical
-// range has start_line <= line on the same side. Same-side compares by
-// the row's anchor line; mixed-side keeps the user-provided order
-// (anchor first, cursor second) unchanged.
-func shouldSwap(a, b Anchor) bool {
-	if a.Side != b.Side {
-		return false
-	}
-	return anchorLine(a) > anchorLine(b)
 }
 
 // walkSpecs runs the same single-pass classifier that the TUI renderer

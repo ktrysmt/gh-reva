@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -228,25 +229,7 @@ func submitModalRows(sr *model.SubmitReviewState, innerW int, dateColor, errColo
 
 func pluralize(n int, singular, plural string) string {
 	if n == 1 {
-		return "1 " + singular
+		return fmt.Sprintf("1 %s", singular)
 	}
-	return formatN(n) + " " + plural
-}
-
-func formatN(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b strings.Builder
-	if n < 0 {
-		b.WriteByte('-')
-		n = -n
-	}
-	digits := []byte{}
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	b.Write(digits)
-	return b.String()
+	return fmt.Sprintf("%d %s", n, plural)
 }

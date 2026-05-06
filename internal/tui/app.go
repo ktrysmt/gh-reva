@@ -113,8 +113,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.applyComposeBody(msg)
 		return m, cmd
 	case composeSubmittedMsg:
-		m.applyComposeSubmitted(msg)
-		return m, nil
+		return m, m.applyComposeSubmitted(msg)
 	case submitReviewDoneMsg:
 		return m, m.applySubmitReviewDone(msg)
 	case commentsRefreshedMsg:

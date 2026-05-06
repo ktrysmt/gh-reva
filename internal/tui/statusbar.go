@@ -38,10 +38,14 @@ const (
 	hintSubmitSubmitting = "submitting review…"
 	hintSubmitFailed     = "ctrl+s:retry  esc:cancel"
 
-	// statusCommonSuffix is the always-visible right-flushed group shown
-	// in normal (non-visual / non-modal / non-help) mode. Truncation rule
-	// in composeStatusBar drops it whole when it does not fit alongside
-	// the context, rather than splitting it mid-token.
+	// statusCommonSuffix is the navigation hint group appended to the
+	// per-pane context in normal mode. It now lives on the LEFT (joined
+	// to the context with two spaces) so the right side is reserved for
+	// the PR URL — the renderer in composeStatusBar drops the suffix
+	// (not the URL) when the bar gets tight, since `?:help`/`q:quit`
+	// remain discoverable via convention while a missing URL would
+	// silently strand the user without a way to copy/share the PR
+	// reference.
 	statusCommonSuffix = "tab:focus J/K:file R:submit ?:help q:quit"
 )
 
@@ -54,7 +58,16 @@ func (m Model) statusBar() string {
 		return ""
 	}
 	context, suffix := m.statusBarContent()
-	return composeStatusBar(context, suffix, m.width, m.theme.DiffLineNumber)
+	left := context
+	if suffix != "" {
+		left = context + "  " + suffix
+	}
+	leftMin := context
+	var urls []string
+	if m.target != nil {
+		urls = m.target.PRShortForms()
+	}
+	return composeStatusBar(left, leftMin, urls, m.width, m.theme.DiffLineNumber)
 }
 
 // statusBarContent picks the context hint and (optionally) common suffix
@@ -112,39 +125,66 @@ func (m Model) statusBarContent() (string, string) {
 
 // composeStatusBar assembles the bar:
 //
-//	" <context>   <middle pad>   <suffix> "
+//	" <left>     <middle pad>     <url> "
 //
-// Truncation: if the combined " context   suffix " does not fit in width,
-// the suffix is dropped entirely (no half-truncated suffix — partial
-// keymap hints would mislead the reader). If the context still overflows
-// after dropping the suffix, the context itself is truncated with `…`
-// via ansi.Truncate so any SGR runs stay balanced.
-func composeStatusBar(context, suffix string, width int, color lipgloss.Color) string {
+// `leftFull` is the context + common suffix; `leftMin` is the context
+// alone (used when the combined left + URL does not fit even at the
+// shortest URL form). `urls` is the URL ladder from longest to
+// shortest — composeStatusBar picks the longest URL form that fits.
+//
+// Priority order (highest to lowest):
+//
+//  1. Show context.
+//  2. Show URL (shrink through the ladder before sacrificing other elements).
+//  3. Show common suffix (drop it before dropping the URL or the context).
+//
+// Behaviour summary:
+//
+//   - Both fit: full layout with longest-fitting URL form.
+//   - Only context + URL fit: drop the suffix.
+//   - Even shortest URL does not fit alongside context: drop the URL,
+//     left-pad context across the whole bar, truncate with `…` if context
+//     itself overflows.
+func composeStatusBar(leftFull, leftMin string, urls []string, width int, color lipgloss.Color) string {
 	if width <= 0 {
 		return ""
 	}
 	const sidePad = 1
 	const minGap = 3
-	contextW := lipgloss.Width(context)
-	suffixW := lipgloss.Width(suffix)
+	leftFullW := lipgloss.Width(leftFull)
+	leftMinW := lipgloss.Width(leftMin)
 
-	// Try the full layout first.
-	if suffix != "" && sidePad+contextW+minGap+suffixW+sidePad <= width {
-		gap := width - sidePad - contextW - suffixW - sidePad
-		bar := strings.Repeat(" ", sidePad) + context + strings.Repeat(" ", gap) + suffix + strings.Repeat(" ", sidePad)
-		return fg(bar, color)
+	// Pass 1: keep the suffix; pick the longest URL form that fits.
+	if leftFull != leftMin {
+		for _, u := range urls {
+			uw := lipgloss.Width(u)
+			if sidePad+leftFullW+minGap+uw+sidePad <= width {
+				return renderBar(leftFull, leftFullW, u, uw, width, sidePad, color)
+			}
+		}
 	}
-
-	// Suffix dropped (or empty). Pad the context to fill width.
+	// Pass 2: drop the suffix; pick the longest URL form that fits.
+	for _, u := range urls {
+		uw := lipgloss.Width(u)
+		if sidePad+leftMinW+minGap+uw+sidePad <= width {
+			return renderBar(leftMin, leftMinW, u, uw, width, sidePad, color)
+		}
+	}
+	// No URL fits even at shortest. Drop URL; pad the context-only bar.
 	innerMax := width - 2*sidePad
 	if innerMax < 1 {
 		return strings.Repeat(" ", width)
 	}
-	if contextW > innerMax {
-		// `…` is 1 cell wide; reserve 1 cell for it.
-		context = ansi.Truncate(context, innerMax-1, "") + "…"
-		contextW = lipgloss.Width(context)
+	if leftMinW > innerMax {
+		leftMin = ansi.Truncate(leftMin, innerMax-1, "") + "…"
+		leftMinW = lipgloss.Width(leftMin)
 	}
-	bar := strings.Repeat(" ", sidePad) + context + strings.Repeat(" ", innerMax-contextW) + strings.Repeat(" ", sidePad)
+	bar := strings.Repeat(" ", sidePad) + leftMin + strings.Repeat(" ", innerMax-leftMinW) + strings.Repeat(" ", sidePad)
+	return fg(bar, color)
+}
+
+func renderBar(left string, leftW int, url string, urlW, width, sidePad int, color lipgloss.Color) string {
+	gap := width - sidePad - leftW - urlW - sidePad
+	bar := strings.Repeat(" ", sidePad) + left + strings.Repeat(" ", gap) + url + strings.Repeat(" ", sidePad)
 	return fg(bar, color)
 }

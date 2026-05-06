@@ -108,7 +108,7 @@ func (m *Model) buildComposeReply() bool {
 	if m.state == nil || m.state.PR == nil {
 		return false
 	}
-	threadID, parentDBID := m.threadIdentityForCursor()
+	threadID := m.threadIdentityForCursor()
 	if threadID == "" {
 		return false
 	}
@@ -116,34 +116,32 @@ func (m *Model) buildComposeReply() bool {
 		Kind:           model.ComposeReply,
 		Status:         model.ComposeEditing,
 		ParentThreadID: threadID,
-		ParentDBID:     parentDBID,
 	}
 	return true
 }
 
-// threadIdentityForCursor returns the GraphQL thread node ID and the
-// integer DB id of the root comment for the thread the Comments cursor
-// is sitting on. Empty thread ID signals "no thread visible" so the
-// caller can no-op. The flat ordering is `[root, replies..., next root,
-// replies..., ...]`, so the cursor index identifies which thread we are
-// in by walking until index matches.
-func (m Model) threadIdentityForCursor() (string, int64) {
+// threadIdentityForCursor returns the GraphQL thread node ID for the
+// thread the Comments cursor is sitting on. Empty signals "no thread
+// visible" so the caller can no-op. The flat ordering is `[root,
+// replies..., next root, replies..., ...]`, so the cursor index
+// identifies which thread we are in by walking until index matches.
+func (m Model) threadIdentityForCursor() string {
 	threads := m.threadsForCursor()
 	idx := m.state.CommentsCursor
 	walked := 0
 	for _, t := range threads {
 		if idx == walked {
-			return t.Root.ThreadID, t.Root.ID
+			return t.Root.ThreadID
 		}
 		walked++
 		for range t.Replies {
 			if idx == walked {
-				return t.Root.ThreadID, t.Root.ID
+				return t.Root.ThreadID
 			}
 			walked++
 		}
 	}
-	return "", 0
+	return ""
 }
 
 // beginEditing returns the Cmd that drives the body-collection step.
@@ -161,6 +159,15 @@ func (m *Model) beginEditing() tea.Cmd {
 // tea.ExecProcess, and on exit reads the file back, deletes it, and
 // emits composeBodyMsg with the result. Empty body (after TrimSpace)
 // is the user's signal to cancel.
+//
+// Editor invocation goes through `sh -c "<EDITOR> <quoted-path>"` rather
+// than splitting EDITOR on whitespace ourselves: matches the convention
+// of git commit / crontab -e / visudo, so EDITOR='code --wait',
+// EDITOR='vim -p', EDITOR='nvim +Glog', and editor paths with spaces
+// (e.g. /Applications/Visual Studio Code.app/...) all work as the user
+// expects from their shell. The tempfile path is shell-quoted with
+// shellSingleQuote — os.CreateTemp emits alphanumeric paths in
+// practice, but the quote keeps the contract honest.
 func runEditorCmd() tea.Cmd {
 	f, err := os.CreateTemp("", "gh-reva-compose-*.md")
 	if err != nil {
@@ -168,14 +175,8 @@ func runEditorCmd() tea.Cmd {
 	}
 	tmpPath := f.Name()
 	_ = f.Close()
-	editor := editorEnv()
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		_ = os.Remove(tmpPath)
-		return func() tea.Msg { return composeBodyMsg{err: fmt.Errorf("no editor configured")} }
-	}
-	args := append(parts[1:], tmpPath)
-	cmd := exec.Command(parts[0], args...)
+	shellCmd := fmt.Sprintf("%s %s", editorEnv(), shellSingleQuote(tmpPath))
+	cmd := exec.Command("sh", "-c", shellCmd)
 	return tea.ExecProcess(cmd, func(execErr error) tea.Msg {
 		defer os.Remove(tmpPath)
 		if execErr != nil {
@@ -187,6 +188,15 @@ func runEditorCmd() tea.Cmd {
 		}
 		return composeBodyMsg{body: string(b)}
 	})
+}
+
+// shellSingleQuote wraps s in POSIX single quotes, escaping any embedded
+// single quote as `'\''`. Single-quoting is preferred over double
+// because no metacharacter (`$`, backtick, backslash) is interpreted
+// inside `'...'`, making the output a literal string regardless of
+// content.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // applyComposeBody is the Update side of composeBodyMsg. Editor errors
@@ -244,23 +254,30 @@ func submitComposeCmd(client api.Client, target *api.Target, cs model.ComposeSta
 }
 
 // applyComposeSubmitted is the Update side of composeSubmittedMsg.
-// Success appends the returned comment to PR.Comments and clears
-// Compose. Failure flips status to Failed without dropping the body
-// so the user can retry from the modal.
-func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) {
+// Success optimistically appends the returned comment to PR.Comments,
+// clears Compose, and queues refreshCommentsCmd to repaginate the
+// canonical comment list (mirroring SubmitPendingReview's flow). The
+// optimistic append keeps the just-posted comment visible during the
+// refresh roundtrip; the refresh then replaces the list wholesale so
+// any anchor / pending-state drift between the optimistic copy and
+// GitHub's authoritative state is healed without manual reconciliation.
+// Failure flips status to Failed without dropping the body so the user
+// can retry from the modal.
+func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) tea.Cmd {
 	if m.state.Compose == nil {
-		return
+		return nil
 	}
 	if msg.err != nil {
 		m.state.Compose.Status = model.ComposeFailed
 		m.state.Compose.ErrMsg = msg.err.Error()
-		return
+		return nil
 	}
 	if msg.comment != nil && m.state.PR != nil {
 		m.state.PR.Comments = append(m.state.PR.Comments, msg.comment)
 		bumpFileCommentCount(m.state.PR.Files, msg.comment.Path)
 	}
 	m.state.Compose = nil
+	return refreshCommentsCmd(m.client, m.target)
 }
 
 // retryComposeSubmit re-issues the in-flight POST after a failed

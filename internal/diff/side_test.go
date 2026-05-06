@@ -131,3 +131,89 @@ func TestResolveRange_HeaderEndpoint(t *testing.T) {
 		t.Fatalf("header endpoint must not resolve")
 	}
 }
+
+// Mixed-side ranges (LEFT '-' line + RIGHT '+'/context line) must be
+// normalized so the buffer-earlier endpoint becomes start. Previously
+// shouldSwap returned false for cross-side pairs and the user-provided
+// (anchor → cursor) order leaked through, so a user who anchored on a
+// later '+' row and dragged up to an earlier '-' row produced a payload
+// with start_line numerically larger than line — GitHub responds with
+// 422 "start_line must be less than end_line".
+func TestResolveRange_MixedSideNormalizesByBuffer(t *testing.T) {
+	// idx 5 = '+added' (RIGHT, newLine 21); idx 4 = '-removed' (LEFT, oldLine 11)
+	// User anchors at the '+' (idx 5) and walks cursor up to the '-' (idx 4):
+	// canonical range must start at the '-' and end at the '+'.
+	r, ok := ResolveRange(sidePatch, 5, 4)
+	if !ok {
+		t.Fatalf("mixed-side range should resolve")
+	}
+	if r.StartSide != "LEFT" || r.StartLine != 11 {
+		t.Fatalf("start should be '-' row: got side=%s line=%d", r.StartSide, r.StartLine)
+	}
+	if r.Side != "RIGHT" || r.Line != 21 {
+		t.Fatalf("end should be '+' row: got side=%s line=%d", r.Side, r.Line)
+	}
+}
+
+func TestResolveRange_MixedSideAlreadyOrdered(t *testing.T) {
+	// anchor = '-' (idx 4), cursor = '+' (idx 5): buffer-ordered already,
+	// must pass through without swap.
+	r, ok := ResolveRange(sidePatch, 4, 5)
+	if !ok {
+		t.Fatalf("mixed-side range should resolve")
+	}
+	if r.StartSide != "LEFT" || r.StartLine != 11 || r.Side != "RIGHT" || r.Line != 21 {
+		t.Fatalf("ordered mixed-side wrong: %+v", r)
+	}
+}
+
+// Empty patch must reject Range too (ResolveAnchor already does; this
+// pins the contract end-to-end).
+func TestResolveRange_EmptyPatch(t *testing.T) {
+	if _, ok := ResolveRange("", 0, 0); ok {
+		t.Fatalf("empty patch must not resolve a range")
+	}
+}
+
+// Single-line on a deletion ('-') must produce LEFT/oldLine, not the
+// RIGHT default. Locks down the path that previously only had a
+// '+'-row single-line test.
+func TestResolveRange_SingleLineDeletion(t *testing.T) {
+	r, ok := ResolveRange(sidePatch, 4, 4)
+	if !ok {
+		t.Fatalf("single-line deletion range should resolve")
+	}
+	if r.Side != "LEFT" || r.Line != 11 || r.StartLine != 0 {
+		t.Fatalf("deletion single: got %+v", r)
+	}
+}
+
+// Range whose endpoints sit in different hunks must still resolve;
+// GitHub itself rejects cross-hunk multi-line comments, but the
+// resolver should not silently mangle data — it returns the
+// canonical (buffer-ordered) tuple and lets the API surface the
+// validation error.
+func TestResolveRange_CrossHunk(t *testing.T) {
+	const twoHunkPatch = `--- a/foo.go
++++ b/foo.go
+@@ -10,2 +20,2 @@
+ ctxA
++addA
+@@ -30,2 +40,2 @@
+ ctxB
++addB`
+	// idx 0,1: file headers
+	// idx 2: hunk1 @@ (oldStart=10, newStart=20)
+	// idx 3: ctxA  -> oldLn=10/newLn=20
+	// idx 4: +addA -> newLn=21
+	// idx 5: hunk2 @@ (oldStart=30, newStart=40)
+	// idx 6: ctxB  -> oldLn=30/newLn=40
+	// idx 7: +addB -> newLn=41
+	r, ok := ResolveRange(twoHunkPatch, 4, 7)
+	if !ok {
+		t.Fatalf("cross-hunk range should resolve")
+	}
+	if r.StartLine != 21 || r.Line != 41 {
+		t.Fatalf("cross-hunk wrong: start=%d line=%d", r.StartLine, r.Line)
+	}
+}

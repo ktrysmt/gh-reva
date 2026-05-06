@@ -2,10 +2,16 @@
 //
 // Contract (CLAUDE.md §4 #6):
 //   - 1 row at the bottom always reserved once the PR is loaded.
-//   - Context portion shows pane-specific keymap hints; common suffix
-//     (`tab:focus J/K:file ?:help q:quit`) is right-flushed.
-//   - Visual / modal / help states replace context AND drop suffix.
-//   - On narrow terminals the suffix is dropped entirely (no half-truncation).
+//   - Left side: per-pane keymap context + common suffix
+//     (`tab:focus J/K:file R:submit ?:help q:quit`) joined by 2 spaces.
+//   - Right side: PR URL, picked from a longest-fitting ladder
+//     (full https URL → owner/repo/pulls/N → owner/repo/N → repo/N).
+//   - Visual / modal / help / compose / submit replace the context AND
+//     drop the suffix; the URL still right-flushes.
+//   - When even the shortest URL form does not fit alongside the
+//     keymap, the suffix is dropped first (URL stays); after that the
+//     URL is dropped entirely. Context never gets half-truncated
+//     mid-token (uses ansi.Truncate + `…` only as last resort).
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -24,7 +30,7 @@ function statusBarRow (screen) {
   return ''
 }
 
-test('S1: Files (flat) status bar shows context + common suffix', async () => {
+test('S1: Files (flat) status bar shows context + common suffix + PR URL', async () => {
   const s = await launchReva()
   await waitReady(s)
   const row = statusBarRow(await s.text())
@@ -36,6 +42,8 @@ test('S1: Files (flat) status bar shows context + common suffix', async () => {
   assert.match(row, /R:submit/)
   assert.match(row, /\?:help/)
   assert.match(row, /q:quit/)
+  // PR URL is right-flushed at default 160-col width — full https form fits.
+  assert.match(row, /https:\/\/github\.com\/octocat\/hello-world\/pull\/42/)
   await quit(s)
 })
 
@@ -123,7 +131,7 @@ test('S8: help modal replaces bar with close hint', async () => {
   await quit(s)
 })
 
-test('S9: narrow terminal drops the common suffix entirely', async () => {
+test('S9: narrow terminal drops the suffix; URL shrinks through the ladder', async () => {
   const s = await launchReva({ cols: 60 })
   await waitReady(s)
   const row = statusBarRow(await s.text())
@@ -131,6 +139,14 @@ test('S9: narrow terminal drops the common suffix entirely', async () => {
   // Suffix items must vanish — no half-truncated hint, no q:quit visible.
   assert.ok(!/q:quit/.test(row), `common suffix should be dropped on narrow terminal; got: ${row}`)
   assert.ok(!/tab:focus/.test(row), `common suffix should be dropped on narrow terminal; got: ${row}`)
+  // A shortened URL form must still appear on the right — at 60 cols the
+  // full https URL (~46 chars) does not fit alongside even the bare
+  // context, but `octocat/hello-world/pulls/42` (28 chars) does.
+  // Accept any form from the ladder >= the shortest one.
+  assert.ok(/(octocat\/hello-world\/(pulls\/)?42|hello-world\/42)/.test(row),
+    `URL must appear on narrow terminal in some short form; got: ${row}`)
+  // The full https form should NOT be present — proves the ladder shrank.
+  assert.ok(!/https:\/\//.test(row), `full URL must not fit at 60 cols; got: ${row}`)
   await quit(s)
 })
 

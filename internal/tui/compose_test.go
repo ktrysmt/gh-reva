@@ -143,9 +143,6 @@ func TestBuildComposeReply_FindsThreadID(t *testing.T) {
 	if m.state.Compose.ParentThreadID != "PRT_abc" {
 		t.Fatalf("expected ParentThreadID=PRT_abc, got %q", m.state.Compose.ParentThreadID)
 	}
-	if m.state.Compose.ParentDBID != 100 {
-		t.Fatalf("expected ParentDBID=100, got %d", m.state.Compose.ParentDBID)
-	}
 }
 
 func TestBuildComposeReply_NoCursorThread(t *testing.T) {
@@ -223,11 +220,15 @@ func TestApplyComposeBody_ReplyRoutesByThreadID(t *testing.T) {
 }
 
 func TestApplyComposeSubmitted_AppendsAndClears(t *testing.T) {
+	stub := &composeStubClient{listResponse: []*model.ReviewComment{
+		{ID: 9, Path: "foo.go", Body: "x", Pending: true},
+	}}
 	m := newComposeModel(t, composePatch, nil)
+	m.client = stub
 	m.state.DiffCursor.Line = 5
 	m.buildComposeInline()
 	rc := &model.ReviewComment{ID: 9, Path: "foo.go", Body: "x", Pending: true}
-	m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
+	cmd := m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
 	if m.state.Compose != nil {
 		t.Fatalf("Compose must be cleared on success")
 	}
@@ -237,6 +238,12 @@ func TestApplyComposeSubmitted_AppendsAndClears(t *testing.T) {
 	if m.state.PR.Files[0].CommentCount != 1 {
 		t.Fatalf("CommentCount not bumped")
 	}
+	if cmd == nil {
+		t.Fatalf("expected refresh cmd to be queued after successful POST")
+	}
+	if _, ok := cmd().(commentsRefreshedMsg); !ok {
+		t.Fatalf("expected commentsRefreshedMsg from queued cmd")
+	}
 }
 
 func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
@@ -245,7 +252,10 @@ func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 	m.buildComposeInline()
 	m.state.Compose.Body = "draft"
 	m.state.Compose.Status = model.ComposeSubmitting
-	m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 422")})
+	cmd := m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 422")})
+	if cmd != nil {
+		t.Fatalf("failure must not queue refresh")
+	}
 	if m.state.Compose == nil {
 		t.Fatalf("Compose must persist on failure")
 	}
@@ -254,6 +264,22 @@ func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 	}
 	if m.state.Compose.Body != "draft" || m.state.Compose.ErrMsg == "" {
 		t.Fatalf("body / err not preserved: %+v", m.state.Compose)
+	}
+}
+
+func TestShellSingleQuote(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"plain.md", "'plain.md'"},
+		{"/tmp/with space.md", "'/tmp/with space.md'"},
+		{"don't.md", `'don'\''t.md'`},
+		{"", "''"},
+	}
+	for _, c := range cases {
+		if got := shellSingleQuote(c.in); got != c.want {
+			t.Fatalf("shellSingleQuote(%q): got %q want %q", c.in, got, c.want)
+		}
 	}
 }
 

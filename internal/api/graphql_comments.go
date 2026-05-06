@@ -15,6 +15,11 @@ import (
 // fields, so we read line/side from the thread and then attach them to
 // every comment in that thread when flattening. Pending state is
 // detected via `pullRequestReview.state == PENDING`.
+//
+// Each thread's comments(first: 100) page also exposes pageInfo so
+// listCommentsGraphQL can detect threads with > 100 comments and fall
+// back to listThreadComments for the remainder. Without that fallback
+// hot threads silently drop history past comment 100.
 const listCommentsQuery = `
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -33,6 +38,7 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
           diffSide
           startDiffSide
           comments(first: 100) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               id
               databaseId
@@ -46,6 +52,33 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
               pullRequestReview { state }
             }
           }
+        }
+      }
+    }
+  }
+}`
+
+// listThreadCommentsQuery follows up on a thread whose first
+// comments(first: 100) page reported hasNextPage: true. Walked via
+// node(id: $id) so we re-bind to the same thread by GraphQL identity
+// without re-paginating the entire reviewThreads list.
+const listThreadCommentsQuery = `
+query($id: ID!, $cursor: String) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          databaseId
+          author { login }
+          body
+          createdAt
+          diffHunk
+          commit { oid }
+          originalCommit { oid }
+          replyTo { databaseId }
+          pullRequestReview { state }
         }
       }
     }
@@ -86,6 +119,10 @@ type gqlReviewThread struct {
 	DiffSide          string `json:"diffSide"`
 	StartDiffSide     string `json:"startDiffSide"`
 	Comments          struct {
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
 		Nodes []gqlReviewComment `json:"nodes"`
 	} `json:"comments"`
 }
@@ -108,6 +145,9 @@ type gqlListCommentsResponse struct {
 // listCommentsGraphQL paginates through reviewThreads, flattens to
 // ReviewComment, and returns the PR's GraphQL node ID alongside (so
 // callers can cache it for subsequent mutations without a second fetch).
+// Threads whose first comments page reports hasNextPage: true trigger a
+// follow-up via listThreadComments so > 100-comment threads are not
+// silently truncated.
 func (c *ghClient) listCommentsGraphQL(ctx context.Context, owner, repo string, number int) ([]*model.ReviewComment, string, error) {
 	var (
 		out    []*model.ReviewComment
@@ -134,6 +174,15 @@ func (c *ghClient) listCommentsGraphQL(ctx context.Context, owner, repo string, 
 				rc := convertGQLComment(gc, t)
 				out = append(out, rc)
 			}
+			if t.Comments.PageInfo.HasNextPage {
+				rest, err := c.listThreadComments(ctx, t.ID, t.Comments.PageInfo.EndCursor)
+				if err != nil {
+					return nil, "", err
+				}
+				for _, gc := range rest {
+					out = append(out, convertGQLComment(gc, t))
+				}
+			}
 		}
 		if !pr.ReviewThreads.PageInfo.HasNextPage {
 			break
@@ -142,6 +191,39 @@ func (c *ghClient) listCommentsGraphQL(ctx context.Context, owner, repo string, 
 		cursor = &next
 	}
 	return out, prID, nil
+}
+
+// listThreadComments paginates through a single thread's comments
+// starting after `startCursor`. Used by listCommentsGraphQL when a
+// thread's initial comments(first: 100) reports hasNextPage. Returns
+// the additional comment nodes; the caller stitches them onto the
+// thread's anchor info via convertGQLComment.
+func (c *ghClient) listThreadComments(ctx context.Context, threadID, startCursor string) ([]gqlReviewComment, error) {
+	var out []gqlReviewComment
+	cursor := startCursor
+	for {
+		vars := map[string]interface{}{"id": threadID, "cursor": cursor}
+		var resp struct {
+			Node struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []gqlReviewComment `json:"nodes"`
+				} `json:"comments"`
+			} `json:"node"`
+		}
+		if err := c.gql.DoWithContext(ctx, listThreadCommentsQuery, vars, &resp); err != nil {
+			return nil, fmt.Errorf("paginate thread %q: %w", threadID, err)
+		}
+		out = append(out, resp.Node.Comments.Nodes...)
+		if !resp.Node.Comments.PageInfo.HasNextPage {
+			break
+		}
+		cursor = resp.Node.Comments.PageInfo.EndCursor
+	}
+	return out, nil
 }
 
 // convertGQLComment merges thread-level anchor info (path / line /

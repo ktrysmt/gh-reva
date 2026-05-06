@@ -121,8 +121,7 @@ type ModalState struct {
 //     (and StartLine / StartSide for ranges) describe the anchor.
 //   - ComposeReply → addPullRequestReviewThreadReply on the parent
 //     thread. ParentThreadID is the GraphQL node ID of the thread
-//     under the cursor; ParentDBID is the integer DB id of the root
-//     comment, kept for InReplyTo round-tripping.
+//     under the cursor — the only field needed by the reply mutation.
 type ComposeKind int
 
 const (
@@ -198,7 +197,6 @@ type ComposeState struct {
 
 	// Reply target (Kind == ComposeReply).
 	ParentThreadID string
-	ParentDBID     int64
 
 	Body   string
 	ErrMsg string

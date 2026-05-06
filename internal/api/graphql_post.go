@@ -44,6 +44,16 @@ query($owner: String!, $name: String!, $number: Int!) {
 // addPullRequestReview (event omitted) if none exists. The cache is
 // per-ghClient instance; SubmitPendingReview drops the entry on
 // success so the next compose POST starts a fresh draft.
+//
+// Discovery filters reviews by `states: PENDING` and matches author
+// against `viewer.login` so a user with a previously-submitted
+// (APPROVED / COMMENTED / CHANGES_REQUESTED) review on the same PR
+// does not collide with the "one pending review per user per PR"
+// constraint. Earlier the query used `viewerLatestReview` which
+// returns the *latest* review regardless of state — when that latest
+// review was non-PENDING, the code below would call
+// addPullRequestReview and the GraphQL API would fail with 422
+// because a separate PENDING review already existed.
 func (c *ghClient) ensurePendingReview(ctx context.Context, owner, repo string, n int) (string, error) {
 	if id, ok := c.pendingReviewID[n]; ok && id != "" {
 		return id, nil
@@ -52,32 +62,49 @@ func (c *ghClient) ensurePendingReview(ctx context.Context, owner, repo string, 
 	if err != nil {
 		return "", err
 	}
-	// 1. Look for an existing PENDING review by the viewer.
-	const viewerQ = `
+	// 1. Look for an existing PENDING review by the viewer. The
+	// `states: [PENDING]` filter already narrows server-side; we still
+	// match author client-side because GitHub does not expose a
+	// `reviews(author:)` filter and any user could theoretically have a
+	// pending review (it just isn't visible to non-authors).
+	const pendingQ = `
 query($owner: String!, $name: String!, $number: Int!) {
+  viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      viewerLatestReview { id state }
+      reviews(states: [PENDING], first: 50) {
+        nodes { id author { login } }
+      }
     }
   }
 }`
-	var viewerResp struct {
+	var pendingResp struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Repository struct {
 			PullRequest struct {
-				ViewerLatestReview *struct {
-					ID    string `json:"id"`
-					State string `json:"state"`
-				} `json:"viewerLatestReview"`
+				Reviews struct {
+					Nodes []struct {
+						ID     string `json:"id"`
+						Author struct {
+							Login string `json:"login"`
+						} `json:"author"`
+					} `json:"nodes"`
+				} `json:"reviews"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	}
 	vars := map[string]interface{}{"owner": owner, "name": repo, "number": n}
-	if err := c.gql.DoWithContext(ctx, viewerQ, vars, &viewerResp); err != nil {
+	if err := c.gql.DoWithContext(ctx, pendingQ, vars, &pendingResp); err != nil {
 		return "", fmt.Errorf("query pending review: %w", err)
 	}
-	if r := viewerResp.Repository.PullRequest.ViewerLatestReview; r != nil && r.State == "PENDING" {
-		c.pendingReviewID[n] = r.ID
-		return r.ID, nil
+	viewerLogin := pendingResp.Viewer.Login
+	for _, r := range pendingResp.Repository.PullRequest.Reviews.Nodes {
+		if r.Author.Login == viewerLogin {
+			c.pendingReviewID[n] = r.ID
+			return r.ID, nil
+		}
 	}
 	// 2. None exists — create a fresh pending review.
 	const createMut = `
@@ -219,17 +246,60 @@ mutation($input: AddPullRequestReviewThreadReplyInput!) {
 	// The reply mutation's payload only carries the comment, not the
 	// thread — anchor info (path / line / diffSide) has to come from a
 	// follow-up node query so the returned ReviewComment is fully
-	// populated. Errors here are non-fatal: the reply still posted
-	// successfully on GitHub; we just lose the cosmetic anchor fields
-	// in the immediate response (the next ListComments refetch heals
-	// them).
-	thread, _ := c.fetchThreadInfo(ctx, parentThreadID)
+	// populated. Errors there are non-fatal: the reply still posted
+	// successfully on GitHub. Recovery uses the cached comment list to
+	// find the parent thread's anchor (Path / Line / Side); this keeps
+	// the immediate UI render stable even if the network blipped.
+	// Belt-and-braces: the upstream call site queues refreshCommentsCmd
+	// after every successful POST, so the cached anchor only matters
+	// for the brief interval before the refresh lands.
+	thread, ferr := c.fetchThreadInfo(ctx, parentThreadID)
+	if ferr != nil || thread.Path == "" {
+		thread = c.fallbackThreadFromCache(n, parentThreadID, thread)
+	}
 	if thread.ID == "" {
 		thread.ID = parentThreadID
 	}
 	rc := convertGQLComment(resp.AddPullRequestReviewThreadReply.Comment, thread)
 	c.invalidateCommentsCache(n)
 	return rc, nil
+}
+
+// fallbackThreadFromCache rebuilds anchor info (path / line / diffSide)
+// from the cached comment list when fetchThreadInfo errors or returns
+// an empty thread. Looks up any cached comment whose ThreadID matches
+// `parentThreadID` and copies its anchor onto the returned thread
+// stub. Falls back to the input `partial` (which already carries
+// whatever fetchThreadInfo did manage to surface) when no cached match
+// is found, so callers never see a freshly-zeroed struct.
+func (c *ghClient) fallbackThreadFromCache(n int, parentThreadID string, partial gqlReviewThread) gqlReviewThread {
+	cached, ok := c.comments[n]
+	if !ok {
+		return partial
+	}
+	for _, rc := range cached {
+		if rc.ThreadID != parentThreadID {
+			continue
+		}
+		out := partial
+		if out.ID == "" {
+			out.ID = parentThreadID
+		}
+		if out.Path == "" {
+			out.Path = rc.Path
+		}
+		if out.Line == 0 {
+			out.Line = rc.Line
+		}
+		if out.OriginalLine == 0 {
+			out.OriginalLine = rc.OriginalLine
+		}
+		if out.DiffSide == "" {
+			out.DiffSide = rc.Side
+		}
+		return out
+	}
+	return partial
 }
 
 // SubmitPendingReview finalizes the cached pending review with the
