@@ -21,7 +21,7 @@ type AppState struct {
 
 	Visual *VisualState
 
-	Hover HoverState
+	Modal *ModalState
 
 	HelpOpen bool
 
@@ -86,12 +86,16 @@ type VisualState struct {
 	Linewise   bool
 }
 
-// HoverState drives the cursor-row tooltip in Files / Commits. Show is
-// toggled by `<space>` in those panes; while it is true, the popup
-// re-renders every frame against the live cursor so j / k navigation
-// updates the body without dismissing it.
-type HoverState struct {
-	Show bool
+// ModalState drives the centered "zoom" modal opened by `<space>` in the
+// Files / Commits / Comments panes. While Modal is non-nil, the active
+// pane's content is also rendered inside a centered popup at a wider
+// budget (paths unwrapped, comments wrap relaxed). j/k inside the modal
+// goes through the regular pane handlers, so navigation propagates to the
+// underlying main state and the modal closes onto the same row. Tab,
+// Shift-Tab, Esc, and `?` all close the modal; Diff `<space>` is
+// untouched (split⇄unified). Pane is the pane the modal is showing.
+type ModalState struct {
+	Pane PaneID
 }
 
 func NewAppState() *AppState {

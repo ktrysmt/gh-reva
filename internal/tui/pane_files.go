@@ -32,7 +32,7 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.autoSelectFlat()
 		}
 	case " ":
-		m.state.Hover.Show = !m.state.Hover.Show
+		m.toggleModal(model.PaneFiles)
 	case "t":
 		prev := m.state.FilesTreeMode
 		m.state.FilesTreeMode = !prev
@@ -55,7 +55,7 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.autoSelectTree(rows)
 		}
 	case " ":
-		m.state.Hover.Show = !m.state.Hover.Show
+		m.toggleModal(model.PaneFiles)
 	case "t":
 		prev := m.state.FilesTreeMode
 		m.state.FilesTreeMode = !prev

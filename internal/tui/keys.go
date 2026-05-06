@@ -19,16 +19,50 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "?":
 		m.state.DiffPendingPrefix = ""
+		m.state.Modal = nil
 		m.state.HelpOpen = true
 		return m, nil
-	case "q", "ctrl+c":
+	case "q":
+		// While a zoom modal is open, q closes the modal instead of
+		// quitting the app — same idea as the Help handler. Quitting
+		// from inside a modal would force the user to keep mental state
+		// about "did I open the modal or not" before pressing q;
+		// closing first and quitting on the next q is the less
+		// surprising default. Ctrl+C still quits unconditionally — it
+		// is the universal "force exit" gesture.
+		if m.state.Modal != nil {
+			m.state.Modal = nil
+			return m, nil
+		}
 		return m, tea.Quit
+	case "ctrl+c":
+		// Mirror q's modal-close behavior: a stray Ctrl+C while a zoom
+		// modal is open should close the modal, not drop the user out of
+		// the program. The two modal-dismiss gestures (q and Ctrl+C) thus
+		// stay symmetric — both close first, both quit on the next press
+		// when no modal is open. Help modal has its own absorber in
+		// handleKeyHelp; visual mode handles Ctrl+C in handleKeyVisual.
+		if m.state.Modal != nil {
+			m.state.Modal = nil
+			return m, nil
+		}
+		return m, tea.Quit
+	case "esc":
+		// Esc dismisses the pane modal but otherwise stays as a no-op.
+		// Keeping Esc no-op outside the modal preserves the existing
+		// "no surprising side effect" contract elsewhere in the app.
+		if m.state.Modal != nil {
+			m.state.Modal = nil
+		}
+		return m, nil
 	case "tab":
 		m.state.DiffPendingPrefix = ""
+		m.state.Modal = nil
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
 		return m, nil
 	case "shift+tab":
 		m.state.DiffPendingPrefix = ""
+		m.state.Modal = nil
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
 		return m, nil
 	case "v":

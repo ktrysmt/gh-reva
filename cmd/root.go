@@ -90,6 +90,23 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		// Pre-flight probe: hit GetPR once before opening the TUI so API
+		// failures (auth / 404 / rate limit / network) surface to stderr
+		// instead of vanishing behind the alt-screen as a brief splash
+		// flash. Also covers ParseTargetArg's recovery branch
+		// (resolve.go:36-44) which silently swallows ResolveCurrentBranchPR
+		// errors when the user supplies an explicit PR arg — without the
+		// probe, an auth or rate-limit failure there would let control
+		// reach `tea.NewProgram().Run()`, where the loader's first stage
+		// fires the same error inside the alt-screen and the user only
+		// sees the program quit. The 10s timeout matches the loader's
+		// implicit budget for the first stage.
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if _, err := client.GetPR(probeCtx, ref.Owner, ref.Repo, ref.Number); err != nil {
+			return err
+		}
+
 		m := tui.NewModel(client, ref)
 		m.SetTheme(th)
 		if diffHeight > 0 {

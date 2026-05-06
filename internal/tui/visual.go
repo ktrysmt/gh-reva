@@ -30,8 +30,8 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// State-mutating / mode keys are inert in visual mode:
 		//   Tab / Shift-Tab — would move focus mid-selection.
 		//   Enter           — would still toggle Files-tree dir folds.
-		//   Space           — would toggle hover (Files/Commits) or
-		//                     split⇄unified (Diff) mid-selection.
+		//   Space           — would toggle the pane modal (Files / Commits /
+		//                     Comments) or split⇄unified (Diff) mid-selection.
 		//   v               — would re-enter visual on top of itself.
 		//   q               — the global handler quits the TUI; suppressing
 		//                     it here means a stray `q` during a selection

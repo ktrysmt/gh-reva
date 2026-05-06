@@ -31,7 +31,7 @@ func (m Model) handleKeyCommits(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.autoSelectCommit(commits)
 		}
 	case " ":
-		m.state.Hover.Show = !m.state.Hover.Show
+		m.toggleModal(model.PaneCommits)
 	}
 	return m, nil
 }

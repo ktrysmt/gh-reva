@@ -50,8 +50,11 @@ func (c *errorClient) GetFileDiff(ctx context.Context, owner, repo string, n int
 }
 
 func (c *errorClient) ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error) {
-	// All injected error kinds surface here so the error is reported before
-	// the TUI starts (avoiding interference from the bubbletea TTY check in
-	// non-PTY test environments).
+	// Errors surface here for the no-arg flow. For the explicit-PR-arg flow,
+	// ParseTargetArg's recovery branch (resolve.go:36-44) silently swallows
+	// this error and falls back to currentRepository(); the cmd/root.go
+	// pre-flight probe (`client.GetPR` before `tea.NewProgram`) catches the
+	// injected error in that path instead, so non-PTY test environments
+	// never see the bubbletea TTY check fire.
 	return "", "", 0, c.err
 }

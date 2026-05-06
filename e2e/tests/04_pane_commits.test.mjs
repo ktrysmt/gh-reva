@@ -157,20 +157,6 @@ test('E12: shift+J resets Commits cursor to the All commits row', async () => {
   await quit(s)
 })
 
-test('E13: <space> on the All commits row does NOT show the hover popup', async () => {
-  const s = await launchReva()
-  await waitReady(s)
-  await s.press('tab')                      // focus Commits, cursor on All commits row
-  const before = await s.text()
-  await s.type(' ')                         // toggle Hover.Show
-  const after = await s.text()
-  // Popup uses bordered ┌─┐ chrome; absence of new ┌ characters means no popup
-  // appeared. The exact frame should be byte-identical to the pre-press frame
-  // when hover is suppressed (Hover.Show flips internally but renders nothing).
-  assert.equal(before, after, '<space> on All commits row must render no popup')
-  await quit(s)
-})
-
 test('E9: switching SelectedFile re-filters the Commits pane', async () => {
   const s = await launchReva()
   await waitReady(s)

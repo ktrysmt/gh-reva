@@ -38,7 +38,7 @@ var helpSections = []helpSection{
 		entries: []helpEntry{
 			{"j / k", "Move cursor (auto-selects file)"},
 			{"t", "Toggle tree mode"},
-			{"Space", "Toggle hover popup"},
+			{"Space", "Toggle zoom modal"},
 			{"Enter", "Fold / unfold dir (tree only)"},
 		},
 	},
@@ -46,7 +46,7 @@ var helpSections = []helpSection{
 		title: "Commits",
 		entries: []helpEntry{
 			{"j / k", "Move cursor (auto-selects commit)"},
-			{"Space", "Toggle hover popup"},
+			{"Space", "Toggle zoom modal"},
 		},
 	},
 	{
@@ -64,6 +64,7 @@ var helpSections = []helpSection{
 		title: "Comments",
 		entries: []helpEntry{
 			{"j / k", "Move cursor (auto-scrolls Diff)"},
+			{"Space", "Toggle zoom modal"},
 		},
 	},
 	{
@@ -177,7 +178,7 @@ func (m Model) renderHelpModal(rows []string, width int) string {
 }
 
 // overlayHelp splices the Help modal over the body at the rectangle
-// returned by helpModalLayout. Same splicing semantics as overlayHover —
+// returned by helpModalLayout. Same splicing semantics as overlayModal —
 // row prefix and suffix on the underlying body are preserved so pane
 // chrome columns past the modal remain intact.
 func (m Model) overlayHelp(body string) string {

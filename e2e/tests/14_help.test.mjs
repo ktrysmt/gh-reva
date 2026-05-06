@@ -147,7 +147,7 @@ test('N11: modal lists every pane section + Global / Visual via unique binding d
     'Toggle help',          // Global ?
     'Next pane',            // Global Tab
     'Toggle tree mode',     // Files t
-    'Toggle hover',         // Files / Commits Space
+    'Toggle zoom modal',    // Files / Commits / Comments Space
     'Half page down',       // Diff Ctrl+D
     'Toggle split',         // Diff Space
     'Yank and exit',        // Visual y

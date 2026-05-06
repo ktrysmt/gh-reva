@@ -17,6 +17,13 @@ type commentThread struct {
 }
 
 func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == " " {
+		// Modal toggle does not move the Comments cursor, so skip the trailing
+		// syncDiffToCursorComment — leaving the Diff viewport where the user
+		// parked it before opening the zoomed view.
+		m.toggleModal(model.PaneComments)
+		return m, nil
+	}
 	flat := m.flatComments()
 	switch msg.String() {
 	case "j", "down":

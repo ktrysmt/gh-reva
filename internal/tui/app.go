@@ -120,12 +120,15 @@ func (m Model) View() string {
 	if m.state.PR == nil {
 		return m.loadingView(m.state.LoadFrame, m.state.LoadStage)
 	}
-	// Reserve a row for the visual indicator when active so it does not
-	// disappear under the column rendering.
+	// Reserve the bottom row for the status bar (CLAUDE.md §4 #6) once
+	// the PR is loaded. The visual hint and the modal/help close hint all
+	// ride this same row, so the previous standalone `-- VISUAL --`
+	// banner is gone.
 	bodyHeight := m.height
-	if m.state.Visual != nil && bodyHeight > 0 {
+	if bodyHeight > 1 {
 		bodyHeight--
 	}
+	statusBar := m.statusBar()
 	if m.width <= 0 || bodyHeight < 8 {
 		// Stacked fallback fires in two cases:
 		//   1. Pre-WindowSize (m.width <= 0): smoke tests and the very
@@ -143,10 +146,10 @@ func (m Model) View() string {
 			m.diffView(),
 			m.commentsView(),
 		}, "\n\n")
-		body = m.overlayHover(body)
+		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
-		if m.state.Visual != nil {
-			return body + "\n" + m.visualIndicator()
+		if statusBar != "" {
+			return body + "\n" + statusBar
 		}
 		return body
 	}
@@ -179,21 +182,13 @@ func (m Model) View() string {
 	diffCol := m.boxFromPaneView(m.diffView(), midW, bodyHeight, model.PaneDiff)
 	commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
-	body = m.overlayHover(body)
+	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
 
-	if m.state.Visual != nil {
-		return body + "\n" + m.visualIndicator()
+	if statusBar != "" {
+		return body + "\n" + statusBar
 	}
 	return body
-}
-
-// visualIndicator renders the "-- VISUAL --" marker shown at the bottom of
-// the screen while linewise visual mode is active. CommentAnchor (orange in
-// builtin-dark) doubles as the attention hue for mode banners; bold makes
-// it stand out from the surrounding pane chrome.
-func (m Model) visualIndicator() string {
-	return fgBold("-- VISUAL --", m.theme.CommentAnchor)
 }
 
 // splitColumnWidths divides total terminal width across the three columns.

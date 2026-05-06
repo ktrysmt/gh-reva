@@ -125,7 +125,7 @@ gh-reva/
 │       ├── pane_comments.go        # commentsView + word wrap + diff auto-scroll
 │       ├── files_tree.go           # tree mode rendering
 │       ├── visual.go               # visual mode + yank
-│       ├── hover.go                # cursor-row tooltip (Files/Commits)
+│       ├── modal.go                # `<space>` zoom modal (Files/Commits/Comments)
 │       └── diffmap.go              # newLineNumbers / commentThreadIndexForDiffLine
 ├── testdata/
 │   ├── sample-pr.json              # default fixture (5 files, 3 commits, 4 comments)
@@ -164,8 +164,17 @@ and several break the user's mental model.
    - **total < 80**: degenerate fallback — `left = total/4`, `mid = total/2`, `right = remainder`. No floor; rendering is best-effort. Tests do not pin this branch.
 4. **Active pane**: `▶ ` prefix on its title row. Exactly one pane has it.
 5. **Cursor row**: `> ` prefix in Files / Commits / Diff / Comments. Visual-range rows also carry `> `.
-6. **Visual mode indicator**: `-- VISUAL --` on its own row at the bottom. 1 row reserved when `state.Visual != nil`.
-7. **Loading view**: pre-PR shows the splash logo (10 rows of `▓`/`░`/`█` glyphs sourced from `logo.md`, embedded as `logoArt` in `internal/tui/app.go`) + a single blank gap + `<spinner> Loading PR (<stage>)...` (no boxes). The whole block is centered horizontally per-row (each row's lead is `(m.width - lipgloss.Width(row)) / 2`) and vertically as a unit (`topPad = (m.height - len(rows)) / 2`). Stages: `metadata → commits → files → comments → diffs → ready`. Before `tea.WindowSizeMsg` arrives (`m.width <= 0`), the spinner line falls back to top-left and the logo is suppressed so the very first frame still emits text. Logo glyph coloring uses `theme.LogoShade1` (█, brightest) / `LogoShade2` (▓, mid) / `LogoShade3` (░, dimmest); `renderLogo` coalesces same-shade runs into one SGR span to bound escape overhead.
+6. **Status bar (bottom row)**: 1 row at the bottom of the screen is always reserved once the PR is loaded — `bodyHeight = m.height - 1` whenever `m.height > 1`, and the body layout (column widths, pane box heights) is computed from `bodyHeight`. The bar is rendered by `internal/tui/statusbar.go::statusBar` and emitted after `body + "\n"` at the end of `View()`. Format: `<leading space><context><middle padding><suffix><trailing space>` where the suffix is right-flushed to the terminal edge. Context strings (selected by `(*Model).statusBarContent`):
+   - Files (flat): `j/k:move space:zoom t:tree`
+   - Files (tree): `j/k:move enter:fold space:zoom t:tree`
+   - Commits: `j/k:move space:zoom`
+   - Diff (split or unified): `j/k/ctrl+f/ctrl+b:move H/M/L:viewport gg/G:top/bottom space:split/unified`
+   - Comments: `j/k:move space:zoom`
+   - In help modal (`HelpOpen`): `?/esc/q:close` (replaces context AND drops suffix)
+   - In zoom modal (`Modal != nil`): `space/esc/q/ctrl+c:close` (replaces context AND drops suffix; J/K is intentionally omitted to keep the bar short — they still work for file scrubbing per §4 #42; Ctrl+C closes the modal symmetrically with q, see §4 #42 for the rationale)
+   - In visual mode (`Visual != nil`): `-- VISUAL --  y:yank esc/ctrl+c:cancel` (replaces context AND drops suffix; absorbs the previous standalone `-- VISUAL --` banner — do not also re-emit the banner above the status bar)
+   Common suffix (normal mode only): `tab:focus J/K:file ?:help q:quit`. Truncation rule: if `1 + width(context) + 3 + width(suffix) + 1 > m.width`, the suffix is dropped entirely (no `…`-truncation of the suffix itself — partial keymap hints would mislead). If the context still overflows after dropping the suffix, the context is truncated with a trailing `…` via `ansi.Truncate`. Color: `theme.DiffLineNumber` is applied to the whole bar as a single fg span; the bar carries no background. The bar is suppressed when `m.width <= 0` or `m.height <= 1` (degenerate / pre-WindowSize) and during the loading splash (invariant #7 owns the screen).
+7. **Loading view**: pre-PR shows the splash logo (10 rows of `▓`/`░`/`█` glyphs sourced from `logo.md`, embedded as `logoArt` in `internal/tui/app.go`) + a single blank gap + `<spinner> Loading PR (<stage>)...` (no boxes). The whole block is centered horizontally per-row (each row's lead is `(m.width - lipgloss.Width(row)) / 2`) and vertically as a unit (`topPad = (m.height - len(rows)) / 2`). Stages: `metadata → commits → files → comments → diffs → ready`. Before `tea.WindowSizeMsg` arrives (`m.width <= 0`), the spinner line falls back to top-left and the logo is suppressed so the very first frame still emits text. Logo glyph coloring uses `theme.LogoShade1` (█, brightest) / `LogoShade2` (▓, mid) / `LogoShade3` (░, dimmest); `renderLogo` coalesces same-shade runs into one SGR span to bound escape overhead. The status bar (#6) is suppressed during loading — the splash owns the entire screen; `View()` returns from the loading branch before the status bar is appended.
 
 ### Diff pane
 8. Split mode layout (first row of a buffer line): `<cursor 2><marker 2><oldLn 4><sp 1><leftCell halfW><sp 1>│<sp 1><newLn 4><sp 1><rightCell halfW>`. Fixed overhead = 17. `halfW = (paneWidthDiff − 17) / 2`. Degrades to unified when `halfW < 8` (structural fallback only).
@@ -179,7 +188,7 @@ and several break the user's mental model.
 
 ### Commits pane
 15. **`visibleCommits` is auto-filtered by `SelectedFile`**. No manual override; the previous `space` toggle and `CommitFilterFile` field were removed. `SelectedFile` is set on load (`app.go::Update PRLoadedMsg` assigns `PR.Files[0].Path` whenever the PR has any files), so in live UX the filter is always engaged from the first frame; the `SelectedFile == ""` branch in `visibleCommits` (returns all commits) is kept only as a safety net for the pre-PRLoadedMsg frame and tests that simulate it. The Commits cursor starts at idx 0 (the synthetic "All commits" row → `RangeWholePR`), so the initial Diff still shows the whole-PR diff of `PR.Files[0]` rather than a single commit's slice.
-15a. **Cursor index 0 is the synthetic "All commits" row** representing `RangeWholePR`. It is rendered above the real commits by `commitsView` via `allCommitsRow`, and is the only path back to the whole-PR diff from inside the Commits pane (k past the top lands on it). The cursor space is therefore `[0, len(visibleCommits)]` — `handleKeyCommits` caps `j` at `< len(commits)` (one past the previous bound) and `autoSelectCommit` switches `SelectedRange` to `RangeWholePR` when `idx == 0` and to `RangeSingleCommit{commits[idx-1].SHA}` otherwise. Label form: `All commits (N)` when no file filter is active OR when the filter resolves to M == N (every commit touches the selected file); `All commits (M of N)` only when M < N. The annotation slot mirrors the file's PR-level `Status` (`[A]/[M]/[D]/[R]`) when filtered, blank otherwise. The label is rendered bold via `fgBold(label, "")` to set the row apart from real commits without an extra divider. `selectFile` resets `CommitsCursor = 0` so any file change (including `Shift+J/K`) returns to the All commits row. Hover (`<space>`) is suppressed on this row — `hoverLines` returns nil for `idx == 0`. Visual yank skips this row — `yankString` for Commits iterates the cursor space `len(commits) + 1` and `continue`s on `i == 0`, so the clipboard never includes the `All commits` label. Label rule + behavior contract is locked in by `internal/tui/pane_commits_test.go::TestAllCommitsRowLabel`.
+15a. **Cursor index 0 is the synthetic "All commits" row** representing `RangeWholePR`. It is rendered above the real commits by `commitsView` via `allCommitsRow`, and is the only path back to the whole-PR diff from inside the Commits pane (k past the top lands on it). The cursor space is therefore `[0, len(visibleCommits)]` — `handleKeyCommits` caps `j` at `< len(commits)` (one past the previous bound) and `autoSelectCommit` switches `SelectedRange` to `RangeWholePR` when `idx == 0` and to `RangeSingleCommit{commits[idx-1].SHA}` otherwise. Label form: `All commits (N)` when no file filter is active OR when the filter resolves to M == N (every commit touches the selected file); `All commits (M of N)` only when M < N. The annotation slot mirrors the file's PR-level `Status` (`[A]/[M]/[D]/[R]`) when filtered, blank otherwise. The label is rendered bold via `fgBold(label, "")` to set the row apart from real commits without an extra divider. `selectFile` resets `CommitsCursor = 0` so any file change (including `Shift+J/K`) returns to the All commits row. Visual yank skips this row — `yankString` for Commits iterates the cursor space `len(commits) + 1` and `continue`s on `i == 0`, so the clipboard never includes the `All commits` label. Label rule + behavior contract is locked in by `internal/tui/pane_commits_test.go::TestAllCommitsRowLabel`.
 16. **`j/k` in Commits auto-selects** the cursor row. The cursor space is `[0, len(visibleCommits)]`: idx 0 maps to `RangeWholePR` (the synthetic "All commits" row described in #15a), idx 1..N maps to `RangeSingleCommit{commits[idx-1].SHA}`. Visual mode gates this so multi-row yank does not mutate the working slice.
 17. **Enter on Commits is a no-op**. The cursor commit is already auto-selected by j/k, and the Diff pane reflects that selection live; pressing Tab is the only way to shift focus to Diff.
 18. **`[A]/[M]/[D]/[R]` annotation** decorates each commit row that touches `SelectedFile`.
@@ -227,7 +236,7 @@ and several break the user's mental model.
 39d. **Diff-renderer perf rule**: do not call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly from any hot path. Always go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers()`. New caches that share fate with the patch should also key on `diffKey(sha, path)` and reset via the `invalidateRowCacheIfStale` pattern (key + paneWidthDiff + halfW).
 40. **`waitReady` defaults to 10s** in `e2e/helpers/launch.mjs` to absorb chroma's `styles` + `lexers` init cost (~500ms cold) plus first-frame tokenization. Tests that need a tighter signal can pass `{ timeout: ... }` explicitly.
 41. **`session.press` / `session.type` are wrapped with a 120ms settle** in `launchReva`. bubbletea's Update→View pipeline is async and ghostty's parser needs a beat to drain SGR-laden output before subsequent `text()` reads see the post-keystroke screen. Don't reach for `session.press` directly inside helpers — go through the wrapped session returned by `launchReva`.
-42. **Hover popup is gated by `model.HoverState{Show}` and toggled by `<space>`**. The Files / Commits key handlers flip `m.state.Hover.Show` on `<space>`; nothing else changes it. While `Show` is true, every render runs through `hoverEligible` (Files / Commits + non-visual) and re-computes the body from the current cursor, so j / k navigation updates the popup without dismissing it. Tab / focus changes do not reset `Show` — the user controls open / close explicitly. Visual mode still suppresses the overlay because the visual banner already carries focus + a row-wide bg highlight. Diff still uses `<space>` for split⇄unified (different pane, different binding). The overlay is anchored above the cursor row's content column via `hover.go::hoverAnchorCol` (Files flat = col 6 = border + cursor + space + status + space; Files tree adds `2*depth`; Commits = col 7 = border + cursor + annotation, hugging the SHA column so the popup body's `<sha> <subject>` lines up exactly with the row below) so the popup sits directly above the path / SHA text rather than across the rest of the screen. Width = `max(lipgloss.Width(line)) + 2 borders`, capped to `m.width - left`. Vertically, `hoverLayout` prefers above the cursor row, falls back to below when the cursor is too close to the top, and clamps content rows to fit if neither side has room. Body content: Files file rows = `<path>` plus `(N comments)` / `(1 comment)` suffix when `CommentCount > 0`; Files tree dir rows surface `<path>/` (resolved through `filesTreeRows()` so `FilesCursor` indexes the tree, not `PR.Files`); Commits = `<sha> <subject>` plus every body line of the commit message (capped at `hoverMaxLines = 12`); the SHA is colored with `theme.CommitSHA` so the popup mirrors the Commits row's syntax highlighting. Reserved height was rejected because layout would shift on every show / hide cycle; the overlay splices via `spliceMid` which preserves both the prefix `[0,left)` and the suffix `[left+width,end)` so the Diff / Comments pane chrome on the same row stays intact (uses `ansi.Truncate` + `ansi.TruncateLeft`).
+42. **Pane modal (`<space>` zoom)** is gated by `model.ModalState{Pane}` and toggled by `<space>` in the Files / Commits / Comments panes. `m.state.Modal == nil` is closed; non-nil holds the `PaneID` whose contents the modal is showing. Toggle is `(*Model).toggleModal(pane)` in `internal/tui/modal.go`: a second `<space>` from the same pane closes. Diff `<space>` is unchanged — it still toggles split⇄unified (separate code path in `pane_diff.go`, never touches `state.Modal`). The modal closes implicitly when focus moves (`tab`, `shift+tab`), the help modal opens (`?`), `esc` is pressed, `q` is pressed, or `Ctrl+C` is pressed — all four single-key dismiss gestures behave identically (close first, no app exit). Both `q` and `Ctrl+C` only quit the app when the modal is already closed, the dual-purpose convention shared with the Help modal: a stray dismiss gesture in a zoom view does not drop the user out of the program. (The earlier contract had `Ctrl+C` quit unconditionally as a "force exit" backstop; the symmetric-dismiss model was adopted because the asymmetry surprised users in interactive review — `q` and `Ctrl+C` are interchangeable elsewhere in vim and most TUIs.) `J` / `K` (advance file) leave the modal open by design so users can scrub through files inside Commits / Comments modals. Visual mode (`v` / `y` / `esc`) is allowed inside the modal — the comment-input modal mentioned in §4 Diff #14 is a separate Phase 2 feature that opens `$EDITOR`, distinct from this read-only zoom view, so allowing visual selection here does not collide with that plan. Layout (`modalLayout`): width = max content row + 3 (1-col leading-space pad + 2 border cols), capped to `m.width - 4`; height = body rows + 4 (top border + title + divider + bottom border), capped to `m.height - 2`; centered both axes. Content (`modalContent`) reuses the regular pane renderers — Files / Commits because their row format is width-independent (no wrap), Comments by mutating the local `m.paneWidthComments` to `min(m.width - 10, commentsModalWrapMax = 80)` before calling `commentsView()` (Model is a value receiver, so the wider budget never leaks back to the body rendered behind the modal). Title row carries the bare pane name with a single leading space (`│ Files`); the regular pane title rows always carry `▶ ` (active) or `  ` (inactive), so the single-space form is the unique signature for e2e detection (`13_modal.test.mjs::MODAL_TITLE_RE = /│ (Files\|Commits\|Comments)\s+│/`). Overlay (`overlayModal`) splices via `spliceMid`, shared with the Help overlay (declared in `modal.go` for both consumers; uses `ansi.Truncate` + `ansi.TruncateLeft` to preserve SGR run integrity). j / k navigation inside the modal goes through the regular pane handlers (no separate routing) so cursor / `SelectedFile` / `SelectedRange` / `CommentsCursor` updates propagate to the underlying main state — closing the modal leaves the main UI on the same row the user landed on inside the zoom view. The previous hover-popup machinery (`HoverState`, `hover.go`, `e2e/tests/13_hover.test.mjs`) was deleted at the same time; do not reintroduce a "show full path on hover" overlay — the modal is now the sole zoom affordance.
 
 ---
 
@@ -321,7 +330,68 @@ These follow the global CLAUDE.md but are emphasized here:
 ## 8. Commit conventions
 
 - Commit only when explicitly requested by the user.
-- Never push to main / master; never force-push.
+- Never push to main / master; never force-push. Tag pushes are allowed when explicitly requested as part of a release (see §9).
 - Subject ≤ 70 chars; body explains the why if non-obvious.
 - Trailer: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
 - Stage by name when feasible. `git add -A` is allowed for the initial commit and when `.gitignore` is known to be correct, but not for arbitrary staging.
+
+---
+
+## 9. Release procedure
+
+Releases are driven entirely by the `v*` tag pushed to `origin`. The
+`release.yml` workflow runs goreleaser which reads the version from
+`{{.Version}}` (= the tag) and produces per-OS-arch binaries with the
+`gh-reva_<os>-<arch>` name template (the hyphen is required — gh CLI's
+`gh extension install` matches assets by `strings.HasSuffix(name, "<os>-<arch>")`,
+so `_` in that slot breaks the install path; documented in
+`.goreleaser.yaml:20-25`). There is NO `version.go` to bump and NO
+changelog to update — the tag is the single source of truth.
+
+### Steps for a patch / minor / major release
+
+Run from the repo root. Replace `vX.Y.Z` with the actual version.
+
+1. **Pre-flight checks** (must all pass before tagging):
+   ```sh
+   git status                       # working tree must be clean OR contain only the release-bound diff
+   go vet ./...
+   go test ./...                    # internal/api + theme + tui packages
+   (cd e2e && pnpm test)            # full e2e (pretest hook auto-rebuilds gh-reva)
+   git log --oneline $(git describe --tags --abbrev=0)..HEAD   # confirm what's shipping
+   ```
+2. **Pick the next version** by reading `git tag --sort=-v:refname | head -1` and applying SemVer:
+   - patch (bug fixes only): `vMAJOR.MINOR.(PATCH+1)`
+   - minor (new features, no breaking change): `vMAJOR.(MINOR+1).0`
+   - major (breaking change): `v(MAJOR+1).0.0`
+3. **Commit any pending work** with the standard `type(scope): subject` Conventional-Commits style. One commit per logical feature is preferred; a single composite commit is acceptable for tightly-coupled changes that touch overlapping files.
+4. **Bump the e2e workspace version** in `e2e/package.json` to match the new tag's `MAJOR.MINOR.PATCH` (no `v` prefix). Past convention: `chore(release): bump e2e workspace to vX.Y.Z` as a separate commit. The e2e workspace version has no functional effect on the release — it's a lockstep marker so the workspace and the binary share an identifier.
+5. **Create the annotated tag** at HEAD:
+   ```sh
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   ```
+   Use `-a` (annotated), not lightweight, so `git describe` works correctly.
+6. **Push master + tag** in one atomic step:
+   ```sh
+   git push origin master vX.Y.Z
+   ```
+7. **Watch the workflow**:
+   ```sh
+   gh run watch --exit-status                                      # or:
+   gh run list --workflow=release.yml --limit 1
+   ```
+   On success, the GitHub release page exposes `gh-reva_<os>-<arch>` binaries + `checksums.txt`. If the workflow fails, fix forward and re-tag with the next patch (e.g. vX.Y.Z+1) — never delete and re-push the same tag, because users who already pulled it would silently get a different artifact.
+8. **Smoke-verify the release**:
+   ```sh
+   gh release view vX.Y.Z
+   gh extension install ktrysmt/gh-reva --force                    # installs the freshly published binary
+   gh reva --version                                               # should print vX.Y.Z (commit, date)
+   ```
+
+### Things that REQUIRE explicit user authorization (don't autonomously do)
+
+- Any push to `main` / `master` (release flow only).
+- Tag creation + push.
+- `gh release edit` / `gh release delete` (post-publish edits).
+
+The user saying "release してほしい" / "release まで進めて" / "patch +1 で release" counts as explicit authorization for the full §9 sequence; partial requests like "commit して" do not authorize tagging or pushing.
