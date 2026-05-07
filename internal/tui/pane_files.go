@@ -23,7 +23,6 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if handled := m.handlePendingG(key, func() {
 		m.state.FilesCursor = 0
-		m.autoSelectFlat()
 	}); handled {
 		return m, nil
 	}
@@ -31,18 +30,25 @@ func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.state.FilesCursor < len(m.state.PR.Files)-1 {
 			m.state.FilesCursor++
-			m.autoSelectFlat()
 		}
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
-			m.autoSelectFlat()
 		}
 	case "G":
 		if n := len(m.state.PR.Files); n > 0 {
 			m.state.FilesCursor = n - 1
-			m.autoSelectFlat()
 		}
+	case "enter":
+		// Commit the cursor file: select it and shift focus to Diff.
+		// j/k/gg/G no longer auto-select (the per-keystroke Diff
+		// re-render felt sluggish); Enter is the deliberate gesture
+		// that updates SelectedFile.
+		if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(m.state.PR.Files) {
+			return m, nil
+		}
+		m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
+		m.state.FocusedPane = model.PaneDiff
 	case " ":
 		m.toggleModal(model.PaneFiles)
 	case "t":
@@ -58,7 +64,6 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if handled := m.handlePendingG(key, func() {
 		m.state.FilesCursor = 0
-		m.autoSelectTree(rows)
 	}); handled {
 		return m, nil
 	}
@@ -66,17 +71,14 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.state.FilesCursor < len(rows)-1 {
 			m.state.FilesCursor++
-			m.autoSelectTree(rows)
 		}
 	case "k", "up":
 		if m.state.FilesCursor > 0 {
 			m.state.FilesCursor--
-			m.autoSelectTree(rows)
 		}
 	case "G":
 		if n := len(rows); n > 0 {
 			m.state.FilesCursor = n - 1
-			m.autoSelectTree(rows)
 		}
 	case " ":
 		m.toggleModal(model.PaneFiles)
@@ -85,13 +87,16 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state.FilesTreeMode = !prev
 		m.remapCursorOnTreeToggle(prev)
 	case "enter":
-		// Enter is bound only to dir fold/unfold in tree mode. File rows are a
-		// no-op — j/k auto-select drives Diff/Comments sync, Tab moves focus.
+		// File rows commit the cursor file (peer to flat-mode Enter):
+		// selectFile + focus Diff. Dir rows fold / unfold and keep
+		// focus on Files. Out-of-range cursors no-op.
 		if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(rows) {
 			return m, nil
 		}
 		r := rows[m.state.FilesCursor]
-		if r.Kind != model.FilesRowDir {
+		if r.Kind == model.FilesRowFile {
+			m.selectFile(r.Path)
+			m.state.FocusedPane = model.PaneDiff
 			return m, nil
 		}
 		if m.state.FoldedDirs[r.Path] {

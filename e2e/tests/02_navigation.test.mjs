@@ -54,14 +54,15 @@ test('C2: shift-tab cycles Files → Comments → Diff → Commits → Files', {
   //   <press Shift+Tab> — focus must cycle Files → Comments → Diff → Commits → Files.
 })
 
-test('C3: Enter does NOT shift focus across panes (Tab is the only mover)', async () => {
+test('C3: Enter on Commits is a no-op for focus (only Files Enter and Tab move panes)', async () => {
+  // Files Enter is the deliberate "commit selection + go to Diff" gesture
+  // — verified in 03_pane_files D6. Other panes' Enter are no-ops for
+  // focus: Commits Enter no-ops, Diff Enter opens compose / focus
+  // shifts to Comments depending on the row, Comments Enter
+  // edits / replies. Pin only the Commits no-op here so the contract
+  // stays observable from the navigation suite.
   const s = await launchReva()
   await waitReady(s)
-  // Files: Enter must not move focus to Commits.
-  assert.equal(await activePaneLabel(s), 'Files')
-  await s.press('enter')
-  assert.equal(await activePaneLabel(s), 'Files', 'Enter on Files must not focus Commits')
-  // Move to Commits via Tab; Enter from Commits must also be a no-op for focus.
   await s.press('tab')
   assert.equal(await activePaneLabel(s), 'Commits')
   await s.press('enter')

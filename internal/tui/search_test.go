@@ -84,6 +84,7 @@ func TestFiles_ggGotoTop(t *testing.T) {
 	m.state.FocusedPane = model.PaneFiles
 	m.state.FilesCursor = 3
 	m.state.SelectedFile = m.state.PR.Files[3].Path
+	prevSelected := m.state.SelectedFile
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = mm.(Model)
 	if m.state.PendingPrefix != "g" {
@@ -100,8 +101,9 @@ func TestFiles_ggGotoTop(t *testing.T) {
 	if m.state.FilesCursor != 0 {
 		t.Fatalf("gg should jump Files cursor to 0; got %d", m.state.FilesCursor)
 	}
-	if m.state.SelectedFile != m.state.PR.Files[0].Path {
-		t.Fatalf("gg in Files should auto-select file[0]; SelectedFile=%q", m.state.SelectedFile)
+	if m.state.SelectedFile != prevSelected {
+		t.Fatalf("gg in Files must NOT change SelectedFile (cursor-only nav); got %q want %q",
+			m.state.SelectedFile, prevSelected)
 	}
 }
 
@@ -109,14 +111,16 @@ func TestFiles_GGotoBottom(t *testing.T) {
 	m := searchModelFixture(t)
 	m.state.FocusedPane = model.PaneFiles
 	m.state.FilesCursor = 1
+	prevSelected := m.state.SelectedFile
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	m = mm.(Model)
 	last := len(m.state.PR.Files) - 1
 	if m.state.FilesCursor != last {
 		t.Fatalf("G should jump Files cursor to last (%d); got %d", last, m.state.FilesCursor)
 	}
-	if m.state.SelectedFile != m.state.PR.Files[last].Path {
-		t.Fatalf("G in Files should auto-select last file; SelectedFile=%q", m.state.SelectedFile)
+	if m.state.SelectedFile != prevSelected {
+		t.Fatalf("G in Files must NOT change SelectedFile (cursor-only nav); got %q want %q",
+			m.state.SelectedFile, prevSelected)
 	}
 }
 

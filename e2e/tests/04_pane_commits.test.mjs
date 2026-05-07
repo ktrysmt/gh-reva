@@ -164,8 +164,11 @@ test('E9: switching SelectedFile re-filters the Commits pane', async () => {
   let screen = await s.text()
   assert.ok(screen.includes('aaa1111 Add greeting.go skeleton'))
   assert.ok(!screen.includes('ccc3333 Add tests and docs'))
-  // j in Files → greeting_test.go (touched only by ccc3333)
+  // Move Files cursor + Enter to commit greeting_test.go (touched only
+  // by ccc3333). j alone moves the cursor; SelectedFile changes only
+  // on Enter / Shift+J/K (commit gesture).
   await s.type('j')
+  await s.press('enter')
   screen = await s.text()
   assert.ok(screen.includes('ccc3333 Add tests and docs'), 'ccc3333 should appear when greeting_test.go is selected')
   assert.ok(!screen.includes('aaa1111 Add greeting.go skeleton'), 'aaa1111 should disappear (does not touch greeting_test.go)')

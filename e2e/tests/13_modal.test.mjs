@@ -52,7 +52,7 @@ test('F-modal-1: Space in Files opens a centered modal; Space again closes it', 
   await quit(s)
 })
 
-test('F-modal-2: j inside Files modal updates main SelectedFile (Diff title follows)', async () => {
+test('F-modal-2: Enter inside Files modal commits the cursor file (Diff title follows)', async () => {
   const s = await launchReva()
   await waitReady(s)
   // Initial: cursor on src/greeting.go (first file). Diff title shows that file.
@@ -63,17 +63,19 @@ test('F-modal-2: j inside Files modal updates main SelectedFile (Diff title foll
   screen = await s.text()
   assert.ok(modalVisible(screen), 'modal should be open after Space')
 
-  await s.press('j')              // move cursor inside modal
+  await s.press('j')              // move cursor inside modal — Diff still on greeting.go
   screen = await s.text()
   assert.ok(modalVisible(screen), 'j must not close the modal')
+  assert.ok(/Diff:\s*src\/greeting\.go(?!_)/.test(diffTitle(screen)),
+    `j inside modal must NOT change SelectedFile; got ${JSON.stringify(diffTitle(screen))}`)
 
-  await s.press('space')          // close modal
+  await s.press('enter')          // commit the cursor file and shift focus to Diff
   screen = await s.text()
-  assert.ok(!modalVisible(screen), 'modal should close on second Space')
-  // Underlying SelectedFile must have advanced; Diff title now reflects file index 1.
+  assert.ok(!modalVisible(screen), 'Enter should close the modal')
+  assert.ok(/▶ Diff/.test(screen), 'Enter should shift focus to Diff')
   assert.ok(
     /Diff:\s*src\/greeting_test\.go/.test(diffTitle(screen)),
-    `Diff title should follow modal j; got ${JSON.stringify(diffTitle(screen))}`,
+    `Diff title should follow Enter commit; got ${JSON.stringify(diffTitle(screen))}`,
   )
   await quit(s)
 })
@@ -114,19 +116,16 @@ test('F-modal-4: Space in Diff still toggles split⇄unified (no modal opens)', 
   await quit(s)
 })
 
-test('F-modal-5: Space in Comments opens the Comments modal', async () => {
+test('F-modal-5: Space in Comments opens the Comments modal (only when threads visible)', async () => {
   const s = await launchReva()
   await waitReady(s)
-  // Move to a file with at least one comment + put the Diff cursor on the
-  // anchored line so Comments has visible threads.
-  // src/greeting.go has comments anchored at new-file line 3 and 13.
-  // Initial SelectedFile is src/greeting.go (index 0). Move Diff cursor to
-  // a comment line via Tab to Diff, j several times.
+  // src/greeting.go thread 1001 is anchored at new-file line 3 → buffer
+  // index 5 in the visible patch (header×2 + hunk + 3 lines). Walking
+  // there ensures Comments has visible threads, which the new spec
+  // requires before Space opens the modal.
   await s.press('tab')            // Commits
   await s.press('tab')            // Diff
-  // Walk the cursor until Comments shows a header (best-effort: 12 j's
-  // covers the patch we're using).
-  for (let i = 0; i < 12; i++) await s.press('j')
+  for (let i = 0; i < 5; i++) await s.press('j')
   await s.press('tab')            // Comments
   let screen = await s.text()
   assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')
@@ -139,6 +138,26 @@ test('F-modal-5: Space in Comments opens the Comments modal', async () => {
   await s.press('space')
   screen = await s.text()
   assert.ok(!modalVisible(screen), 'second Space should close the Comments modal')
+  await quit(s)
+})
+
+test('F-modal-5b: Space in Comments is a no-op when the cursor row has no thread', async () => {
+  // The placeholder "(no comment at cursor)" state should not zoom — a
+  // modal that just wraps the placeholder text is noise. Verified
+  // directly by the unit test TestComments_SpaceNoopWhenNoThread; this
+  // e2e covers the user-facing screen so the contract is observable.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab') // → Diff (cursor on header row)
+  await s.press('tab')                       // → Comments
+  let screen = await s.text()
+  assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')
+  assert.ok(/\(no comment at cursor\)/.test(screen),
+    'precondition: Comments shows the placeholder')
+
+  await s.press('space')
+  screen = await s.text()
+  assert.ok(!modalVisible(screen), 'Space on (no comment) must NOT open the modal')
   await quit(s)
 })
 
@@ -194,12 +213,14 @@ test('F-modal-9: Diff Enter on commented row shifts focus to Comments (no modal)
 
 test('F-modal-10: Comments space → space stays on Comments', async () => {
   // Comments modal opened via space from Comments has Origin=Comments;
-  // close gesture must keep focus there.
+  // close gesture must keep focus there. Walk Diff cursor onto a ◆
+  // row first (line 3 → buffer 5) so Space has a visible thread to
+  // zoom (per the new no-thread no-op rule).
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab') // Commits
   await s.press('tab') // Diff
-  for (let i = 0; i < 12; i++) await s.press('j') // line a comment lives on
+  for (let i = 0; i < 5; i++) await s.press('j')
   await s.press('tab') // Diff → Comments
   let screen = await s.text()
   assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')

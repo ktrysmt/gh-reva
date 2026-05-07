@@ -230,6 +230,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.state.FilesTreeMode && m.fileIndexFromTreeCursor() < 0 {
 					break
 				}
+				// Commit the cursor file before leaving the modal.
+				// j/k no longer auto-select, so without this the user
+				// would close the modal and find Diff still parked on
+				// the previous SelectedFile.
+				if !m.state.FilesTreeMode {
+					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(m.state.PR.Files) {
+						m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
+					}
+				} else {
+					rows := m.filesTreeRows()
+					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(rows) {
+						r := rows[m.state.FilesCursor]
+						if r.Kind == model.FilesRowFile {
+							m.selectFile(r.Path)
+						}
+					}
+				}
 				m.state.Modal = nil
 				m.state.FocusedPane = model.PaneDiff
 				m.state.CommentsCursor = 0

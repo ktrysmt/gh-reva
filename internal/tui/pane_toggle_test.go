@@ -163,6 +163,156 @@ func TestDiffEnter_AutoRevealsCommentsWhenHidden(t *testing.T) {
 	}
 }
 
+// TestFiles_jKDoesNotChangeSelectedFile pins the new contract: Files
+// j/k move the cursor only — they no longer auto-select the file
+// under the cursor. Triggers a re-render of the Diff column on every
+// keystroke; users reported that as sluggish for j/k navigation.
+// SelectedFile only changes via Enter (commit) or Shift+J/K
+// (advanceFile from any pane).
+func TestFiles_jKDoesNotChangeSelectedFile(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.PR.Files = append(m.state.PR.Files,
+		&model.FileEntry{Path: "src/bar.go", Status: model.ChangeAdded},
+		&model.FileEntry{Path: "src/baz.go", Status: model.ChangeAdded},
+	)
+	m.state.FocusedPane = model.PaneFiles
+	m.state.SelectedFile = m.state.PR.Files[0].Path
+	m.state.FilesCursor = 0
+
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = res.(Model)
+	if m.state.FilesCursor != 1 {
+		t.Errorf("j must advance FilesCursor to 1; got %d", m.state.FilesCursor)
+	}
+	if m.state.SelectedFile != "src/foo.go" {
+		t.Errorf("j must NOT change SelectedFile; got %q", m.state.SelectedFile)
+	}
+
+	res, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m = res.(Model)
+	if m.state.FilesCursor != 0 {
+		t.Errorf("k must move FilesCursor back to 0; got %d", m.state.FilesCursor)
+	}
+	if m.state.SelectedFile != "src/foo.go" {
+		t.Errorf("k must NOT change SelectedFile; got %q", m.state.SelectedFile)
+	}
+}
+
+// TestFiles_ggGCursorOnly pins that gg / G move the Files cursor but
+// leave SelectedFile alone — peer to the j/k contract.
+func TestFiles_ggGCursorOnly(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.PR.Files = append(m.state.PR.Files,
+		&model.FileEntry{Path: "src/bar.go", Status: model.ChangeAdded},
+		&model.FileEntry{Path: "src/baz.go", Status: model.ChangeAdded},
+	)
+	m.state.FocusedPane = model.PaneFiles
+	m.state.SelectedFile = "src/foo.go"
+	m.state.FilesCursor = 0
+
+	// G — bottom
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	m = res.(Model)
+	last := len(m.state.PR.Files) - 1
+	if m.state.FilesCursor != last {
+		t.Errorf("G must move cursor to last (%d); got %d", last, m.state.FilesCursor)
+	}
+	if m.state.SelectedFile != "src/foo.go" {
+		t.Errorf("G must NOT change SelectedFile; got %q", m.state.SelectedFile)
+	}
+
+	// gg — top
+	res, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = res.(Model)
+	res, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = res.(Model)
+	if m.state.FilesCursor != 0 {
+		t.Errorf("gg must move cursor to 0; got %d", m.state.FilesCursor)
+	}
+	if m.state.SelectedFile != "src/foo.go" {
+		t.Errorf("gg must NOT change SelectedFile; got %q", m.state.SelectedFile)
+	}
+}
+
+// TestFiles_EnterShiftsFocusToDiffAndSelects pins the commit gesture:
+// Enter on a file row in flat mode shifts focus to Diff and updates
+// SelectedFile to the cursor's file. Replaces the prior "Enter on a
+// file row is a no-op" contract — cursor-only j/k makes Enter the
+// natural commit step.
+func TestFiles_EnterShiftsFocusToDiffAndSelects(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.PR.Files = append(m.state.PR.Files,
+		&model.FileEntry{Path: "src/bar.go", Status: model.ChangeAdded},
+	)
+	m.state.FocusedPane = model.PaneFiles
+	m.state.SelectedFile = "src/foo.go"
+	m.state.FilesCursor = 1 // src/bar.go
+
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.state.FocusedPane != model.PaneDiff {
+		t.Errorf("Enter on a file row must shift focus to Diff; got %v", m.state.FocusedPane)
+	}
+	if m.state.SelectedFile != "src/bar.go" {
+		t.Errorf("Enter must select the cursor file; got %q", m.state.SelectedFile)
+	}
+}
+
+// TestFiles_EnterTreeDirStillFolds pins that tree-mode dir rows
+// retain the fold/unfold gesture. The "Enter shifts focus" contract
+// only applies to file rows.
+func TestFiles_EnterTreeDirStillFolds(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.PR.Files = []*model.FileEntry{
+		{Path: "src/foo.go", Status: model.ChangeModified},
+		{Path: "src/bar.go", Status: model.ChangeAdded},
+	}
+	m.state.FocusedPane = model.PaneFiles
+	m.state.FilesTreeMode = true
+	m.state.FoldedDirs = map[string]bool{}
+	m.state.FilesCursor = 0 // dir row "src/"
+
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.state.FocusedPane != model.PaneFiles {
+		t.Errorf("Enter on a tree dir row must keep focus on Files; got %v", m.state.FocusedPane)
+	}
+	if !m.state.FoldedDirs["src"] {
+		t.Errorf("Enter on tree dir row must fold the directory")
+	}
+}
+
+// TestComments_SpaceNoopWhenNoThread pins that pressing <space> in the
+// Comments pane is a no-op when the Diff cursor is not on a ◆ row
+// (placeholder "(no comment at cursor)"). Opening a zoom modal that
+// just wraps the same placeholder text is noise; reserve the gesture
+// for when there's actual content to zoom.
+func TestComments_SpaceNoopWhenNoThread(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.FocusedPane = model.PaneComments
+	m.state.DiffCursor.Line = 0 // header row → no thread anchored
+
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	m = res.(Model)
+	if m.state.Modal != nil {
+		t.Errorf("Comments <space> on (no comment) must NOT open a modal; got %+v", m.state.Modal)
+	}
+}
+
+// TestComments_SpaceOpensModalWhenThreadVisible pins the existing
+// behavior is preserved when the Comments pane has visible threads.
+func TestComments_SpaceOpensModalWhenThreadVisible(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.FocusedPane = model.PaneComments
+	m.state.DiffCursor.Line = 2 // ◆ row for thread T1
+
+	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	m = res.(Model)
+	if m.state.Modal == nil || m.state.Modal.Pane != model.PaneComments {
+		t.Errorf("Comments <space> with visible threads must open the zoom modal; got %+v", m.state.Modal)
+	}
+}
+
 // TestStatusBar_AdvertisesToggleKey pins that the common navigation
 // suffix carries the Ctrl+E binding so the user can discover the toggle
 // without documentation. The full assertion goes through the rendered

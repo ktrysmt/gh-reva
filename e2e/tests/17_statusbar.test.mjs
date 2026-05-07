@@ -139,12 +139,12 @@ test('S7: zoom modal replaces bar with close hint (ctrl+c also closes)', async (
 test('S11: Comments modal status bar adds enter:edit r:reply before close', async () => {
   const s = await launchReva()
   await waitReady(s)
-  // src/greeting.go has comments anchored at new-file line 3 / 13.
-  // Walk the cursor to a commented row so the Comments modal has visible
-  // threads and edit/reply targets.
+  // src/greeting.go thread 1001 anchored at new-file line 3 → buffer 5.
+  // Walk the cursor onto a ◆ row so Comments has a visible thread —
+  // Space is now a no-op when the cursor row carries no thread.
   await s.press('tab')            // Files → Commits
   await s.press('tab')            // Commits → Diff
-  for (let i = 0; i < 12; i++) await s.press('j')
+  for (let i = 0; i < 5; i++) await s.press('j')
   await s.press('tab')            // Diff → Comments
   await s.press('space')          // open Comments modal
   const row = statusBarRow(await s.text())

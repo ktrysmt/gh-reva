@@ -65,28 +65,26 @@ test('D3: j/k moves the Files cursor', async () => {
   await quit(s)
 })
 
-test('D3b: j/k in Files auto-selects file (Diff/Commits sync, focus stays)', async () => {
+test('D3b: j/k in Files moves the cursor but does NOT change SelectedFile', async () => {
+  // Per-keystroke Diff re-render felt sluggish during j/k navigation, so
+  // auto-select was retired from j/k/gg/G. Cursor moves only; SelectedFile
+  // changes via Enter (commit) or Shift+J/K (advanceFile from any pane).
   const s = await launchReva()
   await waitReady(s)
-  // Phase 1.5 auto-selects first file on load: greeting.go.
   let screen = await s.text()
   assert.match(screen, /▶ Files/, 'focus starts on Files')
   assert.match(screen, /Diff: src\/greeting\.go/, 'Diff initially shows greeting.go')
-  // j → cursor moves to greeting_test.go AND Diff/Comments must follow.
-  // Comments is coupled to the Diff cursor row; on file switch, the Diff
-  // cursor resets to buf 0 (header), so Comments shows the placeholder.
-  // The proof of "Comments re-filters" here is that the previous file's
-  // thread is gone — the positive case is covered by 08_sync I1+I2.
+
   await s.type('j')
   screen = await s.text()
-  assert.match(paneText(screen, 'Files'), /^>[^\n]*src\/greeting_test\.go/m, 'Files cursor on greeting_test.go')
-  assert.match(screen, /Diff: src\/greeting_test\.go/, 'Diff should switch to greeting_test.go')
-  assert.ok(!screen.includes('Consider extracting'), 'greeting.go thread must not leak after switching files')
-  assert.match(screen, /▶ Files/, 'focus must remain on Files')
-  // k → back to greeting.go.
+  assert.match(paneText(screen, 'Files'), /^>[^\n]*src\/greeting_test\.go/m, 'Files cursor advances to greeting_test.go')
+  assert.match(screen, /Diff: src\/greeting\.go/, 'Diff must stay on greeting.go (no auto-select)')
+  assert.match(screen, /▶ Files/, 'focus stays on Files after j')
+
   await s.type('k')
   screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting\.go/, 'Diff should switch back to greeting.go')
+  assert.match(paneText(screen, 'Files'), /^>[^\n]*src\/greeting\.go/m, 'k moves cursor back to first file')
+  assert.match(screen, /Diff: src\/greeting\.go/, 'Diff still on greeting.go after k')
   await quit(s)
 })
 
@@ -138,22 +136,20 @@ test('D5: Enter on a directory toggles expand/collapse', async () => {
   await quit(s)
 })
 
-test('D6: Enter on a file row is a no-op for focus (j/k auto-select drives selection)', async () => {
+test('D6: Enter on a file row commits the selection and shifts focus to Diff', async () => {
+  // Now that j/k stop auto-selecting, Enter is the deliberate commit
+  // gesture: it sets SelectedFile to the cursor's file and moves focus
+  // to the Diff pane so the user can start reading.
   const s = await launchReva()
   await waitReady(s)
-  // j alone already auto-selects greeting_test.go and refreshes Diff/Comments.
-  // Enter must not additionally shift focus to Commits.
-  await s.type('j')
+  await s.type('j') // cursor on greeting_test.go but Diff still on greeting.go
   let screen = await s.text()
-  assert.match(screen, /▶ Files/, 'focus stays on Files after j')
-  assert.match(screen, /Diff: src\/greeting_test\.go/, 'Diff header reflects auto-selected file')
-  // Comments visibility is tied to the Diff cursor — file switch resets
-  // the cursor to buf 0 (header), so the previous file's thread is gone.
-  // Positive Comments coverage lives in 08_sync I1+I2.
-  assert.ok(!screen.includes('Consider extracting'), 'previous file thread must not leak')
+  assert.match(screen, /Diff: src\/greeting\.go/, 'precondition: j alone keeps Diff on greeting.go')
+
   await s.press('enter')
   screen = await s.text()
-  assert.match(screen, /▶ Files/, 'Enter on a file row must not move focus')
+  assert.match(screen, /▶ Diff/, 'Enter on a file row must shift focus to Diff')
+  assert.match(screen, /Diff: src\/greeting_test\.go/, 'Enter must commit the cursor file (Diff header follows)')
   await quit(s)
 })
 
