@@ -195,13 +195,25 @@ func maxLineWidth(rows []string) int {
 // alone is wordless; layouts 2 and 3 already render REVA as art so the
 // label collapses to just the version string. Empty version → empty
 // line (caller suppresses).
+//
+// goreleaser passes the bare semver via {{.Version}} (no leading `v`),
+// so without the prepend below a 0.3.1 release would render as just
+// `0.3.1` while every other surface (`git tag`, release page, install
+// command) reads `v0.3.1`. Prepend the `v` only when the supplied
+// version starts with a digit; already-prefixed values (test fixtures,
+// future ldflags using {{.Tag}}) and non-semver strings like `dev`
+// stay untouched.
 func (m Model) versionLineFor(layout splashLayout) string {
 	if m.version == "" {
 		return ""
 	}
-	label := m.version
+	v := m.version
+	if v[0] >= '0' && v[0] <= '9' {
+		v = "v" + v
+	}
+	label := v
 	if layout == splashLayoutDome {
-		label = "reva " + m.version
+		label = "reva " + v
 	}
 	return fg(label, m.theme.LoadingSpinner)
 }
