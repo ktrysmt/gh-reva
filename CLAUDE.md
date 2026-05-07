@@ -45,6 +45,7 @@ go run testdata/gen_large_fixture.go testdata/large-pr.json
 - `--theme <name>` — default `gruvbox`. Any chroma styles registry name (74) plus `builtin-dark`. `GH_REVA_THEME` env fallback. Empty → `defaultThemeName` in `internal/theme/theme.go`.
 - `--no-color` — honors `NO_COLOR` / `CLICOLOR` (`termenv.EnvNoColor`).
 - `--list-themes` — print accepted names and exit 0.
+- `--config <path>` — load `reva.toml`. Defaults to `$XDG_CONFIG_HOME/reva.toml`, then `$HOME/.config/reva.toml`. Schema today: `[syntax.extensions]` table mapping a filename suffix (e.g. `".j2"`) to a chroma lexer name or alias (`yaml`, `jinja`, …). An explicit `--config` whose target does not exist is a hard error; implicit search silently tolerates absence. `internal/config/config.go` is authoritative; lexer override applied in `internal/tui/syntax.go::lexerFromOverride` (longest-suffix-match wins; unknown lexer names fall back to chroma's default extension matcher).
 
 ---
 
@@ -77,6 +78,9 @@ gh-reva/
 ├── cmd/root.go                     # CLI entry, flags
 ├── main.go
 ├── internal/
+│   ├── config/                     # reva.toml loader (XDG ladder + --config)
+│   │   ├── config.go
+│   │   └── config_test.go
 │   ├── api/                        # GitHub client (go-gh) + fixture
 │   │   ├── client.go               # Client iface (read + pending POST + submit)
 │   │   ├── pr.go                   # GetPR / ListCommits / ListFiles

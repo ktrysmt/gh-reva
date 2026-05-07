@@ -3,6 +3,7 @@ module github.com/ktrysmt/gh-reva
 go 1.22
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/alecthomas/chroma/v2 v2.24.1
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/bubbletea v1.3.0

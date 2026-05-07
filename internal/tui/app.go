@@ -46,6 +46,13 @@ type Model struct {
 	paneHeightDiff     int
 	paneWidthComments  int
 	paneHeightComments int
+
+	// syntaxExtensions maps file-extension suffixes (with leading dot,
+	// e.g. ".j2") to chroma lexer names — sourced from reva.toml's
+	// [syntax.extensions] table. Longest-suffix-match wins at lookup
+	// time so ".html.j2" can shadow ".j2". Empty / nil means
+	// "no override; use chroma's default extension matcher".
+	syntaxExtensions map[string]string
 }
 
 func (m Model) Err() error { return m.err }
@@ -69,6 +76,16 @@ func (m *Model) SetTheme(t *theme.Theme) {
 // Empty string suppresses the version line entirely. cmd/root.go passes
 // the ldflag-injected version (e.g. "v0.4.2" or "dev").
 func (m *Model) SetVersion(v string) { m.version = v }
+
+// SetSyntaxExtensions installs the user's [syntax.extensions] override
+// table (sourced from reva.toml). Each key is a filename suffix with
+// leading dot (".j2", ".html.j2"); each value is a chroma lexer name
+// or alias (yaml, jinja, html, …). Lookups happen on every diff cell
+// so the map is read directly without copying. Pass nil / empty to
+// clear the overrides.
+func (m *Model) SetSyntaxExtensions(ext map[string]string) {
+	m.syntaxExtensions = ext
+}
 
 func NewModel(client api.Client, target *api.Target) Model {
 	t, _ := theme.Resolve("")
