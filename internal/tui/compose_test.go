@@ -279,6 +279,42 @@ func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 	}
 }
 
+// A successful submit auto-reveals the Comments column if the user had
+// hidden it via Ctrl+E. Without auto-reveal the freshly-posted draft
+// would not be visible — the user posted from Diff while Comments was
+// hidden, and Tab / Shift+Tab skip Comments while hidden, so they
+// would have to remember the toggle gesture before they could see
+// what they just wrote.
+func TestApplyComposeSubmitted_RevealsHiddenCommentsOnSuccess(t *testing.T) {
+	m := newComposeModel(t, composePatch, nil)
+	m.state.CommentsHidden = true
+	m.state.DiffCursor.Line = 5
+	m.buildComposeInline()
+	rc := &model.ReviewComment{
+		ID: 99, Body: "draft", Path: "foo.go", Line: 21,
+		Pending: true, CreatedAt: time.Now(),
+	}
+	m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
+	if m.state.CommentsHidden {
+		t.Fatalf("Comments column must auto-reveal after a successful submit")
+	}
+}
+
+// Submission failure leaves CommentsHidden alone — we don't want to
+// override the user's deliberate toggle on every transient API hiccup;
+// they'll see the column on the eventual successful retry.
+func TestApplyComposeSubmitted_KeepsHiddenOnFailure(t *testing.T) {
+	m := newComposeModel(t, composePatch, nil)
+	m.state.CommentsHidden = true
+	m.state.DiffCursor.Line = 5
+	m.buildComposeInline()
+	m.state.Compose.Body = "draft"
+	m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 500")})
+	if !m.state.CommentsHidden {
+		t.Fatalf("CommentsHidden must stay true on failure (user toggle wins)")
+	}
+}
+
 func TestShellSingleQuote(t *testing.T) {
 	cases := []struct {
 		in, want string

@@ -410,6 +410,13 @@ func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) tea.Cmd {
 			bumpFileCommentCount(m.state.PR.Files, msg.comment.Path)
 		}
 	}
+	// Auto-reveal the Comments column after a successful submit so the
+	// freshly-posted draft is visible. Without this, a user who hid the
+	// column via Ctrl+E and then posted from Diff would have to remember
+	// the toggle gesture before they could see what they just wrote.
+	// Failure leaves CommentsHidden alone (the user's deliberate toggle
+	// shouldn't bounce on every API hiccup).
+	m.state.CommentsHidden = false
 	m.state.Compose = nil
 	return refreshCommentsCmd(m.client, m.target)
 }
