@@ -134,11 +134,15 @@ func TestSplitColumnWidths_HiddenCommentsExpandsDiff(t *testing.T) {
 	}
 }
 
-// TestDiffEnter_AutoRevealsCommentsWhenHidden pins that Diff Enter on a
-// row that carries threads auto-reveals the Comments pane before opening
-// the modal. Without auto-reveal the user would see a modal anchored to
-// a hidden pane on close — confusing and inconsistent with the rest of
-// the modal-close-restores-focus contract.
+// TestDiffEnter_AutoRevealsCommentsWhenHidden pins that Diff Enter on
+// a row carrying threads auto-reveals the Comments pane before
+// shifting focus, so the user always lands on a visible pane. The
+// previous Comments-zoom-modal handoff was retired in favor of a
+// plain focus shift (Comments pane Space still opens the modal for
+// inspection). Without auto-reveal, focus would strand on an
+// invisible target — Tab / Shift+Tab skip Comments while hidden, so
+// the user could not navigate back without re-opening the column
+// first.
 func TestDiffEnter_AutoRevealsCommentsWhenHidden(t *testing.T) {
 	m := commentsModelFixture(t)
 	m.state.CommentsHidden = true
@@ -151,8 +155,11 @@ func TestDiffEnter_AutoRevealsCommentsWhenHidden(t *testing.T) {
 	if m.state.CommentsHidden {
 		t.Errorf("Diff Enter on a comment row must auto-reveal Comments")
 	}
-	if m.state.Modal == nil || m.state.Modal.Pane != model.PaneComments {
-		t.Errorf("expected Comments zoom modal after Diff Enter handoff; got %+v", m.state.Modal)
+	if m.state.Modal != nil {
+		t.Errorf("Diff Enter must NOT open a modal anymore; got %+v", m.state.Modal)
+	}
+	if m.state.FocusedPane != model.PaneComments {
+		t.Errorf("focus must shift to Comments; got %v", m.state.FocusedPane)
 	}
 }
 

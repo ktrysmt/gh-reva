@@ -170,31 +170,25 @@ test('F-modal-7: q while a modal is open closes the modal (does not quit)', asyn
   await quit(s)
 })
 
-test('F-modal-9: Diff Enter on commented row → space close returns focus to Diff', async () => {
-  // Comments modal opened via Diff Enter has Origin=Diff. The matching
-  // close gesture (space) must restore focus to Diff so the user lands
-  // back on the row they came from rather than on Comments.
+test('F-modal-9: Diff Enter on commented row shifts focus to Comments (no modal)', async () => {
+  // The previous behavior — auto-opening the Comments zoom modal — was
+  // retired once Ctrl+E gave the column a stable visibility gesture.
+  // Diff Enter on a commented row now plain-shifts focus; the user can
+  // press Space from Comments to open the zoom modal if they want.
   const s = await launchReva()
   await waitReady(s)
-  // Walk Diff cursor to a row with an existing comment (greeting.go has
-  // a thread anchored at new-file line 3 / buffer 5).
   await s.press('tab') // Files → Commits
   await s.press('tab') // Commits → Diff
   for (let i = 0; i < 5; i++) await s.press('j')
   let screen = await s.text()
   assert.ok(/▶ Diff/.test(screen), 'precondition: Diff active')
 
-  await s.press('enter') // hands off to Comments modal
+  await s.press('enter')
   screen = await s.text()
-  assert.ok(modalVisible(screen), 'precondition: Comments modal open')
-  assert.ok(/Comments/.test(modalTitle(screen) || ''),
-    `precondition: modal title is Comments; got ${JSON.stringify(modalTitle(screen))}`)
-
-  await s.press('space') // close
-  screen = await s.text()
-  assert.ok(!modalVisible(screen), 'space must close the modal')
-  assert.ok(/▶ Diff/.test(screen),
-    `space close must return focus to Diff (the opener); tail:\n${screen.split('\n').slice(-12).join('\n')}`)
+  assert.ok(!modalVisible(screen),
+    `Diff Enter must NOT open a modal; tail:\n${screen.split('\n').slice(-12).join('\n')}`)
+  assert.ok(/▶ Comments/.test(screen),
+    `Diff Enter must shift focus to Comments; tail:\n${screen.split('\n').slice(-12).join('\n')}`)
   await quit(s)
 })
 
