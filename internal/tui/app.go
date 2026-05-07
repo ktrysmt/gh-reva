@@ -166,12 +166,15 @@ func (m Model) View() string {
 		//      more rows than bodyHeight allows and visibly overflow.
 		//      Stacked rendering keeps every pane reachable in degenerate
 		//      windows at the cost of layout fidelity.
-		body := strings.Join([]string{
+		paneRows := []string{
 			m.filesView(),
 			m.commitsView(),
 			m.diffView(),
-			m.commentsView(),
-		}, "\n\n")
+		}
+		if !m.state.CommentsHidden {
+			paneRows = append(paneRows, m.commentsView())
+		}
+		body := strings.Join(paneRows, "\n\n")
 		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
 		body = m.overlayCompose(body)
@@ -181,7 +184,7 @@ func (m Model) View() string {
 		return body
 	}
 
-	leftW, midW, rightW := splitColumnWidths(m.width)
+	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden)
 	topH, bottomH := splitColumnHeights(bodyHeight)
 
 	// Each pane renders as: top border + title row + ├──┤ divider + content
@@ -207,8 +210,13 @@ func (m Model) View() string {
 	commits := m.boxFromPaneView(m.commitsView(), leftW, bottomH, model.PaneCommits)
 	leftCol := lipgloss.JoinVertical(lipgloss.Left, files, commits)
 	diffCol := m.boxFromPaneView(m.diffView(), midW, bodyHeight, model.PaneDiff)
-	commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
+	var body string
+	if m.state.CommentsHidden {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol)
+	} else {
+		commentsCol := m.boxFromPaneView(m.commentsView(), rightW, bodyHeight, model.PaneComments)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, diffCol, commentsCol)
+	}
 	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
 	body = m.overlayCompose(body)
@@ -222,8 +230,22 @@ func (m Model) View() string {
 // splitColumnWidths divides total terminal width across the three columns.
 // Targets roughly 30 / 60 / remainder for left / right / middle so the
 // Comments column has room to display typical comment bodies without
-// aggressive wrap.
-func splitColumnWidths(total int) (left, mid, right int) {
+// aggressive wrap. When commentsHidden is true the right column collapses
+// to 0 and its width is added to the middle (Diff) column — Files /
+// Commits keep their familiar widths so the layout transition is local
+// to the right side of the screen.
+func splitColumnWidths(total int, commentsHidden bool) (left, mid, right int) {
+	if commentsHidden {
+		// Reuse the visible-Comments left budget so Files / Commits don't
+		// reflow when the toggle fires; the Diff pane absorbs everything
+		// to the right of the left column.
+		left, _, _ = splitColumnWidths(total, false)
+		mid = total - left
+		if mid < 1 {
+			mid = 1
+		}
+		return
+	}
 	if total >= 130 {
 		// Border consumes 2 cols per pane; bump outer widths so inner widths
 		// (used for content) match the pre-border targets.

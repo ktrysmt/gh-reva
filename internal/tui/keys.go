@@ -157,6 +157,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeModal()
 		}
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = nextPane(m.state.FocusedPane)
+		}
 		return m, nil
 	case "shift+tab":
 		m.state.PendingPrefix = ""
@@ -167,6 +170,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeModal()
 		}
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = prevPane(m.state.FocusedPane)
+		}
+		return m, nil
+	case "ctrl+e":
+		// Toggle the right (Comments) pane. Hiding while the user has
+		// focus on Comments shifts FocusedPane to Diff so keystrokes
+		// don't strand on an invisible target. Revealing keeps focus
+		// where it is — the user may have been working in Diff /
+		// Files / Commits and merely wants the column back.
+		m.state.PendingPrefix = ""
+		m.state.CommentsHidden = !m.state.CommentsHidden
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = model.PaneDiff
+		}
 		return m, nil
 	case "v":
 		m.state.PendingPrefix = ""

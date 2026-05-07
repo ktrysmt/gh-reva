@@ -30,6 +30,7 @@ var helpSections = []helpSection{
 			{"Tab", "Next pane"},
 			{"Shift+Tab", "Previous pane"},
 			{"J / K", "Next / previous file"},
+			{"Ctrl+e", "Toggle Comments pane"},
 			{"v", "Enter visual mode"},
 			{"gg / G", "Top / bottom (any pane)"},
 			{"/", "Search in current pane"},

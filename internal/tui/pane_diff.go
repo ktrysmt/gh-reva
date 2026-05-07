@@ -114,7 +114,13 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // CommentsCursor resets to 0, and Modal is set with Origin = Diff so
 // the close gesture later returns focus to the Diff pane the user
 // arrived from.
+//
+// Auto-reveal: if the Comments pane was toggled hidden via Ctrl+E, the
+// handoff first un-hides it so the modal-close-restores-focus contract
+// does not strand focus on an invisible pane after dismiss. The user
+// can re-hide with Ctrl+E once they're done.
 func (m *Model) openCommentsModalAtCursor() {
+	m.state.CommentsHidden = false
 	m.state.Modal = &model.ModalState{Pane: model.PaneComments, Origin: model.PaneDiff}
 	m.state.FocusedPane = model.PaneComments
 	m.state.CommentsCursor = 0
