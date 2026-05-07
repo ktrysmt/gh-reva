@@ -254,6 +254,24 @@ func (m *Model) beginEditing() tea.Cmd {
 	return runEditorCmd(m.state.Compose.Body)
 }
 
+// buildEditorCmd assembles the *exec.Cmd that runs `shellCmd` (an
+// already-quoted "<editor> <tempfile>" string). When invoked from inside
+// a tmux session ($TMUX non-empty), the editor floats in a centered
+// `display-popup` so gh-reva's TUI stays painted underneath instead of
+// being swapped out for the full-screen editor. Outside tmux, the
+// canonical `sh -c <shellCmd>` path runs the editor inline as before.
+//
+// `-E` makes tmux close the popup automatically when the editor exits
+// (regardless of exit code), so vim `:q!` and friends still return
+// control to gh-reva. `-w 80% -h 80%` keeps the popup roomy enough for
+// real edits while leaving the surrounding pane chrome visible.
+func buildEditorCmd(shellCmd string) *exec.Cmd {
+	if os.Getenv("TMUX") != "" {
+		return exec.Command("tmux", "display-popup", "-E", "-w", "80%", "-h", "80%", shellCmd)
+	}
+	return exec.Command("sh", "-c", shellCmd)
+}
+
 // runEditorCmd writes a tempfile (pre-populated with `initialBody` if
 // non-empty so edit flows start on the existing text), hands the
 // terminal to $EDITOR via tea.ExecProcess, and on exit reads the file
@@ -283,7 +301,7 @@ func runEditorCmd(initialBody string) tea.Cmd {
 	}
 	_ = f.Close()
 	shellCmd := fmt.Sprintf("%s %s", editorEnv(), shellSingleQuote(tmpPath))
-	cmd := exec.Command("sh", "-c", shellCmd)
+	cmd := buildEditorCmd(shellCmd)
 	return tea.ExecProcess(cmd, func(execErr error) tea.Msg {
 		defer os.Remove(tmpPath)
 		if execErr != nil {

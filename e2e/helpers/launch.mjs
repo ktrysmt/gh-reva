@@ -36,9 +36,15 @@ export async function launchReva ({
   // re-applies our value just before the binary starts.
   const escaped = [BIN, '--fixture', fixture, ...args]
     .map(a => "'" + String(a).replace(/'/g, "'\\''") + "'").join(' ')
+  // Force-empty TMUX so the compose flow's tmux display-popup path
+  // (internal/tui/compose.go::buildEditorCmd) cannot fire from tests
+  // launched inside a developer's tmux session — display-popup attaches
+  // to a tmux server we don't have, hangs on the PTY, and produces
+  // flaky timeouts. Tests still cover the popup branch via the
+  // buildEditorCmd unit tests.
   const session = await launchTerminal({
     command: '/bin/sh',
-    args: ['-c', `TERM=tmux-256color COLORTERM=truecolor exec ${escaped}`],
+    args: ['-c', `TERM=tmux-256color COLORTERM=truecolor TMUX= exec ${escaped}`],
     cols,
     rows,
     env: { ...process.env, ...env },
