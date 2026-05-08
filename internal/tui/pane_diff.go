@@ -90,15 +90,16 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		// On a row that already carries one or more anchored review
-		// threads, Enter hands off to the Comments zoom modal so the
-		// user can navigate the existing comments and act on them
-		// (Enter inside the modal = edit own / r = reply / esc = close
-		// per pane_comments.handleKeyComments). On a row WITHOUT
-		// existing comments, Enter falls through to the original
-		// inline-compose start (creates a brand-new pending thread).
-		// Header / hunk rows still no-op via buildComposeInline.
+		// threads, Enter shifts focus to the Comments pane so the user
+		// can read and act on the existing comments via the per-pane
+		// keymap (Enter = edit own / r = reply / Space = zoom modal).
+		// The Comments column auto-reveals if Ctrl+E had it hidden so
+		// focus never lands on an invisible pane. On a row WITHOUT
+		// existing comments, Enter falls through to the inline-compose
+		// confirm prompt. Header / hunk rows still no-op via
+		// buildComposeInline.
 		if len(m.threadsForCursor()) > 0 {
-			m.openCommentsModalAtCursor()
+			m.focusCommentsAtCursor()
 			return m, nil
 		}
 		return m, m.startComposeInline()
@@ -107,15 +108,16 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openCommentsModalAtCursor opens the Comments zoom modal so the user
-// can interact with the threads anchored at the current Diff cursor.
-// Focus shifts to PaneComments (the modal renders the active pane's
-// content; j/k inside the modal must reach handleKeyComments),
-// CommentsCursor resets to 0, and Modal is set with Origin = Diff so
-// the close gesture later returns focus to the Diff pane the user
-// arrived from.
-func (m *Model) openCommentsModalAtCursor() {
-	m.state.Modal = &model.ModalState{Pane: model.PaneComments, Origin: model.PaneDiff}
+// focusCommentsAtCursor shifts focus to the Comments pane so the user
+// can read and act on the threads anchored at the current Diff cursor.
+// CommentsCursor resets to 0 so the user lands on the first thread of
+// the row. If the Comments column is hidden (Ctrl+E), un-hide it
+// first — Tab / Shift+Tab skip Comments while hidden, so leaving
+// focus on an invisible pane would strand the user. The user can
+// re-hide with Ctrl+E once they're done; a Comments-pane Space opens
+// the zoom modal for a wider read.
+func (m *Model) focusCommentsAtCursor() {
+	m.state.CommentsHidden = false
 	m.state.FocusedPane = model.PaneComments
 	m.state.CommentsCursor = 0
 }

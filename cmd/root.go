@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ktrysmt/gh-reva/internal/api"
+	"github.com/ktrysmt/gh-reva/internal/config"
 	"github.com/ktrysmt/gh-reva/internal/theme"
 	"github.com/ktrysmt/gh-reva/internal/tui"
 )
@@ -24,6 +25,7 @@ var (
 	themeName     string
 	noColor       bool
 	listThemes    bool
+	configPath    string
 
 	// Set via -ldflags at release time (see .goreleaser.yaml).
 	version = "dev"
@@ -66,6 +68,18 @@ var rootCmd = &cobra.Command{
 		// gh-reva ships a single dark palette; lock background detection so
 		// adaptive components used by future deps render predictably.
 		lipgloss.SetHasDarkBackground(true)
+
+		// Load reva.toml early so a typo in --config or invalid TOML
+		// surfaces before any network round-trip. --config wins; the
+		// implicit XDG ladder picks the first existing default.
+		// ResolvePath returns "" when no candidate exists, which Load
+		// turns into an empty Config so the rest of the flow runs as if
+		// no config were ever set.
+		cfgPath := config.ResolvePath(configPath)
+		cfg, cfgErr := config.Load(cfgPath)
+		if cfgErr != nil {
+			return cfgErr
+		}
 
 		ctx := context.Background()
 
@@ -118,6 +132,7 @@ var rootCmd = &cobra.Command{
 		m := tui.NewModel(client, ref)
 		m.SetTheme(th)
 		m.SetVersion(version)
+		m.SetSyntaxExtensions(cfg.Syntax.Extensions)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}
@@ -141,6 +156,7 @@ func init() {
 	rootCmd.Flags().StringVar(&themeName, "theme", "", "color theme name (default: gruvbox; see --list-themes)")
 	rootCmd.Flags().BoolVar(&noColor, "no-color", false, "disable color output (also honors NO_COLOR / CLICOLOR)")
 	rootCmd.Flags().BoolVar(&listThemes, "list-themes", false, "print every available theme name and exit")
+	rootCmd.Flags().StringVar(&configPath, "config", "", "path to reva.toml (default: $XDG_CONFIG_HOME/reva.toml or $HOME/.config/reva.toml)")
 	_ = rootCmd.Flags().MarkHidden("simulate-error")
 	_ = rootCmd.Flags().MarkHidden("slow-load")
 	_ = rootCmd.Flags().MarkHidden("diff-height")

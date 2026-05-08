@@ -12,17 +12,22 @@ import { launchReva, waitReady, quit, paneText } from '../helpers/launch.mjs'
 
 // ---- gg / G ---------------------------------------------------------------
 
-test('P1: gg / G in Files pane jump to first / last file', async () => {
+test('P1: gg / G in Files pane jump cursor to first / last file', async () => {
+  // gg / G move the Files cursor only — they no longer auto-select
+  // the file they land on. Confirm via the cursor row in the Files
+  // pane (the `> ` glyph) rather than the Diff title.
   const s = await launchReva()
   await waitReady(s)
-  // Files focus is the default. Move cursor down a few rows first.
   await s.press('j'); await s.press('j')
   await s.type('G')
-  let screen = await s.text()
-  assert.match(screen, /Diff: go\.mod/, 'G should auto-select the last file (go.mod)')
+  let files = paneText(await s.text(), 'Files')
+  let cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
+  assert.ok(/go\.mod/.test(cursorRow), `G should land cursor on go.mod; got "${cursorRow}"`)
   await s.type('gg')
-  screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting\.go/, 'gg should auto-select the first file (greeting.go)')
+  files = paneText(await s.text(), 'Files')
+  cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
+  assert.ok(/src\/greeting\.go(?!_)/.test(cursorRow),
+    `gg should land cursor on greeting.go; got "${cursorRow}"`)
   await quit(s)
 })
 
@@ -85,17 +90,19 @@ test('P5: incremental search jumps Files cursor', async () => {
 test('P6: Esc on Editing restores pre-search cursor', async () => {
   const s = await launchReva()
   await waitReady(s)
-  // Move cursor down once → src/greeting_test.go.
-  await s.press('j')
+  // Pre-search state: Files cursor on greeting.go, Diff also on greeting.go
+  // (j alone no longer auto-selects, so SelectedFile stays at index 0).
   let screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting_test\.go/, 'cursor moved to greeting_test.go')
+  assert.match(screen, /Diff: src\/greeting\.go/, 'pre-search: Diff on greeting.go')
   await s.type('/')
   await s.type('main')
   screen = await s.text()
+  // incsearch keeps its auto-select behavior — search has always been a
+  // direct file-selection gesture in this UI.
   assert.match(screen, /Diff: src\/main\.go/, 'incsearch jumped to main.go')
   await s.press('esc')
   screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting_test\.go/, 'Esc must restore pre-search cursor')
+  assert.match(screen, /Diff: src\/greeting\.go/, 'Esc must restore pre-search SelectedFile')
   await quit(s)
 })
 

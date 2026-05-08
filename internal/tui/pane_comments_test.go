@@ -496,6 +496,68 @@ func TestCommentsSoftBreakRenderingSnapshot(t *testing.T) {
 	}
 }
 
+// TestCommentsBodyHandlesEmoji pins that emoji bodies — ZWJ-joined
+// sequences, regional-indicator flags, VS16 presentation variants, and
+// skin-tone modifiers — produce wrapped rows whose display width stays
+// inside the Comments column. Reported regression: emoji bodies push
+// the modal box's right border out of column because `runewidth.StringWidth`
+// (used by wrapText) under-reports flag and VS16 emoji as 1 cell while
+// the terminal (and lipgloss / uniseg) renders them as 2.
+//
+// The flag-only body is the sharpest probe of the bug: regional-indicator
+// pairs render as a single 2-cell glyph in every modern terminal, but
+// runewidth.StringWidth sums each codepoint as 1, so a 36-flag body
+// reports as 36 cells while lipgloss.Width / uniseg.StringWidth report
+// the true 72. wrapText's early `<= width` exit then leaves the row
+// unwrapped, and renderPaneBox's padTrunc trusts the same broken
+// arithmetic — the trailing │ ends up in the wrong column on screen.
+func TestCommentsBodyHandlesEmoji(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4 // dave's anchor (T2)
+	m.paneWidthComments = 40
+
+	// 36 regional-indicator flag emoji. True display = 72 cells; runewidth
+	// thinks 36, so wrapText's early exit fires at bodyWidth=36 and the
+	// whole row passes through unwrapped if the bug is present.
+	m.state.PR.Comments[2].Body = strings.Repeat("\U0001F1EF\U0001F1F5", 36)
+
+	got := m.commentsView()
+	for _, row := range strings.Split(got, "\n") {
+		if !strings.Contains(row, "\U0001F1EF") {
+			continue
+		}
+		if w := lipgloss.Width(row); w > m.paneWidthComments {
+			t.Errorf("emoji body row exceeds paneWidthComments=%d (display width %d): %q",
+				m.paneWidthComments, w, row)
+		}
+	}
+}
+
+// TestCommentsBodyHandlesMixedEmoji exercises the wider grapheme-cluster
+// taxonomy: ZWJ-joined family glyph, skin-tone modifier, VS16 heart,
+// single-codepoint emoji. Each cluster must consume exactly its rendered
+// width when wrapText decides where to break, so that a long mixed-emoji
+// body wraps without overflowing the column.
+func TestCommentsBodyHandlesMixedEmoji(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4
+	m.paneWidthComments = 30
+
+	emoji := "\U0001F1EF\U0001F1F5❤️\U0001F468‍\U0001F4BB\U0001F44B\U0001F3FD\U0001F389"
+	m.state.PR.Comments[2].Body = strings.Repeat(emoji, 8)
+
+	got := m.commentsView()
+	for _, row := range strings.Split(got, "\n") {
+		if !strings.ContainsAny(row, "\U0001F1EF❤\U0001F468\U0001F44B\U0001F389") {
+			continue
+		}
+		if w := lipgloss.Width(row); w > m.paneWidthComments {
+			t.Errorf("mixed-emoji row exceeds paneWidthComments=%d (display width %d): %q",
+				m.paneWidthComments, w, row)
+		}
+	}
+}
+
 // TestCommentsBodyKeepsParagraphBreak pins that a blank line between
 // content (\n\n) survives the soft-break collapse — true paragraphs stay
 // on separate rows.

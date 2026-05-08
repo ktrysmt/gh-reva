@@ -10,6 +10,78 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
+// TestCurrentLexer_OverrideMatchesExtension pins that a configured
+// extension override (reva.toml [syntax.extensions]) takes precedence
+// over chroma's built-in extension matcher. Triggered by the user
+// reporting that .j2 files render as plaintext (no chroma lexer
+// matches *.j2 by default) — they want to point .j2 at the yaml or
+// jinja lexer via config.
+func TestCurrentLexer_OverrideMatchesExtension(t *testing.T) {
+	m := NewModel(nil, nil)
+	m.SetSyntaxExtensions(map[string]string{".j2": "yaml"})
+	m.state.SelectedFile = "templates/foo.j2"
+	lex := m.currentLexer()
+	if lex == nil {
+		t.Fatal("expected a non-nil lexer for overridden .j2")
+	}
+	if name := strings.ToLower(lex.Config().Name); name != "yaml" {
+		t.Errorf("expected yaml lexer for .j2 override; got %q", name)
+	}
+}
+
+// TestCurrentLexer_OverrideLongestSuffixWins pins that when multiple
+// override keys are suffixes of the filename, the longest one applies
+// — `.html.j2` shadows `.j2`. Without this, a multi-extension file
+// would always fall back to the generic key.
+func TestCurrentLexer_OverrideLongestSuffixWins(t *testing.T) {
+	m := NewModel(nil, nil)
+	m.SetSyntaxExtensions(map[string]string{
+		".j2":      "yaml",
+		".html.j2": "html",
+	})
+	m.state.SelectedFile = "templates/page.html.j2"
+	lex := m.currentLexer()
+	if lex == nil {
+		t.Fatal("expected non-nil lexer")
+	}
+	if name := strings.ToLower(lex.Config().Name); name != "html" {
+		t.Errorf("expected html lexer (longest-suffix wins); got %q", name)
+	}
+}
+
+// TestCurrentLexer_OverrideMissesFallsBackToBuiltin pins that an
+// override that doesn't match the current file lets chroma's default
+// extension matcher take over. Without this, configuring any override
+// would mask all other languages.
+func TestCurrentLexer_OverrideMissesFallsBackToBuiltin(t *testing.T) {
+	m := NewModel(nil, nil)
+	m.SetSyntaxExtensions(map[string]string{".j2": "yaml"})
+	m.state.SelectedFile = "main.go"
+	lex := m.currentLexer()
+	if lex == nil {
+		t.Fatal("expected non-nil lexer for .go (chroma default match)")
+	}
+	if name := strings.ToLower(lex.Config().Name); name != "go" {
+		t.Errorf("expected go lexer for main.go; got %q", name)
+	}
+}
+
+// TestCurrentLexer_OverrideUnknownLexerFallsBack pins that pointing an
+// override at a chroma lexer name that doesn't resolve drops back to
+// the default extension match — so a typo in reva.toml degrades
+// gracefully rather than turning every .j2 file into plaintext.
+func TestCurrentLexer_OverrideUnknownLexerFallsBack(t *testing.T) {
+	m := NewModel(nil, nil)
+	m.SetSyntaxExtensions(map[string]string{".j2": "no-such-lexer"})
+	m.state.SelectedFile = "templates/foo.j2"
+	// chroma has no matcher for *.j2, so the fallback is plaintext.
+	// Asserting "non-fatal" via type identity is enough — the call
+	// must not panic and must produce a usable lexer.
+	if lex := m.currentLexer(); lex == nil {
+		t.Errorf("unknown lexer override must degrade to a non-nil fallback")
+	}
+}
+
 // TestContextCellRoutesThroughStyledDiffCell pins the contract that context
 // rows in the Diff pane are syntax-highlighted via the same path as +/-
 // rows. Before this change, context rows used a flat foreground (cheaper

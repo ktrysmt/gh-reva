@@ -96,6 +96,40 @@ to switch the filter; there is no separate pin / unpin step.
   Moving the Comments cursor (`j` / `k`) auto-scrolls the Diff pane to the
   buffer line of the cursored comment.
 
+## Configuration
+
+`gh-reva` reads an optional `reva.toml` so you can teach it about file
+extensions chroma's built-in matcher doesn't know. The first existing
+path wins:
+
+1. `--config <path>` (explicit; missing path is a hard error)
+2. `$XDG_CONFIG_HOME/reva.toml`
+3. `$HOME/.config/reva.toml`
+
+If none exist, `gh-reva` runs with defaults — no config file required.
+
+### `[syntax.extensions]`
+
+Map a filename suffix (with leading dot) to a chroma lexer name or alias:
+
+```toml
+[syntax.extensions]
+".j2" = "jinja"
+".html.j2" = "html"
+".tfvars" = "hcl"
+```
+
+- Longest-suffix match wins, so `".html.j2"` shadows `".j2"` for
+  `templates/page.html.j2`.
+- Lexer names are anything chroma resolves — run `chroma --list` (or
+  see the [chroma lexers
+  registry](https://github.com/alecthomas/chroma/tree/master/lexers))
+  for the catalog. Common ones: `yaml`, `jinja`, `html`, `hcl`,
+  `dockerfile`, `bash`, `terraform`.
+- An unknown lexer name silently falls back to chroma's default
+  extension matcher, so a typo in `reva.toml` doesn't strip syntax
+  from every other file in the PR.
+
 ## Color theming
 
 `gh-reva` ships with `gruvbox` as the default palette. Pass `--theme

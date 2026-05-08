@@ -157,6 +157,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeModal()
 		}
 		m.state.FocusedPane = nextPane(m.state.FocusedPane)
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = nextPane(m.state.FocusedPane)
+		}
 		return m, nil
 	case "shift+tab":
 		m.state.PendingPrefix = ""
@@ -167,6 +170,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeModal()
 		}
 		m.state.FocusedPane = prevPane(m.state.FocusedPane)
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = prevPane(m.state.FocusedPane)
+		}
+		return m, nil
+	case "ctrl+e":
+		// Toggle the right (Comments) pane. Hiding while the user has
+		// focus on Comments shifts FocusedPane to Diff so keystrokes
+		// don't strand on an invisible target. Revealing keeps focus
+		// where it is — the user may have been working in Diff /
+		// Files / Commits and merely wants the column back.
+		m.state.PendingPrefix = ""
+		m.state.CommentsHidden = !m.state.CommentsHidden
+		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
+			m.state.FocusedPane = model.PaneDiff
+		}
 		return m, nil
 	case "v":
 		m.state.PendingPrefix = ""
@@ -211,6 +229,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// the cursor is on a directory row.
 				if m.state.FilesTreeMode && m.fileIndexFromTreeCursor() < 0 {
 					break
+				}
+				// Commit the cursor file before leaving the modal.
+				// j/k no longer auto-select, so without this the user
+				// would close the modal and find Diff still parked on
+				// the previous SelectedFile.
+				if !m.state.FilesTreeMode {
+					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(m.state.PR.Files) {
+						m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
+					}
+				} else {
+					rows := m.filesTreeRows()
+					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(rows) {
+						r := rows[m.state.FilesCursor]
+						if r.Kind == model.FilesRowFile {
+							m.selectFile(r.Path)
+						}
+					}
 				}
 				m.state.Modal = nil
 				m.state.FocusedPane = model.PaneDiff

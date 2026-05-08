@@ -203,11 +203,11 @@ test('F6: H jumps to viewport top after G scrolls down', async () => {
   await quit(s)
 })
 
-test('F7: Enter on a commented diff line hands off to the Comments zoom modal', async () => {
-  // The keymap was revised: rather than opening compose directly on a
-  // commented row (which silently forks a second thread), Enter now
-  // opens the Comments zoom modal so the user can navigate the
-  // existing comments and pick edit / reply explicitly.
+test('F7: Enter on a commented diff line shifts focus to the Comments pane', async () => {
+  // The Diff Enter handoff was simplified: rather than opening the
+  // Comments zoom modal (whose existence pre-dated the Ctrl+E column
+  // toggle), Enter now plain-shifts focus to the Comments pane. The
+  // user can press Space from there to zoom; compose must NOT fire.
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
@@ -215,14 +215,12 @@ test('F7: Enter on a commented diff line hands off to the Comments zoom modal', 
   // buffer index 5.
   for (let i = 0; i < 5; i++) await s.type('j')
   await s.press('enter')
-  // Modal Comments title row signature: `│ Comments` with single leading
-  // space (the regular pane row uses `▶ ` / `  ` prefix instead).
-  await s.waitForText('│ Comments', { timeout: 5000 })
-  // Compose must NOT have opened — the modal is the entry point now.
+  await s.waitForText('▶ Comments', { timeout: 5000 })
   const screen = await s.text()
+  assert.ok(!/│ Comments\s+│/.test(screen),
+    `Diff Enter must NOT open the zoom modal anymore; tail:\n${screen.split('\n').slice(-12).join('\n')}`)
   assert.ok(!/New comment|Reply|Edit comment/.test(screen),
-    `compose modal must not open on Diff Enter; only the Comments zoom modal does`)
-  await s.press('esc')
+    `compose modal must not open on Diff Enter`)
   await quit(s)
 })
 

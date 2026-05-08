@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -21,16 +22,49 @@ type syntaxCache struct {
 }
 
 // currentLexer picks a chroma lexer for the currently selected file.
-// lexers.Match dispatches on extension / glob; if nothing fits we use the
-// fallback (plaintext) so token output is just one Text token per line.
+// User overrides (reva.toml [syntax.extensions]) win first — they exist
+// to teach gh-reva about extensions chroma doesn't know (e.g. .j2 →
+// yaml or jinja). Failing the override lookup, lexers.Match dispatches
+// on extension / glob; if nothing fits we use the fallback (plaintext)
+// so token output is just one Text token per line. An override pointing
+// at an unknown chroma lexer name silently degrades to lexers.Match so
+// a typo in reva.toml doesn't strip syntax from every other file.
 func (m Model) currentLexer() chroma.Lexer {
 	if m.state == nil || m.state.SelectedFile == "" {
 		return lexers.Fallback
+	}
+	if lex := m.lexerFromOverride(m.state.SelectedFile); lex != nil {
+		return lex
 	}
 	if lex := lexers.Match(m.state.SelectedFile); lex != nil {
 		return lex
 	}
 	return lexers.Fallback
+}
+
+// lexerFromOverride consults the SetSyntaxExtensions map. The key with
+// the longest suffix match against `filename`'s base name wins, so a
+// config that lists both `.html.j2` and `.j2` shadows the latter for
+// multi-extension files. Returns nil when no override matches or when
+// the configured lexer name doesn't resolve in chroma.
+func (m Model) lexerFromOverride(filename string) chroma.Lexer {
+	if len(m.syntaxExtensions) == 0 {
+		return nil
+	}
+	base := filepath.Base(filename)
+	bestKey := ""
+	for k := range m.syntaxExtensions {
+		if k == "" || !strings.HasSuffix(base, k) {
+			continue
+		}
+		if len(k) > len(bestKey) {
+			bestKey = k
+		}
+	}
+	if bestKey == "" {
+		return nil
+	}
+	return lexers.Get(m.syntaxExtensions[bestKey])
 }
 
 // styledDiffCell renders a diff cell with a row-wide background color and

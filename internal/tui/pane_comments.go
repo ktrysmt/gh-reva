@@ -18,9 +18,15 @@ type commentThread struct {
 
 func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == " " {
-		// Modal toggle does not move the Comments cursor, so skip the trailing
-		// syncDiffToCursorComment — leaving the Diff viewport where the user
-		// parked it before opening the zoomed view.
+		// No-op when the cursor row carries no threads — opening a
+		// zoom modal that just wraps the "(no comment at cursor)"
+		// placeholder is noise; reserve the gesture for when there's
+		// actual content to zoom. Modal toggle skips the trailing
+		// syncDiffToCursorComment so the Diff viewport stays where
+		// the user parked it before opening the zoom.
+		if len(m.threadsForCursor()) == 0 {
+			return m, nil
+		}
 		m.toggleModal(model.PaneComments)
 		return m, nil
 	}

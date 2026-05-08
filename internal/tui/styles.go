@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/rivo/uniseg"
 
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
@@ -166,18 +166,31 @@ func fitPaneTitle(label, suffix string, active bool, width int) string {
 	return ""
 }
 
+// displayWidth returns the terminal-cell width of s using grapheme-cluster
+// arithmetic. Substitute for runewidth.StringWidth — the bare runewidth
+// table miscounts regional-indicator flag pairs and VS16 emoji (it sums
+// each codepoint as 1 while every modern terminal renders the cluster as
+// 2). Cluster-aware measurement matches what lipgloss.Width / x/ansi report
+// on the same input, which is what padTrunc and the modal layout use, so
+// wrapText decisions stay consistent with the row-padding stage.
+func displayWidth(s string) int { return uniseg.StringWidth(s) }
+
 // wrapText word-wraps text into lines of at most `width` display cells.
 // Width is measured in terminal cells (CJK / emoji = 2), not rune count,
 // so the result fits inside a width-`width` column on screen. Words longer
-// than width are hard-broken on rune boundaries with cell accounting; a
-// rune wider than the remaining budget rolls to the next chunk. width <= 0
-// disables wrapping. Word boundaries (see `splitWrapWords`) only fire on
-// whitespace whose both sides are ASCII word runes; an ASCII↔CJK or
-// CJK↔CJK whitespace is preserved inside the running word so a short
-// ASCII prefix can't be stranded on its own row when the following CJK
-// segment exceeds the remaining budget.
+// than width are hard-broken on grapheme-cluster boundaries with cell
+// accounting; a cluster wider than the remaining budget rolls to the next
+// chunk. width <= 0 disables wrapping. Word boundaries (see `splitWrapWords`)
+// only fire on whitespace whose both sides are ASCII word runes; an
+// ASCII↔CJK or CJK↔CJK whitespace is preserved inside the running word so
+// a short ASCII prefix can't be stranded on its own row when the following
+// CJK segment exceeds the remaining budget. Grapheme-cluster iteration
+// (instead of rune-by-rune) keeps ZWJ-joined emoji, regional-indicator
+// flags, VS16 sequences, and skin-tone modifiers intact across breaks —
+// the cluster ❤️ (U+2764 + VS16) stays as one unit, so a wrap never lands
+// between the base and its variation selector.
 func wrapText(text string, width int) []string {
-	if width <= 0 || runewidth.StringWidth(text) <= width {
+	if width <= 0 || displayWidth(text) <= width {
 		return []string{text}
 	}
 	words := splitWrapWords(text)
@@ -194,24 +207,28 @@ func wrapText(text string, width int) []string {
 			lineW = 0
 		}
 	}
-	// hardBreak splits a wide rune sequence into chunks each fitting within
-	// `width` display cells. Used when a single token exceeds the budget.
+	// hardBreak splits a wide token into chunks each fitting within `width`
+	// display cells, walking grapheme clusters so multi-codepoint emoji stay
+	// together. Used when a single token exceeds the budget.
 	hardBreak := func(s string) []string {
 		var chunks []string
 		var cur strings.Builder
 		curW := 0
-		for _, r := range s {
-			rw := runewidth.RuneWidth(r)
-			if rw == 0 {
+		g := uniseg.NewGraphemes(s)
+		for g.Next() {
+			cluster := g.Str()
+			cw := g.Width()
+			if cw == 0 {
+				cur.WriteString(cluster)
 				continue
 			}
-			if curW+rw > width {
+			if curW+cw > width && cur.Len() > 0 {
 				chunks = append(chunks, cur.String())
 				cur.Reset()
 				curW = 0
 			}
-			cur.WriteRune(r)
-			curW += rw
+			cur.WriteString(cluster)
+			curW += cw
 		}
 		if cur.Len() > 0 {
 			chunks = append(chunks, cur.String())
@@ -219,7 +236,7 @@ func wrapText(text string, width int) []string {
 		return chunks
 	}
 	for _, w := range words {
-		wW := runewidth.StringWidth(w)
+		wW := displayWidth(w)
 		if wW > width {
 			flush()
 			chunks := hardBreak(w)
@@ -231,7 +248,7 @@ func wrapText(text string, width int) []string {
 					out = append(out, c)
 				} else {
 					line.WriteString(c)
-					lineW = runewidth.StringWidth(c)
+					lineW = displayWidth(c)
 				}
 			}
 			continue

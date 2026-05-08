@@ -28,6 +28,15 @@ type AppState struct {
 	FoldedDirs      map[string]bool
 	FilesViewIndex  []FilesRow
 
+	// CommentsHidden hides the right (Comments) pane and lets the Diff
+	// column take its width. Toggled by Ctrl+E. Hiding while focus is on
+	// Comments shifts FocusedPane to Diff (handled in keys.go); Tab /
+	// Shift+Tab skip Comments while it is hidden so the cycle stays
+	// consistent. Diff Enter on a row carrying threads auto-reveals the
+	// pane before the modal handoff so the close-restore-focus contract
+	// does not strand focus on an invisible pane.
+	CommentsHidden bool
+
 	Visual *VisualState
 
 	Modal *ModalState

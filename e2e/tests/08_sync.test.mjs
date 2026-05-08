@@ -16,11 +16,13 @@ async function pressN (s, key, n) {
 test('I1+I2: file selection re-renders Diff and re-filters Comments', async () => {
   const s = await launchReva()
   await waitReady(s)
-  // j alone auto-selects greeting_test.go and refreshes Diff/Comments.
+  // j moves the Files cursor only; Enter commits the selection and shifts
+  // focus to Diff in one gesture (replaces the prior j-auto-select +
+  // tab×2 walk now that auto-select has been retired from j/k).
   await s.press('j')
+  await s.press('enter') // commit greeting_test.go AND focus Diff
   // carol's greeting_test.go comment is anchored at newLine=11 → buffer
   // index 13 in the visible patch (header×2 + hunk + 11 add lines).
-  await s.press('tab'); await s.press('tab')   // Files → Diff
   await pressN(s, 'j', 13)
   const screen = await s.text()
   const cms = paneText(screen, 'Comments')

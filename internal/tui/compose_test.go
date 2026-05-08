@@ -279,6 +279,42 @@ func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 	}
 }
 
+// A successful submit auto-reveals the Comments column if the user had
+// hidden it via Ctrl+E. Without auto-reveal the freshly-posted draft
+// would not be visible — the user posted from Diff while Comments was
+// hidden, and Tab / Shift+Tab skip Comments while hidden, so they
+// would have to remember the toggle gesture before they could see
+// what they just wrote.
+func TestApplyComposeSubmitted_RevealsHiddenCommentsOnSuccess(t *testing.T) {
+	m := newComposeModel(t, composePatch, nil)
+	m.state.CommentsHidden = true
+	m.state.DiffCursor.Line = 5
+	m.buildComposeInline()
+	rc := &model.ReviewComment{
+		ID: 99, Body: "draft", Path: "foo.go", Line: 21,
+		Pending: true, CreatedAt: time.Now(),
+	}
+	m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
+	if m.state.CommentsHidden {
+		t.Fatalf("Comments column must auto-reveal after a successful submit")
+	}
+}
+
+// Submission failure leaves CommentsHidden alone — we don't want to
+// override the user's deliberate toggle on every transient API hiccup;
+// they'll see the column on the eventual successful retry.
+func TestApplyComposeSubmitted_KeepsHiddenOnFailure(t *testing.T) {
+	m := newComposeModel(t, composePatch, nil)
+	m.state.CommentsHidden = true
+	m.state.DiffCursor.Line = 5
+	m.buildComposeInline()
+	m.state.Compose.Body = "draft"
+	m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 500")})
+	if !m.state.CommentsHidden {
+		t.Fatalf("CommentsHidden must stay true on failure (user toggle wins)")
+	}
+}
+
 func TestShellSingleQuote(t *testing.T) {
 	cases := []struct {
 		in, want string
@@ -431,12 +467,14 @@ func TestHandleKey_CommitsModalEnterShiftsToDiff(t *testing.T) {
 	}
 }
 
-// Diff Enter on a row that already has anchored comments hands off to
-// the Comments zoom modal instead of opening Compose directly. Lets
-// users see the existing comments before deciding whether to add a new
-// thread (`n`-equivalent through r/Enter inside the modal) or edit /
-// reply.
-func TestHandleKeyDiff_EnterOnCommentedRowOpensModal(t *testing.T) {
+// Diff Enter on a row that already has anchored comments shifts focus
+// to the Comments pane instead of opening Compose. The user inspects
+// the existing threads via the Comments-pane keymap (Enter = edit own /
+// `r` = reply); pressing `<space>` from there opens the zoom modal for
+// a wider read. The previous behavior — auto-opening the Comments zoom
+// modal — was retired once Ctrl+E gave the column a stable visibility
+// gesture; the modal added a layer of UI without earning its keystroke.
+func TestHandleKeyDiff_EnterOnCommentedRowFocusesComments(t *testing.T) {
 	root := &model.ReviewComment{
 		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
 		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
@@ -447,8 +485,8 @@ func TestHandleKeyDiff_EnterOnCommentedRowOpensModal(t *testing.T) {
 	mv.paneHeightDiff = 10       // viewport height for cursor clamp
 	updated, _ := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(Model)
-	if got.state.Modal == nil || got.state.Modal.Pane != model.PaneComments {
-		t.Fatalf("expected Comments modal, got %+v", got.state.Modal)
+	if got.state.Modal != nil {
+		t.Fatalf("Modal must NOT open on commented-row Enter; got %+v", got.state.Modal)
 	}
 	if got.state.FocusedPane != model.PaneComments {
 		t.Fatalf("focus must shift to Comments, got %v", got.state.FocusedPane)
@@ -458,6 +496,34 @@ func TestHandleKeyDiff_EnterOnCommentedRowOpensModal(t *testing.T) {
 	}
 	if got.state.CommentsCursor != 0 {
 		t.Fatalf("CommentsCursor must reset to 0, got %d", got.state.CommentsCursor)
+	}
+}
+
+// Diff Enter on a commented row while the Comments column is hidden
+// (Ctrl+E) auto-reveals the column before shifting focus, so the user
+// always lands on a visible pane. Without auto-reveal the focus would
+// strand on an invisible target — Tab / Shift+Tab skip Comments while
+// hidden, so the user could not navigate back without first re-opening.
+func TestHandleKeyDiff_EnterOnCommentedRowAutoRevealsHiddenColumn(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.state.ViewerLogin = "you"
+	mv.state.CommentsHidden = true
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	updated, _ := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+	if got.state.CommentsHidden {
+		t.Fatalf("Diff Enter on a commented row must auto-reveal the Comments column")
+	}
+	if got.state.FocusedPane != model.PaneComments {
+		t.Fatalf("focus must shift to Comments, got %v", got.state.FocusedPane)
+	}
+	if got.state.Modal != nil {
+		t.Fatalf("Modal must NOT open; got %+v", got.state.Modal)
 	}
 }
 
@@ -743,24 +809,6 @@ func TestStatusBarContent_ShowsConfirmPrompt(t *testing.T) {
 	}
 }
 
-// Modal opened via Diff Enter on a commented row must record Origin =
-// Diff so that the close gesture (space, q, Esc, Ctrl+C) returns focus
-// to Diff. Without this, focus would linger on Comments after the
-// modal closes — non-obvious because the user came from Diff.
-func TestOpenCommentsModalAtCursor_RecordsOriginAsDiff(t *testing.T) {
-	root := &model.ReviewComment{
-		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
-		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
-	}
-	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
-	mv.state.FocusedPane = model.PaneDiff
-	mv.state.DiffCursor.Line = 5
-	mv.openCommentsModalAtCursor()
-	if mv.state.Modal == nil || mv.state.Modal.Origin != model.PaneDiff {
-		t.Fatalf("Origin must be PaneDiff (where the user opened from), got %+v", mv.state.Modal)
-	}
-}
-
 // Toggling the modal via space records Origin = current focused pane,
 // so the close gesture returns the user to where they were.
 func TestToggleModal_RecordsCurrentFocusAsOrigin(t *testing.T) {
@@ -775,32 +823,6 @@ func TestToggleModal_RecordsCurrentFocusAsOrigin(t *testing.T) {
 	mv.toggleModal(model.PaneComments)
 	if mv.state.Modal == nil || mv.state.Modal.Origin != model.PaneComments {
 		t.Fatalf("Comments toggle: Origin must be PaneComments, got %+v", mv.state.Modal)
-	}
-}
-
-// Closing via space (toggleModal again) restores focus to Origin.
-// When Comments modal was opened from Diff (handoff via Enter), the
-// close gesture must return focus to Diff — not leave it on Comments
-// where openCommentsModalAtCursor parked it for in-modal navigation.
-func TestSpaceClose_RestoresFocusToDiffWhenOpenedFromDiff(t *testing.T) {
-	root := &model.ReviewComment{
-		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
-		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
-	}
-	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
-	mv.state.FocusedPane = model.PaneDiff
-	mv.state.DiffCursor.Line = 5
-	mv.openCommentsModalAtCursor()
-	if mv.state.FocusedPane != model.PaneComments {
-		t.Fatalf("precondition: focus must shift to Comments while modal is open")
-	}
-	updated, _ := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
-	got := updated.(Model)
-	if got.state.Modal != nil {
-		t.Fatalf("space must close the Comments modal")
-	}
-	if got.state.FocusedPane != model.PaneDiff {
-		t.Fatalf("focus must return to Diff (the opener), got %v", got.state.FocusedPane)
 	}
 }
 
@@ -828,17 +850,18 @@ func TestSpaceClose_StaysOnCommentsWhenOpenedFromComments(t *testing.T) {
 	}
 }
 
-// q close: modal opened from Diff → q returns focus to Diff (without
-// quitting the app).
+// q close: modal opened from Files via space → q returns focus to
+// Files (without quitting the app). Files is a stand-in for any
+// space-opened modal — the close-restores-focus contract is per-pane
+// agnostic; we use a non-Comments pane here so the test stays valid
+// after Diff Enter stopped opening the Comments modal.
 func TestQClose_RestoresFocusToOrigin(t *testing.T) {
-	root := &model.ReviewComment{
-		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
-		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.FocusedPane = model.PaneFiles
+	mv.toggleModal(model.PaneFiles)
+	if mv.state.Modal == nil {
+		t.Fatalf("precondition: Files modal open")
 	}
-	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
-	mv.state.FocusedPane = model.PaneDiff
-	mv.state.DiffCursor.Line = 5
-	mv.openCommentsModalAtCursor()
 	updated, cmd := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	got := updated.(Model)
 	if cmd != nil {
@@ -847,27 +870,22 @@ func TestQClose_RestoresFocusToOrigin(t *testing.T) {
 	if got.state.Modal != nil {
 		t.Fatalf("q must close the modal")
 	}
-	if got.state.FocusedPane != model.PaneDiff {
-		t.Fatalf("focus must return to Diff, got %v", got.state.FocusedPane)
+	if got.state.FocusedPane != model.PaneFiles {
+		t.Fatalf("focus must return to Files (the opener), got %v", got.state.FocusedPane)
 	}
 }
 
 func TestEscClose_RestoresFocusToOrigin(t *testing.T) {
-	root := &model.ReviewComment{
-		ID: 11, NodeID: "PRRC_11", ThreadID: "PRT_a", User: "alice",
-		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
-	}
-	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
-	mv.state.FocusedPane = model.PaneDiff
-	mv.state.DiffCursor.Line = 5
-	mv.openCommentsModalAtCursor()
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.FocusedPane = model.PaneFiles
+	mv.toggleModal(model.PaneFiles)
 	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	got := updated.(Model)
 	if got.state.Modal != nil {
 		t.Fatalf("Esc must close the modal")
 	}
-	if got.state.FocusedPane != model.PaneDiff {
-		t.Fatalf("focus must return to Diff on Esc, got %v", got.state.FocusedPane)
+	if got.state.FocusedPane != model.PaneFiles {
+		t.Fatalf("focus must return to Files on Esc, got %v", got.state.FocusedPane)
 	}
 }
 

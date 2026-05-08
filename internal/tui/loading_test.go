@@ -222,6 +222,105 @@ func TestNewModel_SplashEnvOverride(t *testing.T) {
 	}
 }
 
+// goreleaser passes the bare semver via {{.Version}} (no leading `v`),
+// so a 0.3.1 build would otherwise render `reva 0.3.1` / `0.3.1` on the
+// splash. Prepend a `v` when the supplied version starts with a digit
+// so the on-screen label matches the tag form users see in `git tag` /
+// release pages. Already-prefixed values (e.g. `v0.4.2` from tests)
+// stay as-is; non-semver strings like `dev` are left alone.
+func TestSetVersion_BarePrependsV(t *testing.T) {
+	t.Setenv("GH_REVA_SPLASH_LAYOUT", "1")
+	t.Setenv("GH_REVA_SPLASH_ART", "0")
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	th, _ := theme.Resolve("builtin-dark")
+	m.SetTheme(th)
+	m.SetVersion("0.3.1")
+	m.width = 80
+	m.height = 30
+	out := m.loadingView(0, model.LoadStagePR)
+
+	if !strings.Contains(out, "reva v0.3.1") {
+		t.Errorf("bare-semver version must render with v-prefix; missing 'reva v0.3.1':\n%s", out)
+	}
+	if strings.Contains(out, "reva 0.3.1\n") || strings.Contains(out, "reva 0.3.1 ") {
+		t.Errorf("bare-semver form must NOT appear:\n%s", out)
+	}
+}
+
+// Layout 2 / 3 collapse to bare `vX.Y.Z` (no `reva` prefix). The
+// v-prepend rule must still apply — the art already names the tool but
+// the version still needs the `v` for parity with tags.
+func TestSetVersion_BarePrependsVOnAsciiLayout(t *testing.T) {
+	t.Setenv("GH_REVA_SPLASH_LAYOUT", "2")
+	t.Setenv("GH_REVA_SPLASH_ART", "0")
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	th, _ := theme.Resolve("builtin-dark")
+	m.SetTheme(th)
+	m.SetVersion("0.3.1")
+	m.width = 80
+	m.height = 30
+	out := m.loadingView(0, model.LoadStagePR)
+	if !strings.Contains(out, "v0.3.1") {
+		t.Errorf("layout 2 must render 'v0.3.1':\n%s", out)
+	}
+}
+
+// Already-prefixed version must not double up to `vv0.4.2`.
+func TestSetVersion_AlreadyPrefixedNotDoubled(t *testing.T) {
+	t.Setenv("GH_REVA_SPLASH_LAYOUT", "1")
+	t.Setenv("GH_REVA_SPLASH_ART", "0")
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	th, _ := theme.Resolve("builtin-dark")
+	m.SetTheme(th)
+	m.SetVersion("v0.4.2")
+	m.width = 80
+	m.height = 30
+	out := m.loadingView(0, model.LoadStagePR)
+	if strings.Contains(out, "vv0.4.2") {
+		t.Errorf("v-prefix must not double up:\n%s", out)
+	}
+	if !strings.Contains(out, "reva v0.4.2") {
+		t.Errorf("expected 'reva v0.4.2':\n%s", out)
+	}
+}
+
+// `dev` (cmd/root.go's ldflag fallback) is not a semver and must not
+// gain a `v` — `vdev` reads as a typo and would mislead users
+// inspecting their build.
+func TestSetVersion_DevLeftAlone(t *testing.T) {
+	t.Setenv("GH_REVA_SPLASH_LAYOUT", "1")
+	t.Setenv("GH_REVA_SPLASH_ART", "0")
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	th, _ := theme.Resolve("builtin-dark")
+	m.SetTheme(th)
+	m.SetVersion("dev")
+	m.width = 80
+	m.height = 30
+	out := m.loadingView(0, model.LoadStagePR)
+	if strings.Contains(out, "vdev") {
+		t.Errorf("'dev' must not gain a v-prefix:\n%s", out)
+	}
+	if !strings.Contains(out, "reva dev") {
+		t.Errorf("expected 'reva dev':\n%s", out)
+	}
+}
+
 // Empty version must collapse the version line entirely — `reva ` on
 // its own would be a confusing artefact. Dev binaries built without
 // ldflags still call SetVersion("dev") in cmd/root.go, so the empty
