@@ -557,9 +557,15 @@ func lnFmt(n int, has bool) string {
 // commentLineSet returns the set of buffer-line indices that carry an anchored
 // review comment in the current Diff view. Built once per render so per-line
 // rendering stays O(1).
+//
+// Side-aware: LEFT comments resolve against the old-file line mapping,
+// every other side resolves against the new-file mapping. Without this
+// split, a comment posted on a `-` row never matches any buffer index
+// (newLineNumbers returns 0 for `-` rows) and the ◆ marker disappears.
 func (m Model) commentLineSet() map[int]bool {
-	mapping := m.patchNewLineNumbers()
-	if len(mapping) == 0 {
+	newMap := m.patchNewLineNumbers()
+	oldMap := m.patchOldLineNumbers()
+	if len(newMap) == 0 && len(oldMap) == 0 {
 		return nil
 	}
 	threads := m.threadsForView()
@@ -567,21 +573,15 @@ func (m Model) commentLineSet() map[int]bool {
 		return nil
 	}
 	targets := map[int]bool{}
-	collect := func(line int) {
-		if line <= 0 {
-			return
-		}
-		for i, n := range mapping {
-			if n == line {
-				targets[i] = true
-				return
-			}
+	collect := func(c *model.ReviewComment) {
+		if i := commentBufferIndex(c, oldMap, newMap); i >= 0 {
+			targets[i] = true
 		}
 	}
 	for _, t := range threads {
-		collect(commentNewLine(t.Root))
+		collect(t.Root)
 		for _, r := range t.Replies {
-			collect(commentNewLine(r))
+			collect(r)
 		}
 	}
 	return targets

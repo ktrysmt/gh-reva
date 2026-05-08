@@ -92,18 +92,21 @@ func commentAtCursor(flat []*model.ReviewComment, idx int) *model.ReviewComment 
 
 // syncDiffToCursorComment auto-scrolls the Diff viewport so the comment under
 // the Comments cursor is visible. Cursor in Diff is not moved.
+//
+// Side-aware: a LEFT-side comment's c.Line is an OLD-file line number,
+// so the buffer-index lookup picks the corresponding `-` row (via
+// oldLineNumbers) instead of falling through newLineNumbers and missing.
 func (m *Model) syncDiffToCursorComment() {
 	flat := m.flatComments()
 	if len(flat) == 0 || m.state.CommentsCursor >= len(flat) {
 		return
 	}
 	c := flat[m.state.CommentsCursor]
-	target := commentNewLine(c)
 	lines := m.patchLines()
 	if len(lines) == 0 {
 		return
 	}
-	bufIdx := bufferIndexForNewLine(lines, target)
+	bufIdx := commentBufferIndex(c, m.patchOldLineNumbers(), m.patchNewLineNumbers())
 	if bufIdx < 0 {
 		return
 	}
@@ -230,40 +233,44 @@ func renderCommentBody(body, bodyLeader string, bodyWidth int) []string {
 
 // threadsForCursor returns the comment threads anchored at the current Diff
 // cursor's buffer line. Empty when the cursor is not on a ◆ row, when no
-// patch is loaded, or when no thread targets the cursor's new-file line.
-// Ordering matches threadsForView (chronological by root time).
+// patch is loaded, or when no thread anchors at the cursor's buffer
+// index. Ordering matches threadsForView (chronological by root time).
+//
+// Side-aware: each thread's anchor buffer index is computed via
+// commentBufferIndex (LEFT comments → oldLineNumbers; others →
+// newLineNumbers). Matching a thread to the cursor by buffer index lets
+// LEFT comments anchor on `-` rows, which the previous "look up
+// mapping[cursor]" approach silently dropped (mapping[cursor] is 0 for
+// `-` rows under newLineNumbers).
 func (m Model) threadsForCursor() []*commentThread {
 	all := m.threadsForView()
 	if len(all) == 0 {
 		return nil
 	}
-	mapping := m.patchNewLineNumbers()
-	if len(mapping) == 0 {
+	newMap := m.patchNewLineNumbers()
+	oldMap := m.patchOldLineNumbers()
+	if len(newMap) == 0 && len(oldMap) == 0 {
 		return nil
 	}
 	cursor := m.state.DiffCursor.Line
-	if cursor < 0 || cursor >= len(mapping) {
-		return nil
-	}
-	target := mapping[cursor]
-	if target <= 0 {
+	if cursor < 0 {
 		return nil
 	}
 	var out []*commentThread
 	for _, t := range all {
-		if anyCommentOnLine(t, target) {
+		if anyCommentAtBuffer(t, cursor, oldMap, newMap) {
 			out = append(out, t)
 		}
 	}
 	return out
 }
 
-func anyCommentOnLine(t *commentThread, line int) bool {
-	if commentNewLine(t.Root) == line {
+func anyCommentAtBuffer(t *commentThread, cursor int, oldNums, newNums []int) bool {
+	if commentBufferIndex(t.Root, oldNums, newNums) == cursor {
 		return true
 	}
 	for _, r := range t.Replies {
-		if commentNewLine(r) == line {
+		if commentBufferIndex(r, oldNums, newNums) == cursor {
 			return true
 		}
 	}

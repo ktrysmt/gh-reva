@@ -66,6 +66,108 @@ func commentsModelFixture(t *testing.T) Model {
 	return m
 }
 
+// commentsLeftSideFixture builds a Model whose patch contains both `-`
+// (deleted) and `+` (added) lines, plus comments anchored on each side.
+// Buffer layout:
+//
+//	0: @@ -1,3 +1,3 @@
+//	1:  line1                (oldLine 1, newLine 1)
+//	2: -removed_line2        (oldLine 2)        ← thread T_LEFT (Side="LEFT", Line=2)
+//	3: +added_line2          (newLine 2)        ← thread T_RIGHT (Side="RIGHT", Line=2)
+//	4:  line3                (oldLine 3, newLine 3)
+//
+// Used to pin that LEFT-side comments anchor on the `-` buffer row, not
+// silently fall through `newLineNumbers` (which returns 0 for `-` lines)
+// and disappear from both ◆ marker and Comments column.
+func commentsLeftSideFixture(t *testing.T) Model {
+	t.Helper()
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := NewModel(nil, nil)
+	leftComment := &model.ReviewComment{
+		ID: 10, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 2, Side: "LEFT", User: "carol",
+		CreatedAt: time.Date(2024, 1, 15, 13, 0, 0, 0, time.Local),
+		Body:      "deleted-line note",
+	}
+	rightComment := &model.ReviewComment{
+		ID: 11, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 2, Side: "RIGHT", User: "dave",
+		CreatedAt: time.Date(2024, 1, 16, 9, 15, 0, 0, time.Local),
+		Body:      "added-line note",
+	}
+	m.state.PR = &model.PR{
+		Owner: "o", Repo: "r", Number: 1,
+		Files:    []*model.FileEntry{{Path: "src/foo.go", Status: model.ChangeModified}},
+		Comments: []*model.ReviewComment{leftComment, rightComment},
+	}
+	m.state.SelectedFile = "src/foo.go"
+	m.state.DiffCache[diffKey("", "src/foo.go")] = strings.Join([]string{
+		"@@ -1,3 +1,3 @@",
+		" line1",
+		"-removed_line2",
+		"+added_line2",
+		" line3",
+	}, "\n")
+	m.paneWidthComments = 50
+	return m
+}
+
+// TestCommentsViewShowsLeftSideThreadOnDeletedLine pins that a comment
+// posted on a `-` (deleted) line anchors on that buffer row. The comment
+// is stored with Side="LEFT" and Line=<old-file-line-number>; the display
+// pipeline must consult the OLD-file line mapping for LEFT comments
+// instead of treating Line as a new-file line number (which silently
+// drops the comment because newLineNumbers returns 0 for `-` rows).
+func TestCommentsViewShowsLeftSideThreadOnDeletedLine(t *testing.T) {
+	m := commentsLeftSideFixture(t)
+	m.state.DiffCursor.Line = 2 // the `-removed_line2` buffer row
+
+	got := m.commentsView()
+	if !strings.Contains(got, "carol") {
+		t.Errorf("LEFT-side comment (carol) must anchor on the `-` row at buffer line 2:\n%s", got)
+	}
+	if !strings.Contains(got, "deleted-line note") {
+		t.Errorf("LEFT-side comment body must render at the `-` row:\n%s", got)
+	}
+	if strings.Contains(got, "dave") || strings.Contains(got, "added-line note") {
+		t.Errorf("RIGHT-side comment must NOT leak onto the `-` buffer row:\n%s", got)
+	}
+}
+
+// TestCommentsViewShowsRightSideThreadOnAddedLine is the symmetric pin:
+// the RIGHT-side comment anchors on the `+` buffer row, not the `-` row.
+func TestCommentsViewShowsRightSideThreadOnAddedLine(t *testing.T) {
+	m := commentsLeftSideFixture(t)
+	m.state.DiffCursor.Line = 3 // the `+added_line2` buffer row
+
+	got := m.commentsView()
+	if !strings.Contains(got, "dave") {
+		t.Errorf("RIGHT-side comment (dave) must anchor on the `+` row at buffer line 3:\n%s", got)
+	}
+	if strings.Contains(got, "carol") {
+		t.Errorf("LEFT-side comment must NOT leak onto the `+` buffer row:\n%s", got)
+	}
+}
+
+// TestCommentLineSetIncludesLeftAndRightAnchors pins that the ◆ marker set
+// covers both the `-` row (LEFT comment) and the `+` row (RIGHT comment).
+// Without side-aware mapping, the LEFT comment's Line=2 would either find
+// the `+` row (because newLine 2 happens to land there in this fixture)
+// or no row at all, and the `-` row would never get a marker.
+func TestCommentLineSetIncludesLeftAndRightAnchors(t *testing.T) {
+	m := commentsLeftSideFixture(t)
+	got := m.commentLineSet()
+	if !got[2] {
+		t.Errorf("commentLineSet must include buffer index 2 (the `-` row anchored by LEFT comment); got %#v", got)
+	}
+	if !got[3] {
+		t.Errorf("commentLineSet must include buffer index 3 (the `+` row anchored by RIGHT comment); got %#v", got)
+	}
+}
+
 // TestCommentsViewEmptyWhenCursorNotOnAnchor pins the new contract: if the
 // Diff cursor row is NOT a ◆ row, the Comments column shows a placeholder
 // instead of the previous "all anchored threads" listing.

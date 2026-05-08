@@ -634,9 +634,10 @@ func (m Model) currentPatch() string {
 // (sha, path) keeps split-mode `j/k` repeat cost flat instead of redoing
 // the walk on every redraw.
 type patchInfo struct {
-	lines    []string
-	specs    []diffLineSpec // populated lazily; only split mode reads it
-	newNums  []int          // populated lazily; commentLineSet etc.
+	lines   []string
+	specs   []diffLineSpec // populated lazily; only split mode reads it
+	newNums []int          // populated lazily; commentLineSet etc.
+	oldNums []int          // populated lazily; LEFT-side comment anchoring
 }
 
 // diffRowCache memoizes the per-buffer-line render output for the Diff
@@ -767,6 +768,22 @@ func (m Model) patchNewLineNumbers() []int {
 		pi.newNums = newLineNumbers(pi.lines)
 	}
 	return pi.newNums
+}
+
+// patchOldLineNumbers returns the cached old-file line-number mapping.
+// Built lazily on first read (LEFT-side comments are common but not
+// universal, so the walk only pays off when a thread anchors on a `-`
+// row). Cached on the same patchInfo as newNums so per-render lookups
+// stay flat.
+func (m Model) patchOldLineNumbers() []int {
+	pi := m.patchInfo()
+	if pi == nil {
+		return nil
+	}
+	if pi.oldNums == nil {
+		pi.oldNums = oldLineNumbers(pi.lines)
+	}
+	return pi.oldNums
 }
 
 func (m Model) effectiveDiffViewMode() string {
