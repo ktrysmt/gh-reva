@@ -57,7 +57,13 @@ export async function launchReva ({
   // here also passes interactively.
   const SETTLE_MS = 120
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-  for (const fn of ['press', 'type']) {
+  // press / type / clickAt / scrollUp / scrollDown are all "fire input
+  // and let bubbletea drain" gestures — wrap them with the same 120ms
+  // settle so callers don't have to sprinkle sleeps. clickAt's SGR
+  // press / release pair fires synchronously inside tuistory but
+  // bubbletea's Update → View pipeline still needs a beat before
+  // text() reflects the new state.
+  for (const fn of ['press', 'type', 'clickAt', 'scrollUp', 'scrollDown']) {
     const orig = session[fn].bind(session)
     session[fn] = async (...a) => {
       const r = await orig(...a)

@@ -77,6 +77,15 @@ var helpSections = []helpSection{
 			{"Esc / Ctrl+c", "Cancel without yanking"},
 		},
 	},
+	{
+		title: "Mouse",
+		entries: []helpEntry{
+			{"Click pane title", "Focus pane"},
+			{"Click row", "Focus + move cursor"},
+			{"Wheel", "Scroll pane under cursor"},
+			{"Shift+drag", "Terminal text select (copy)"},
+		},
+	},
 }
 
 // helpModalDefaultWidth is the modal's outer width on a comfortably-wide

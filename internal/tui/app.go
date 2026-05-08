@@ -114,6 +114,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case LoadStageMsg:
 		m.state.LoadStage = msg.Stage
 		return m, nil
@@ -201,27 +203,15 @@ func (m Model) View() string {
 		return body
 	}
 
+	// Populate per-pane render budgets on the local m so the pane
+	// renderers below (filesView, diffView, …) see consistent widths.
+	// Mouse handling (Update on tea.MouseMsg) re-runs measureLayout
+	// before hit-testing because Bubbletea's value-receiver Update
+	// gets a fresh m each tick that doesn't carry View's measurements.
+	m.measureLayout()
+
 	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden)
 	topH, bottomH := splitColumnHeights(bodyHeight)
-
-	// Each pane renders as: top border + title row + ├──┤ divider + content
-	// rows + bottom border. Inner content budget is therefore outer width − 2
-	// and outer height − 4.
-	innerLeftW := atLeast(leftW-2, 1)
-	innerMidW := atLeast(midW-2, 1)
-	innerRightW := atLeast(rightW-2, 1)
-	innerTopH := atLeast(topH-4, 1)
-	innerBottomH := atLeast(bottomH-4, 1)
-	innerBodyH := atLeast(bodyHeight-4, 1)
-
-	m.paneWidthFiles = innerLeftW
-	m.paneHeightFiles = innerTopH
-	m.paneWidthCommits = innerLeftW
-	m.paneHeightCommits = innerBottomH
-	m.paneWidthDiff = innerMidW
-	m.paneHeightDiff = innerBodyH
-	m.paneWidthComments = innerRightW
-	m.paneHeightComments = innerBodyH
 
 	files := m.boxFromPaneView(m.filesView(), leftW, topH, model.PaneFiles)
 	commits := m.boxFromPaneView(m.commitsView(), leftW, bottomH, model.PaneCommits)

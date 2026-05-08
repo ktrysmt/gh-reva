@@ -136,7 +136,14 @@ var rootCmd = &cobra.Command{
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}
-		prog := tea.NewProgram(m, tea.WithAltScreen())
+		// Cell-motion mouse capture lets the TUI receive click and
+		// wheel events without intercepting per-pixel motion (cheaper
+		// than WithMouseAllMotion). Standard terminals (macOS Terminal,
+		// iTerm2, Alacritty, Ghostty, kitty) still let users hold
+		// Shift to bypass the mouse-tracking grab and fall back to
+		// terminal-side text selection — so copy/paste still works
+		// without an explicit toggle.
+		prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 		final, err := prog.Run()
 		if err != nil {
 			return err

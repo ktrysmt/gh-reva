@@ -198,15 +198,26 @@ test('N13: modal is roughly vertically centered', async () => {
   await s.type('?')
   const screen = await s.text()
   const lines = screen.split('\n')
+  // Walk every match per row (globalized regex) so a pane border at
+  // col 0 sharing a row with the modal's border at col ~50 doesn't
+  // shadow the modal — `.exec` without /g only ever returns the
+  // leftmost match. The col threshold (>30) still rejects the col-0
+  // pane borders.
+  const findFirst = (line, re) => {
+    const g = new RegExp(re.source, 'g')
+    let m
+    while ((m = g.exec(line)) !== null) {
+      if (m.index > 30) return m
+    }
+    return null
+  }
   let topRow = -1
   let bottomRow = -1
   for (let i = 0; i < lines.length; i++) {
-    const m = /┌─+┐/.exec(lines[i])
-    if (m && m.index > 30) { topRow = i; break }
+    if (findFirst(lines[i], /┌─+┐/)) { topRow = i; break }
   }
   for (let i = lines.length - 1; i >= 0; i--) {
-    const m = /└─+┘/.exec(lines[i])
-    if (m && m.index > 30) { bottomRow = i; break }
+    if (findFirst(lines[i], /└─+┘/)) { bottomRow = i; break }
   }
   assert.ok(topRow >= 0 && bottomRow > topRow,
     `expected modal top + bottom borders; head:\n${lines.slice(0, 20).join('\n')}`)
