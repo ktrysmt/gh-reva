@@ -273,10 +273,10 @@ func buildEditorCmd(shellCmd string) *exec.Cmd {
 }
 
 // runEditorCmd writes a tempfile (pre-populated with `initialBody` if
-// non-empty so edit flows start on the existing text), hands the
-// terminal to $EDITOR via tea.ExecProcess, and on exit reads the file
-// back, deletes it, and emits composeBodyMsg with the result. Empty
-// body (after TrimSpace) is the user's signal to cancel.
+// non-empty so edit flows start on the existing text), runs $EDITOR on
+// it, and on exit reads the file back, deletes it, and emits
+// composeBodyMsg with the result. Empty body (after TrimSpace) is the
+// user's signal to cancel.
 //
 // Editor invocation goes through `sh -c "<EDITOR> <quoted-path>"` rather
 // than splitting EDITOR on whitespace ourselves: matches the convention
@@ -286,6 +286,16 @@ func buildEditorCmd(shellCmd string) *exec.Cmd {
 // expects from their shell. The tempfile path is shell-quoted with
 // shellSingleQuote — os.CreateTemp emits alphanumeric paths in
 // practice, but the quote keeps the contract honest.
+//
+// Dispatch by $TMUX:
+//   - TMUX set → runEditorOverlay: cmd.Run() directly inside a tea.Cmd
+//     goroutine, bypassing tea.ExecProcess. The popup is rendered by
+//     the tmux server as an overlay over reva's pane, so we MUST keep
+//     bubbletea in alt-screen — releasing the terminal would force a
+//     redraw of the underlying shell screen, which is then what the
+//     popup overlays (instead of reva's frame).
+//   - TMUX unset → tea.ExecProcess: the editor takes over the whole
+//     terminal, so bubbletea must release alt-screen / raw mode first.
 func runEditorCmd(initialBody string) tea.Cmd {
 	f, err := os.CreateTemp("", "gh-reva-compose-*.md")
 	if err != nil {
@@ -302,17 +312,41 @@ func runEditorCmd(initialBody string) tea.Cmd {
 	_ = f.Close()
 	shellCmd := fmt.Sprintf("%s %s", editorEnv(), shellSingleQuote(tmpPath))
 	cmd := buildEditorCmd(shellCmd)
+	if os.Getenv("TMUX") != "" {
+		return runEditorOverlay(cmd, tmpPath)
+	}
 	return tea.ExecProcess(cmd, func(execErr error) tea.Msg {
-		defer os.Remove(tmpPath)
-		if execErr != nil {
-			return composeBodyMsg{err: execErr}
-		}
-		b, readErr := os.ReadFile(tmpPath)
-		if readErr != nil {
-			return composeBodyMsg{err: readErr}
-		}
-		return composeBodyMsg{body: string(b)}
+		return readComposeBody(tmpPath, execErr)
 	})
+}
+
+// runEditorOverlay drives the tmux display-popup branch: blocks on
+// cmd.Run() inside a tea.Cmd goroutine while bubbletea keeps rendering
+// to its pane. tmux's display-popup -E IPC blocks the calling client
+// until the popup closes, which is what synchronises body readback to
+// editor exit. stdin/stdout/stderr are intentionally left at exec.Cmd's
+// default (/dev/null) — the popup's PTY is allocated by the tmux server
+// independently of this client process, and routing our bubbletea I/O
+// into the client would corrupt the alt-screen frame.
+func runEditorOverlay(cmd *exec.Cmd, tmpPath string) tea.Cmd {
+	return func() tea.Msg {
+		return readComposeBody(tmpPath, cmd.Run())
+	}
+}
+
+// readComposeBody is the post-exit contract shared by both editor
+// branches: cleans up the tempfile, surfaces the editor's exit error if
+// any, otherwise returns the file contents as the new compose body.
+func readComposeBody(tmpPath string, execErr error) tea.Msg {
+	defer os.Remove(tmpPath)
+	if execErr != nil {
+		return composeBodyMsg{err: execErr}
+	}
+	b, readErr := os.ReadFile(tmpPath)
+	if readErr != nil {
+		return composeBodyMsg{err: readErr}
+	}
+	return composeBodyMsg{body: string(b)}
 }
 
 // shellSingleQuote wraps s in POSIX single quotes, escaping any embedded

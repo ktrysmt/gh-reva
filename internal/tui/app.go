@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ktrysmt/gh-reva/internal/api"
 	"github.com/ktrysmt/gh-reva/internal/model"
@@ -116,9 +117,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
-	case LoadStageMsg:
-		m.state.LoadStage = msg.Stage
-		return m, nil
 	case SpinnerTickMsg:
 		m.state.LoadFrame++
 		if m.state.LoadStage == model.LoadStageDone {
@@ -435,9 +433,14 @@ func renderLogo(th *theme.Theme) string {
 	return strings.Join(out, "\n")
 }
 
-func (m Model) loadingView(frame int, stage model.LoadStage) string {
+// loadingView renders the splash + spinner shown until PRLoadedMsg
+// arrives. The `stage` parameter is retained for backwards-compatibility
+// with `loading_test.go` callers that pass model.LoadStagePR; the
+// spinner label no longer changes per stage because loadPRCmd fans the
+// independent reads out concurrently (CLAUDE.md §4 #7).
+func (m Model) loadingView(frame int, _ model.LoadStage) string {
 	glyph := spinnerFrames[frame%len(spinnerFrames)]
-	spinnerLine := fmt.Sprintf("%s Loading PR (%s)...", fg(glyph, m.theme.LoadingSpinner), stageLabel(stage))
+	spinnerLine := fmt.Sprintf("%s Loading PR...", fg(glyph, m.theme.LoadingSpinner))
 	if m.width <= 0 || m.height <= 0 {
 		// Pre-WindowSize fallback: keep the spinner top-left so the very first
 		// frame still emits text. Skip the splash here to avoid emitting a
@@ -495,108 +498,120 @@ func (m Model) loadingView(frame int, stage model.LoadStage) string {
 	return sb.String()
 }
 
-func stageLabel(s model.LoadStage) string {
-	switch s {
-	case model.LoadStagePR:
-		return "metadata"
-	case model.LoadStageCommits:
-		return "commits"
-	case model.LoadStageFiles:
-		return "files"
-	case model.LoadStageComments:
-		return "comments"
-	case model.LoadStageDiffs:
-		return "diffs"
-	default:
-		return "ready"
-	}
-}
-
 func spinnerTickCmd() tea.Cmd {
 	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
 		return SpinnerTickMsg{}
 	})
 }
 
-// loadPRCmd loads PR data in stages via tea.Sequence. Each stage emits a
-// LoadStageMsg so the spinner label can update; the final stage assembles
-// accumulated data and emits PRLoadedMsg. A per-launch accumulator (closed
-// over by every cmd) carries data between stages.
+// loadPRCmd fans the PR's independent reads (GetPR, ListCommits,
+// ListFiles, ListComments, ViewerLogin) out concurrently via errgroup.
+// All five are pure reads with no inter-dependencies — earlier the
+// loader chained them through tea.Sequence and paid 5*RTT on every
+// startup. The errgroup version bounds total time at max(per-stage),
+// which is dominated on real PRs by ListCommits (whose own per-commit
+// detail loop is itself parallelized — see api.commitDetailConcurrency).
+//
+// CommentCount is no longer derived inside ListFiles (which used to
+// re-fetch comments internally and serialize the load); the assembler
+// builds it from the independently-fetched comments list, mirroring
+// CLAUDE.md §4 #25's "outdated comments don't count" rule.
+//
+// ViewerLogin runs alongside the rest. A failure there is non-fatal:
+// Comments-pane Enter falls back to reply-only when ownership is
+// unknown, so a network blip on viewer should not abort the load.
 func loadPRCmd(c api.Client, t *api.Target) tea.Cmd {
-	acc := &loadAccumulator{}
-	ctx := context.Background()
-	return tea.Sequence(
-		stageMsgCmd(model.LoadStagePR),
-		func() tea.Msg {
-			pr, err := c.GetPR(ctx, t.Owner, t.Repo, t.Number)
+	return func() tea.Msg {
+		ctx := context.Background()
+		var (
+			pr       *model.PR
+			commits  []*model.Commit
+			files    []*model.FileEntry
+			comments []*model.ReviewComment
+			viewer   string
+		)
+		eg, egCtx := errgroup.WithContext(ctx)
+		eg.Go(func() error {
+			p, err := c.GetPR(egCtx, t.Owner, t.Repo, t.Number)
 			if err != nil {
-				return ErrMsg{Err: err}
+				return err
 			}
-			acc.pr = pr
-			return LoadStageMsg{Stage: model.LoadStageCommits}
-		},
-		func() tea.Msg {
-			commits, err := c.ListCommits(ctx, t.Owner, t.Repo, t.Number)
+			pr = p
+			return nil
+		})
+		eg.Go(func() error {
+			l, err := c.ListCommits(egCtx, t.Owner, t.Repo, t.Number)
 			if err != nil {
-				return ErrMsg{Err: err}
+				return err
 			}
-			acc.commits = commits
-			return LoadStageMsg{Stage: model.LoadStageFiles}
-		},
-		func() tea.Msg {
-			files, err := c.ListFiles(ctx, t.Owner, t.Repo, t.Number)
+			commits = l
+			return nil
+		})
+		eg.Go(func() error {
+			l, err := c.ListFiles(egCtx, t.Owner, t.Repo, t.Number)
 			if err != nil {
-				return ErrMsg{Err: err}
+				return err
 			}
-			acc.files = files
-			return LoadStageMsg{Stage: model.LoadStageComments}
-		},
-		func() tea.Msg {
-			comments, err := c.ListComments(ctx, t.Owner, t.Repo, t.Number)
+			files = l
+			return nil
+		})
+		eg.Go(func() error {
+			l, err := c.ListComments(egCtx, t.Owner, t.Repo, t.Number)
 			if err != nil {
-				return ErrMsg{Err: err}
+				return err
 			}
-			acc.comments = comments
-			return LoadStageMsg{Stage: model.LoadStageDiffs}
-		},
-		func() tea.Msg {
-			diffs := map[string]string{}
-			for _, f := range acc.files {
-				d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, "", f.Path)
+			comments = l
+			return nil
+		})
+		// Viewer error is intentionally not propagated to the errgroup —
+		// it's a soft dependency (Comments-pane edit gating).
+		eg.Go(func() error {
+			v, _ := c.ViewerLogin(egCtx)
+			viewer = v
+			return nil
+		})
+		if err := eg.Wait(); err != nil {
+			return ErrMsg{Err: err}
+		}
+
+		// Derive CommentCount per file from the comments list. Outdated
+		// entries (CLAUDE.md §4 #25) don't count toward the badge —
+		// they're hidden in the HEAD/WholePR view that drives the badge.
+		counts := map[string]int{}
+		for _, cm := range comments {
+			if !cm.Outdated {
+				counts[cm.Path]++
+			}
+		}
+		for _, f := range files {
+			f.CommentCount = counts[f.Path]
+		}
+
+		// Diff cache assembly — these calls hit ghClient's already-
+		// populated commits / prFiles caches, so no further network
+		// I/O happens here in production. The fixture client serves
+		// directly from its in-memory diff map.
+		diffs := map[string]string{}
+		for _, f := range files {
+			d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, "", f.Path)
+			if err == nil && d != "" {
+				diffs[diffKey("", f.Path)] = d
+			}
+		}
+		for _, com := range commits {
+			for path := range com.ChangedFiles {
+				d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, com.SHA, path)
 				if err == nil && d != "" {
-					diffs[diffKey("", f.Path)] = d
+					diffs[diffKey(com.SHA, path)] = d
 				}
 			}
-			for _, com := range acc.commits {
-				for path := range com.ChangedFiles {
-					d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, com.SHA, path)
-					if err == nil && d != "" {
-						diffs[diffKey(com.SHA, path)] = d
-					}
-				}
-			}
-			// Viewer login is fetched last so a network blip on this
-			// non-critical lookup doesn't block the rest of the load.
-			// Empty string is acceptable — Comments-pane Enter falls
-			// back to reply when ownership is unknown.
-			viewer, _ := c.ViewerLogin(ctx)
-			acc.pr.Commits = acc.commits
-			acc.pr.Files = acc.files
-			acc.pr.Comments = acc.comments
-			return PRLoadedMsg{PR: acc.pr, Diffs: diffs, ViewerLogin: viewer}
-		},
-	)
-}
+		}
 
-type loadAccumulator struct {
-	pr       *model.PR
-	commits  []*model.Commit
-	files    []*model.FileEntry
-	comments []*model.ReviewComment
-}
-
-func stageMsgCmd(s model.LoadStage) tea.Cmd {
-	return func() tea.Msg { return LoadStageMsg{Stage: s} }
+		pr.Commits = commits
+		pr.Files = files
+		pr.Comments = comments
+		return PRLoadedMsg{PR: pr, Diffs: diffs, ViewerLogin: viewer}
+	}
 }
 
 func diffKey(sha, path string) string {

@@ -10,15 +10,12 @@ type PRLoadedMsg struct {
 	ViewerLogin string
 }
 
-// LoadStageMsg announces the start of a loading stage so the spinner can
-// reflect progress before PRLoadedMsg arrives.
-type LoadStageMsg struct {
-	Stage model.LoadStage
-}
-
 // SpinnerTickMsg drives the loading spinner animation. The Update loop
-// re-emits a tick while the PR is still loading, and stops once the data is
-// available (LoadStageDone).
+// re-emits a tick while the PR is still loading, and stops once the data
+// is available (LoadStageDone). The pre-parallel-load stage progression
+// (metadata → commits → files → comments → diffs) is gone — loadPRCmd
+// fans those reads out concurrently and emits a single PRLoadedMsg on
+// completion (CLAUDE.md §4 #7).
 type SpinnerTickMsg struct{}
 
 // ScrollDiffToLineMsg requests the Diff viewport be recentered on a given

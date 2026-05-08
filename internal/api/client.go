@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"sync"
 
 	gha "github.com/cli/go-gh/v2/pkg/api"
 
@@ -63,6 +64,12 @@ type ghClient struct {
 	rest *gha.RESTClient
 	gql  *gha.GraphQLClient
 
+	// cacheMu guards every map below plus viewerLogin. ListCommits fans
+	// fetchCommit out across N goroutines, and the parallel load path
+	// (loadPRCmd in internal/tui) fires GetPR / ListCommits / fetchPRFiles
+	// / ListComments / ViewerLogin concurrently — without this lock
+	// `c.commits[sha] = ...` and similar cache writes race.
+	cacheMu  sync.Mutex
 	prFiles  map[int][]ghFile
 	commits  map[string]*ghCommit
 	comments map[int][]*model.ReviewComment

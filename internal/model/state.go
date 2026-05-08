@@ -100,14 +100,18 @@ type DiffViewport struct {
 	Height int
 }
 
+// LoadStage tracks whether the PR data is still being fetched. The
+// pre-parallel-load enum had per-API stages (metadata / commits / files
+// / comments / diffs) so the loader could update the spinner caption
+// after each tea.Sequence step. loadPRCmd now fans those reads out
+// concurrently and emits a single PRLoadedMsg, so the only useful
+// distinction left is "still loading" vs "done"; LoadStagePR is
+// retained as the default value (loadingView callers in tests still
+// pass it) and LoadStageDone gates SpinnerTickMsg's re-tick.
 type LoadStage int
 
 const (
 	LoadStagePR LoadStage = iota
-	LoadStageCommits
-	LoadStageFiles
-	LoadStageComments
-	LoadStageDiffs
 	LoadStageDone
 )
 

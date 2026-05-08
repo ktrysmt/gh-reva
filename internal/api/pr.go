@@ -7,8 +7,18 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
+
+// commitDetailConcurrency caps the number of in-flight `GET
+// /repos/.../commits/<sha>` requests issued by ListCommits. GitHub's
+// secondary rate-limit guidance discourages "many concurrent requests";
+// 8 has been measured as a sweet spot — high enough to amortize round-
+// trip latency on PRs with dozens of commits, low enough to stay clear
+// of the burst threshold.
+const commitDetailConcurrency = 8
 
 var errNotImplemented = errors.New("not implemented")
 
@@ -83,47 +93,57 @@ func (c *ghClient) ListCommits(ctx context.Context, owner, repo string, n int) (
 	if err := c.paginate(ctx, path, &list); err != nil {
 		return nil, err
 	}
-	out := make([]*model.Commit, 0, len(list))
-	for _, item := range list {
-		detail, err := c.fetchCommit(ctx, owner, repo, item.SHA)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, &model.Commit{
-			SHA:          item.SHA,
-			ShortSHA:     shortSHA(item.SHA),
-			Message:      firstLine(item.Commit.Message),
-			Author:       commitAuthor(item),
-			Date:         item.Commit.Author.Date,
-			ChangedFiles: filesToChangeKinds(detail.Files),
+	// Per-commit detail fetches run in parallel under a bounded worker
+	// pool so a 60-commit PR doesn't pay 60 sequential round-trips on
+	// the loading splash. Writes to `out` are index-disjoint so the
+	// final slice is race-free without per-element locking; cache
+	// writes inside fetchCommit are guarded by ghClient.cacheMu.
+	out := make([]*model.Commit, len(list))
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(commitDetailConcurrency)
+	for i, item := range list {
+		i, item := i, item
+		eg.Go(func() error {
+			detail, err := c.fetchCommit(egCtx, owner, repo, item.SHA)
+			if err != nil {
+				return err
+			}
+			out[i] = &model.Commit{
+				SHA:          item.SHA,
+				ShortSHA:     shortSHA(item.SHA),
+				Message:      firstLine(item.Commit.Message),
+				Author:       commitAuthor(item),
+				Date:         item.Commit.Author.Date,
+				ChangedFiles: filesToChangeKinds(detail.Files),
+			}
+			return nil
 		})
+	}
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
 
+// ListFiles returns the PR's file roster without per-file comment
+// counts. Earlier this method also called ListComments to populate
+// CommentCount, which forced a hidden serial dependency on the comments
+// fetch — incompatible with loadPRCmd's parallel fan-out. The TUI's
+// load assembler now derives CommentCount from the independently-
+// fetched comments list before constructing PRLoadedMsg, so callers
+// must apply that same count derivation themselves if they need it.
 func (c *ghClient) ListFiles(ctx context.Context, owner, repo string, n int) ([]*model.FileEntry, error) {
 	files, err := c.fetchPRFiles(ctx, owner, repo, n)
 	if err != nil {
 		return nil, err
 	}
-	comments, err := c.ListComments(ctx, owner, repo, n)
-	if err != nil {
-		return nil, err
-	}
-	counts := map[string]int{}
-	for _, cm := range comments {
-		if !cm.Outdated {
-			counts[cm.Path]++
-		}
-	}
 	out := make([]*model.FileEntry, 0, len(files))
 	for _, f := range files {
 		out = append(out, &model.FileEntry{
-			Path:         f.Filename,
-			Status:       statusToChangeKind(f.Status),
-			Additions:    f.Additions,
-			Deletions:    f.Deletions,
-			CommentCount: counts[f.Filename],
+			Path:      f.Filename,
+			Status:    statusToChangeKind(f.Status),
+			Additions: f.Additions,
+			Deletions: f.Deletions,
 		})
 	}
 	return out, nil
@@ -135,22 +155,30 @@ func (c *ghClient) ListFiles(ctx context.Context, owner, repo string, n int) ([]
 // return thread IDs (REST has no "thread" abstraction), so the
 // migration to GraphQL is mandatory once we want pending-review POSTs.
 func (c *ghClient) ListComments(ctx context.Context, owner, repo string, n int) ([]*model.ReviewComment, error) {
-	if cached, ok := c.comments[n]; ok {
+	c.cacheMu.Lock()
+	cached, ok := c.comments[n]
+	c.cacheMu.Unlock()
+	if ok {
 		return cached, nil
 	}
 	out, prID, err := c.listCommentsGraphQL(ctx, owner, repo, n)
 	if err != nil {
 		return nil, err
 	}
+	c.cacheMu.Lock()
 	if prID != "" {
 		c.prNodeID[n] = prID
 	}
 	c.comments[n] = out
+	c.cacheMu.Unlock()
 	return out, nil
 }
 
 func (c *ghClient) fetchPRFiles(ctx context.Context, owner, repo string, n int) ([]ghFile, error) {
-	if cached, ok := c.prFiles[n]; ok {
+	c.cacheMu.Lock()
+	cached, ok := c.prFiles[n]
+	c.cacheMu.Unlock()
+	if ok {
 		return cached, nil
 	}
 	var files []ghFile
@@ -158,12 +186,17 @@ func (c *ghClient) fetchPRFiles(ctx context.Context, owner, repo string, n int) 
 	if err := c.paginate(ctx, path, &files); err != nil {
 		return nil, err
 	}
+	c.cacheMu.Lock()
 	c.prFiles[n] = files
+	c.cacheMu.Unlock()
 	return files, nil
 }
 
 func (c *ghClient) fetchCommit(ctx context.Context, owner, repo, sha string) (*ghCommit, error) {
-	if cached, ok := c.commits[sha]; ok {
+	c.cacheMu.Lock()
+	cached, ok := c.commits[sha]
+	c.cacheMu.Unlock()
+	if ok {
 		return cached, nil
 	}
 	var detail ghCommit
@@ -171,7 +204,9 @@ func (c *ghClient) fetchCommit(ctx context.Context, owner, repo, sha string) (*g
 	if err := c.rest.DoWithContext(ctx, http.MethodGet, path, nil, &detail); err != nil {
 		return nil, err
 	}
+	c.cacheMu.Lock()
 	c.commits[sha] = &detail
+	c.cacheMu.Unlock()
 	return &detail, nil
 }
 

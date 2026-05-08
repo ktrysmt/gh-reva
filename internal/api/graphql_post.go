@@ -14,8 +14,11 @@ import (
 // cached value. Used by the Comments-pane Enter dispatch to gate
 // "edit own comment" vs "reply-only on others' comments".
 func (c *ghClient) ViewerLogin(ctx context.Context) (string, error) {
-	if c.viewerLogin != "" {
-		return c.viewerLogin, nil
+	c.cacheMu.Lock()
+	cached := c.viewerLogin
+	c.cacheMu.Unlock()
+	if cached != "" {
+		return cached, nil
 	}
 	const q = `query { viewer { login } }`
 	var resp struct {
@@ -29,7 +32,9 @@ func (c *ghClient) ViewerLogin(ctx context.Context) (string, error) {
 	if resp.Viewer.Login == "" {
 		return "", fmt.Errorf("viewer login: empty response")
 	}
+	c.cacheMu.Lock()
 	c.viewerLogin = resp.Viewer.Login
+	c.cacheMu.Unlock()
 	return resp.Viewer.Login, nil
 }
 
@@ -38,7 +43,10 @@ func (c *ghClient) ViewerLogin(ctx context.Context) (string, error) {
 // fallback path below issues a tiny PR-only query when callers reach
 // the POST methods before they ever called ListComments.
 func (c *ghClient) ensurePRNodeID(ctx context.Context, owner, repo string, n int) (string, error) {
-	if id, ok := c.prNodeID[n]; ok && id != "" {
+	c.cacheMu.Lock()
+	id, ok := c.prNodeID[n]
+	c.cacheMu.Unlock()
+	if ok && id != "" {
 		return id, nil
 	}
 	const q = `
@@ -61,7 +69,9 @@ query($owner: String!, $name: String!, $number: Int!) {
 	if resp.Repository.PullRequest.ID == "" {
 		return "", fmt.Errorf("PR %s/%s#%d has no node id", owner, repo, n)
 	}
+	c.cacheMu.Lock()
 	c.prNodeID[n] = resp.Repository.PullRequest.ID
+	c.cacheMu.Unlock()
 	return resp.Repository.PullRequest.ID, nil
 }
 
@@ -81,7 +91,10 @@ query($owner: String!, $name: String!, $number: Int!) {
 // addPullRequestReview and the GraphQL API would fail with 422
 // because a separate PENDING review already existed.
 func (c *ghClient) ensurePendingReview(ctx context.Context, owner, repo string, n int) (string, error) {
-	if id, ok := c.pendingReviewID[n]; ok && id != "" {
+	c.cacheMu.Lock()
+	id, ok := c.pendingReviewID[n]
+	c.cacheMu.Unlock()
+	if ok && id != "" {
 		return id, nil
 	}
 	prID, err := c.ensurePRNodeID(ctx, owner, repo, n)
@@ -130,11 +143,15 @@ query($owner: String!, $name: String!, $number: Int!) {
 		// Side-effect cache: ensurePendingReview already pays for the
 		// viewer query, so let ViewerLogin readers reuse the result
 		// instead of double-billing the round trip.
+		c.cacheMu.Lock()
 		c.viewerLogin = viewerLogin
+		c.cacheMu.Unlock()
 	}
 	for _, r := range pendingResp.Repository.PullRequest.Reviews.Nodes {
 		if r.Author.Login == viewerLogin {
+			c.cacheMu.Lock()
 			c.pendingReviewID[n] = r.ID
+			c.cacheMu.Unlock()
 			return r.ID, nil
 		}
 	}
@@ -160,12 +177,14 @@ mutation($input: AddPullRequestReviewInput!) {
 	if err := c.gql.DoWithContext(ctx, createMut, createVars, &createResp); err != nil {
 		return "", fmt.Errorf("create pending review: %w", err)
 	}
-	id := createResp.AddPullRequestReview.PullRequestReview.ID
-	if id == "" {
+	createdID := createResp.AddPullRequestReview.PullRequestReview.ID
+	if createdID == "" {
 		return "", fmt.Errorf("create pending review: empty id")
 	}
-	c.pendingReviewID[n] = id
-	return id, nil
+	c.cacheMu.Lock()
+	c.pendingReviewID[n] = createdID
+	c.cacheMu.Unlock()
+	return createdID, nil
 }
 
 // CreatePendingReviewThread implements Client by ensuring a pending
@@ -352,7 +371,9 @@ mutation($input: UpdatePullRequestReviewCommentInput!) {
 // UpdateReviewComment to recover Path / Line / DiffSide that the
 // updatePullRequestReviewComment mutation does not return on its own.
 func (c *ghClient) threadByCommentNodeID(n int, commentNodeID string, partial gqlReviewThread) gqlReviewThread {
+	c.cacheMu.Lock()
 	cached, ok := c.comments[n]
+	c.cacheMu.Unlock()
 	if !ok {
 		return partial
 	}
@@ -389,7 +410,9 @@ func (c *ghClient) threadByCommentNodeID(n int, commentNodeID string, partial gq
 // whatever fetchThreadInfo did manage to surface) when no cached match
 // is found, so callers never see a freshly-zeroed struct.
 func (c *ghClient) fallbackThreadFromCache(n int, parentThreadID string, partial gqlReviewThread) gqlReviewThread {
+	c.cacheMu.Lock()
 	cached, ok := c.comments[n]
+	c.cacheMu.Unlock()
 	if !ok {
 		return partial
 	}
@@ -422,6 +445,8 @@ func (c *ghClient) fallbackThreadFromCache(n int, parentThreadID string, partial
 // listing for a PR so the next List* refetches state. Called after
 // every pending POST so the next refresh sees fresh data.
 func (c *ghClient) invalidateCommentsCache(n int) {
+	c.cacheMu.Lock()
 	delete(c.comments, n)
 	delete(c.prFiles, n)
+	c.cacheMu.Unlock()
 }
