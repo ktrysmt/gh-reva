@@ -59,9 +59,9 @@ test('C1: Diff Enter then y saves the editor body as a pending comment', async (
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  // Confirm prompt appears; user presses y to commit. Without this the
-  // editor never launches.
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  // Confirm modal overlays a centered prompt with title + target +
+  // [y]es / [n]o footer. Without y the editor never launches.
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.type('y')
   // Editor → exit → applyComposeBody appends pending → Comments pane
   // re-renders with both the body and the [pending] tag.
@@ -82,7 +82,7 @@ test('C2: Comments r then y saves a pending reply under the cursor thread', asyn
   await navigateToDiffLine(s, 5)
   await s.press('tab') // Diff → Comments
   await s.type('r')
-  await s.waitForText('post reply? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Post reply?', { timeout: 3000 })
   await s.type('y')
   await s.waitForText('pending-reply-from-gh-reva', { timeout: 8000 })
   const screen = await s.text()
@@ -121,7 +121,7 @@ test('C3: empty body from $EDITOR cancels — no pending comment is added', asyn
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.type('y')
   // Wait for editor to exit and bubbletea to redraw.
   await s.waitForText('enter:comment', { timeout: 5000 })
@@ -140,7 +140,7 @@ test('C5: textarea fallback when $EDITOR is unset saves pending on Ctrl+S', asyn
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.type('y')
   await s.waitForText('New comment', { timeout: 5000 })
   await s.type('inline-textarea-body')
@@ -161,7 +161,7 @@ test('C5b: textarea Esc cancels without saving', async () => {
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.type('y')
   await s.waitForText('New comment', { timeout: 5000 })
   await s.type('discard-me')
@@ -183,12 +183,13 @@ test('C6: confirm n cancels — no editor opens, no pending comment is added', a
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.type('n')
-  // Status bar returns to the per-pane Diff keymap; prompt is gone.
+  // Modal closes; the Diff keymap is back on the status bar and the
+  // confirm title is no longer painted.
   await s.waitForText('enter:comment', { timeout: 3000 })
   const screen = await s.text()
-  assert.ok(!/start new comment\?/.test(screen), `confirm prompt must clear after n`)
+  assert.ok(!/Start new comment\?/.test(screen), `confirm modal must clear after n`)
   const comments = paneText(screen, 'Comments')
   assert.ok(!/should-not-appear/.test(comments),
     `cancelled body must never reach the Comments pane:\n${comments}`)
@@ -202,11 +203,11 @@ test('C6b: confirm Esc cancels (alternative cancel key)', async () => {
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
-  await s.waitForText('start new comment? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Start new comment?', { timeout: 3000 })
   await s.press('esc')
   await s.waitForText('enter:comment', { timeout: 3000 })
   const screen = await s.text()
-  assert.ok(!/start new comment\?/.test(screen), `confirm prompt must clear after Esc`)
+  assert.ok(!/Start new comment\?/.test(screen), `confirm modal must clear after Esc`)
   const comments = paneText(screen, 'Comments')
   assert.ok(!/should-not-appear-esc/.test(comments),
     `Esc-cancelled body must not reach Comments`)

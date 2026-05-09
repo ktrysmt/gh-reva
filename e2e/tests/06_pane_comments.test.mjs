@@ -154,7 +154,7 @@ test('G9: r on Comments opens the reply compose modal (after y confirm)', async 
   for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
   await s.press('tab')                                                // → Comments
   await s.type('r')
-  await s.waitForText('post reply? [y]es [n]o', { timeout: 3000 })
+  await s.waitForText('Post reply?', { timeout: 3000 })
   await s.type('y')
   await s.waitForText('Reply', { timeout: 5000 })
   await s.press('esc')                                                // close modal

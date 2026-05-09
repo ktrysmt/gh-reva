@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -310,7 +311,8 @@ func runEditorCmd(initialBody string) tea.Cmd {
 		}
 	}
 	_ = f.Close()
-	shellCmd := fmt.Sprintf("%s %s", editorEnv(), shellSingleQuote(tmpPath))
+	editor := editorEnv()
+	shellCmd := fmt.Sprintf("%s%s %s", editor, startInsertFlag(editor), shellSingleQuote(tmpPath))
 	cmd := buildEditorCmd(shellCmd)
 	if os.Getenv("TMUX") != "" {
 		return runEditorOverlay(cmd, tmpPath)
@@ -347,6 +349,26 @@ func readComposeBody(tmpPath string, execErr error) tea.Msg {
 		return composeBodyMsg{err: readErr}
 	}
 	return composeBodyMsg{body: string(b)}
+}
+
+// startInsertFlag returns " +startinsert" when `editor` is a vim-family
+// command (vim, nvim, vi, gvim, mvim — possibly with a leading directory
+// or `.exe` suffix, possibly followed by additional flags), otherwise
+// "". Vim honors `+startinsert` by entering Insert mode at startup,
+// matching the user's expectation that a fresh comment buffer is ready
+// for typing without the extra `i` keystroke. Detection runs against
+// the first whitespace token so wrappers like `nvim +Glog` still match.
+func startInsertFlag(editor string) string {
+	fields := strings.Fields(editor)
+	if len(fields) == 0 {
+		return ""
+	}
+	base := strings.TrimSuffix(filepath.Base(fields[0]), ".exe")
+	switch base {
+	case "vim", "nvim", "vi", "gvim", "mvim":
+		return " +startinsert"
+	}
+	return ""
 }
 
 // shellSingleQuote wraps s in POSIX single quotes, escaping any embedded

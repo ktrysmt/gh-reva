@@ -278,8 +278,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // so the user cannot navigate behind the prompt or accidentally toss
 // the parked payload.
 //
-//   - y          → commit: PendingConfirm clears, Compose receives the
-//     payload, the editor / textarea Cmd starts.
+//   - y, Enter   → commit: PendingConfirm clears, Compose receives the
+//     payload, the editor / textarea Cmd starts. Enter is a synonym for
+//     y so the muscle-memory "press enter to proceed" path works on
+//     this prompt too.
 //   - n          → cancel: payload discarded.
 //   - Esc        → cancel.
 //   - q, Ctrl+C  → cancel (do not quit; symmetric with the modal-close
@@ -288,7 +290,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 //   - other      → absorbed (no-op).
 func (m Model) handleKeyConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "y":
+	case "y", "enter":
 		return m, m.confirmComposeStart()
 	case "n", "esc", "q", "ctrl+c":
 		m.cancelComposeConfirm()

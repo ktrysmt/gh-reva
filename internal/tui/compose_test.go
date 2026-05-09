@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,6 +313,40 @@ func TestApplyComposeSubmitted_KeepsHiddenOnFailure(t *testing.T) {
 	m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 500")})
 	if !m.state.CommentsHidden {
 		t.Fatalf("CommentsHidden must stay true on failure (user toggle wins)")
+	}
+}
+
+// vim / nvim launches should auto-enter Insert mode so a fresh comment
+// can be typed without an extra `i` keystroke. Detection runs against
+// the first whitespace-separated token of $EDITOR (so flags like
+// `nvim +Glog` still match) after stripping any leading directory and
+// `.exe` suffix. Non-vim editors return an empty flag and the launch
+// command is unchanged.
+func TestStartInsertFlag(t *testing.T) {
+	cases := []struct {
+		editor string
+		want   string
+	}{
+		{"vim", " +startinsert"},
+		{"nvim", " +startinsert"},
+		{"vi", " +startinsert"},
+		{"gvim", " +startinsert"},
+		{"mvim", " +startinsert"},
+		{"/usr/bin/vim", " +startinsert"},
+		{"/usr/local/bin/nvim", " +startinsert"},
+		{"vim -p", " +startinsert"},
+		{"nvim +Glog", " +startinsert"},
+		{"nvim.exe", " +startinsert"},
+		{"code --wait", ""},
+		{"emacs", ""},
+		{"nano", ""},
+		{"", ""},
+		{"   ", ""},
+	}
+	for _, c := range cases {
+		if got := startInsertFlag(c.editor); got != c.want {
+			t.Errorf("startInsertFlag(%q): got %q want %q", c.editor, got, c.want)
+		}
 	}
 }
 
@@ -679,6 +714,29 @@ func TestHandleKey_PendingConfirmYStartsEditing(t *testing.T) {
 	}
 }
 
+// Enter is a synonym for y on the confirm prompt — matches the
+// "press enter to commit" muscle memory most TUI confirm dialogs use.
+// The cancel set (n / Esc / q / Ctrl+C) is unaffected.
+func TestHandleKey_PendingConfirmEnterStartsEditing(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	t.Setenv("VISUAL", "")
+	mv := newComposeModel(t, composePatch, nil)
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.paneHeightDiff = 10
+	if _, _ = mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter}); mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm must be set after Diff Enter")
+	}
+	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+	if got.state.PendingConfirm != nil {
+		t.Fatalf("PendingConfirm must clear on Enter")
+	}
+	if got.state.Compose == nil || got.state.Compose.Kind != model.ComposeInline {
+		t.Fatalf("Compose must be installed on Enter, got %+v", got.state.Compose)
+	}
+}
+
 // y on an inline-range confirm must clear Visual at the moment of
 // commit. Until y, the highlighted range stays visible.
 func TestHandleKey_PendingConfirmYClearsVisualOnInlineRange(t *testing.T) {
@@ -782,29 +840,104 @@ func TestHandleKey_PendingConfirmAbsorbsOtherKeys(t *testing.T) {
 	}
 }
 
-// The status bar replaces its per-pane keymap with a confirm prompt
-// while PendingConfirm is set. Each compose kind has its own label.
-func TestStatusBarContent_ShowsConfirmPrompt(t *testing.T) {
-	cases := []struct {
-		kind model.ComposeKind
-		want string
-	}{
-		{model.ComposeInline, "start new comment? [y]es [n]o"},
-		{model.ComposeReply, "post reply? [y]es [n]o"},
-		{model.ComposeEdit, "edit comment? [y]es [n]o"},
-	}
-	for _, c := range cases {
+// The confirm prompt is owned by the centered modal, not the status bar.
+// While PendingConfirm is set the status bar reverts to whatever the
+// focused pane normally shows (suffix preserved); the y/n decision is
+// surfaced exclusively through overlayConfirm. Locks the contract that
+// a future change cannot duplicate the prompt back into the bar.
+func TestStatusBarContent_DoesNotMirrorConfirm(t *testing.T) {
+	cases := []model.ComposeKind{model.ComposeInline, model.ComposeReply, model.ComposeEdit}
+	for _, k := range cases {
 		mv := newComposeModel(t, composePatch, nil)
+		mv.state.FocusedPane = model.PaneDiff
 		mv.state.PendingConfirm = &model.PendingConfirm{
-			Kind:    c.kind,
-			Compose: &model.ComposeState{Kind: c.kind, Status: model.ComposeEditing},
+			Kind:    k,
+			Compose: &model.ComposeState{Kind: k, Status: model.ComposeEditing},
 		}
 		ctx, suffix := mv.statusBarContent()
-		if ctx != c.want {
-			t.Fatalf("kind=%v: got %q want %q", c.kind, ctx, c.want)
+		if strings.Contains(ctx, "[y]es") || strings.Contains(ctx, "[n]o") {
+			t.Fatalf("kind=%v: confirm prompt must NOT appear in status bar; got %q", k, ctx)
 		}
-		if suffix != "" {
-			t.Fatalf("kind=%v: confirm prompt must drop the common suffix, got %q", c.kind, suffix)
+		if ctx != hintDiff {
+			t.Fatalf("kind=%v: status bar should show focused-pane hint, got %q", k, ctx)
+		}
+		if suffix != statusCommonSuffix {
+			t.Fatalf("kind=%v: common suffix must persist, got %q", k, suffix)
+		}
+	}
+}
+
+// The confirm modal renders a title (action verb), a target subject
+// (path:line + side), and the [y]es / [n]o footer. Locks the user-
+// visible contract — both halves of the prompt must reach the screen.
+func TestOverlayConfirm_RendersTitleSubjectAndKeymap(t *testing.T) {
+	mv := newComposeModel(t, composePatch, nil)
+	mv.width = 80
+	mv.height = 24
+	mv.paneHeightDiff = 10
+	mv.state.DiffCursor.Line = 5
+	mv.startComposeInline()
+	if mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm set")
+	}
+	body := strings.Repeat(strings.Repeat(" ", mv.width)+"\n", mv.height-1) + strings.Repeat(" ", mv.width)
+	out := mv.overlayConfirm(body)
+	for _, want := range []string{"Start new comment?", "foo.go:21 RIGHT", "[y]es", "[n]o"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("modal missing %q\n--- modal ---\n%s", want, out)
+		}
+	}
+}
+
+// Reply confirm derives its subject from the parent thread's root
+// comment so the user can see WHO they are replying to before paying
+// the editor open.
+func TestOverlayConfirm_ReplySubjectFromRoot(t *testing.T) {
+	root := &model.ReviewComment{
+		ID: 100, NodeID: "PRRC_100", ThreadID: "PRT_abc", User: "alice",
+		Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
+	mv.width = 80
+	mv.height = 24
+	mv.state.DiffCursor.Line = 5
+	mv.state.CommentsCursor = 0
+	mv.startComposeReply()
+	if mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm set")
+	}
+	body := strings.Repeat(strings.Repeat(" ", mv.width)+"\n", mv.height-1) + strings.Repeat(" ", mv.width)
+	out := mv.overlayConfirm(body)
+	for _, want := range []string{"Post reply?", "foo.go:21", "alice"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("reply modal missing %q\n--- modal ---\n%s", want, out)
+		}
+	}
+}
+
+// Edit confirm derives its subject from the comment under the cursor
+// (looked up by NodeID). The action verb in the title disambiguates
+// from inline / reply.
+func TestOverlayConfirm_EditSubjectFromCursor(t *testing.T) {
+	own := &model.ReviewComment{
+		ID: 5, NodeID: "PRRC_5", User: "you", Path: "foo.go", Line: 21, Side: "RIGHT",
+		Body: "draft", CreatedAt: time.Unix(1, 0),
+	}
+	mv := newComposeModel(t, composePatch, []*model.ReviewComment{own})
+	mv.width = 80
+	mv.height = 24
+	mv.state.ViewerLogin = "you"
+	mv.state.DiffCursor.Line = 5
+	mv.state.CommentsCursor = 0
+	mv.startComposeEdit()
+	if mv.state.PendingConfirm == nil {
+		t.Fatalf("precondition: PendingConfirm set")
+	}
+	body := strings.Repeat(strings.Repeat(" ", mv.width)+"\n", mv.height-1) + strings.Repeat(" ", mv.width)
+	out := mv.overlayConfirm(body)
+	for _, want := range []string{"Edit comment?", "foo.go:21 RIGHT"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("edit modal missing %q\n--- modal ---\n%s", want, out)
 		}
 	}
 }

@@ -47,12 +47,12 @@ const (
 	hintComposeSubmitting = "posting to GitHub…"
 	hintComposeFailed     = "ctrl+s:retry  esc:cancel"
 
-	// Confirm prompts: shown while a built compose payload is parked in
-	// PendingConfirm awaiting `[y]es / [n]o`. Each compose kind gets its
-	// own verb so the user sees what they are about to commit.
-	hintConfirmInline = "start new comment? [y]es [n]o"
-	hintConfirmReply  = "post reply? [y]es [n]o"
-	hintConfirmEdit   = "edit comment? [y]es [n]o"
+	// PendingConfirm has no status-bar hint of its own: the centered
+	// confirm modal (overlayConfirm) carries the action verb, target
+	// subject, and `[y]es / [n]o` footer. While PendingConfirm is set
+	// the bar reverts to the focused pane's normal hint so the user's
+	// frame of reference (URL, pane keymap) stays steady underneath
+	// the prompt.
 
 	// statusCommonSuffix is the navigation hint group appended to the
 	// per-pane context in normal mode. It lives on the LEFT (joined to
@@ -103,21 +103,11 @@ func (m Model) statusBarContent() (string, string) {
 	if m.state.Notice != "" {
 		return m.state.Notice, ""
 	}
-	// PendingConfirm is checked ahead of Compose because the parked
-	// payload has been moved out of m.state.Compose into PendingConfirm
-	// while the prompt is up — Compose stays nil until the user
-	// presses `y`. Suffix is dropped so the prompt fills the slot
-	// without competing with `?:help`/`q:quit` hints.
-	if pc := m.state.PendingConfirm; pc != nil {
-		switch pc.Kind {
-		case model.ComposeReply:
-			return hintConfirmReply, ""
-		case model.ComposeEdit:
-			return hintConfirmEdit, ""
-		default:
-			return hintConfirmInline, ""
-		}
-	}
+	// PendingConfirm intentionally does NOT alter the status bar — the
+	// centered confirm modal (overlayConfirm) is the single source for
+	// the prompt. Falling through to the focused-pane hint keeps the
+	// URL / keymap context stable underneath the modal so the user
+	// retains their bearings while choosing y / n.
 	if cs := m.state.Compose; cs != nil {
 		switch cs.Status {
 		case model.ComposeSubmitting:

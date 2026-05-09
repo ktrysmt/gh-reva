@@ -195,6 +195,7 @@ func (m Model) View() string {
 		body = m.overlayModal(body)
 		body = m.overlayHelp(body)
 		body = m.overlayCompose(body)
+		body = m.overlayConfirm(body)
 		if statusBar != "" {
 			return body + "\n" + statusBar
 		}
@@ -225,6 +226,7 @@ func (m Model) View() string {
 	body = m.overlayModal(body)
 	body = m.overlayHelp(body)
 	body = m.overlayCompose(body)
+	body = m.overlayConfirm(body)
 
 	if statusBar != "" {
 		return body + "\n" + statusBar
