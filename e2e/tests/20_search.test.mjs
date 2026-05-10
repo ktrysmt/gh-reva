@@ -132,9 +132,12 @@ test('P8: Diff search lands cursor on the matched buffer line', async () => {
   await s.type('/')
   await s.type('Hello')
   const screen = await s.text()
-  // greeting.go diff has "+// Hello returns ...". The cursor should sit on it.
+  // greeting.go diff has "+// Hello returns ...". Under the per-column
+  // split layout the cursor `> ` lands in the Rcursor column (mid-row),
+  // not at the row's left edge — find the row that carries both `> `
+  // anywhere AND the search target.
   const diff = paneText(screen, 'Diff')
-  const cursorRow = diff.split('\n').find(l => l.startsWith('> ')) || ''
+  const cursorRow = diff.split('\n').find(l => l.includes('> ') && l.includes('Hello')) || ''
   assert.match(
     cursorRow,
     /Hello/,

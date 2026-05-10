@@ -61,7 +61,7 @@ func (m *Model) autoSelectCommit(commits []*model.Commit) {
 			return
 		}
 		m.state.SelectedRange = model.CommitRange{Kind: model.RangeWholePR}
-		m.state.DiffCursor = model.DiffCursor{}
+		m.state.DiffCursor = model.DiffCursor{Side: model.DiffSideRight}
 		m.state.DiffViewport.Top = 0
 		m.state.CommentsCursor = 0
 		return
@@ -74,7 +74,14 @@ func (m *Model) autoSelectCommit(commits []*model.Commit) {
 		return
 	}
 	m.state.SelectedRange = model.CommitRange{Kind: model.RangeSingleCommit, SHA: c.SHA}
-	m.state.DiffCursor = model.DiffCursor{}
+	// Reset to the after column on commit switch — DiffCursor.Side
+	// without an explicit value is empty string, which makes j/k
+	// auto-skip treat every `+` and `-` row as "not on this side"
+	// and freeze cursor motion. CLAUDE.md §4 #19 establishes the
+	// "reset Side to RIGHT on context switch" rule for selectFile;
+	// the same reset applies here so a commit switch does not strand
+	// the cursor in a side-less limbo.
+	m.state.DiffCursor = model.DiffCursor{Side: model.DiffSideRight}
 	m.state.DiffViewport.Top = 0
 	m.state.CommentsCursor = 0
 }

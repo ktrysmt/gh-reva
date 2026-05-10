@@ -110,6 +110,53 @@ func TestBuildComposeInline_Addition(t *testing.T) {
 	}
 }
 
+func TestBuildComposeInline_ContextLineFollowsCursorSide(t *testing.T) {
+	// Context buffer line at index 3 in composePatch is ` unchanged`,
+	// with oldLine=10 / newLine=20. Cursor.Side decides which file-line
+	// number and which Side string the compose payload carries.
+	t.Run("RIGHT", func(t *testing.T) {
+		m := newComposeModel(t, composePatch, nil)
+		m.state.DiffCursor.Line = 3
+		m.state.DiffCursor.Side = model.DiffSideRight
+		if !m.buildComposeInline() {
+			t.Fatalf("buildComposeInline returned false")
+		}
+		cs := m.state.Compose
+		if cs.Side != "RIGHT" || cs.Line != 20 {
+			t.Fatalf("RIGHT context anchor: got side=%s line=%d, want RIGHT/20", cs.Side, cs.Line)
+		}
+	})
+	t.Run("LEFT", func(t *testing.T) {
+		m := newComposeModel(t, composePatch, nil)
+		m.state.DiffCursor.Line = 3
+		m.state.DiffCursor.Side = model.DiffSideLeft
+		if !m.buildComposeInline() {
+			t.Fatalf("buildComposeInline returned false")
+		}
+		cs := m.state.Compose
+		if cs.Side != "LEFT" || cs.Line != 10 {
+			t.Fatalf("LEFT context anchor: got side=%s line=%d, want LEFT/10", cs.Side, cs.Line)
+		}
+	})
+}
+
+func TestBuildComposeInline_PlusLineIgnoresLeftCursor(t *testing.T) {
+	// `+added` (buffer 5) only exists on RIGHT — even if the cursor
+	// somehow held Side=LEFT (it cannot under j/k auto-skip, but the
+	// test pins the safety contract), the compose anchor must still
+	// resolve to RIGHT because that is where the line lives.
+	m := newComposeModel(t, composePatch, nil)
+	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Side = model.DiffSideLeft
+	if !m.buildComposeInline() {
+		t.Fatalf("buildComposeInline returned false")
+	}
+	cs := m.state.Compose
+	if cs.Side != "RIGHT" {
+		t.Fatalf("`+` anchor must stay RIGHT regardless of cursor.Side; got %s", cs.Side)
+	}
+}
+
 func TestBuildComposeInline_RejectsHunkHeader(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
 	m.state.DiffCursor.Line = 2 // "@@" hunk
@@ -858,7 +905,7 @@ func TestStatusBarContent_DoesNotMirrorConfirm(t *testing.T) {
 		if strings.Contains(ctx, "[y]es") || strings.Contains(ctx, "[n]o") {
 			t.Fatalf("kind=%v: confirm prompt must NOT appear in status bar; got %q", k, ctx)
 		}
-		if ctx != hintDiff {
+		if ctx != mv.diffHint() {
 			t.Fatalf("kind=%v: status bar should show focused-pane hint, got %q", k, ctx)
 		}
 		if suffix != statusCommonSuffix {

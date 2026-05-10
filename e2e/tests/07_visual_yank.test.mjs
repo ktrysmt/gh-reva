@@ -39,7 +39,14 @@ test('H2: visual mode in Files is linewise (j extends selection by line)', async
 })
 
 test('H3: visual mode in Diff renders linewise selection', async () => {
-  const s = await launchReva()
+  // cols=200 keeps the split halfW wide enough that the file headers
+  // (`--- a/src/greeting.go`, 21 chars) fit in a single display row,
+  // making display-row count == buffer-row count for the assertion.
+  // Under the default cols=160, the per-column split overhead pushes
+  // halfW down to 19 and headers wrap to 2 display rows each, so the
+  // visual-range mark count would balloon to 5 even though the
+  // selected buffer-row count is still 3.
+  const s = await launchReva({ cols: 200 })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   await s.type('v')
@@ -66,7 +73,8 @@ test('H4: j/k extends linewise selection', async () => {
 })
 
 test('H5: visual mode in Diff extends with j/k', async () => {
-  const s = await launchReva()
+  // cols=200: see H3's note about wrap-driven cursor inflation.
+  const s = await launchReva({ cols: 200 })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')
   await s.type('v')

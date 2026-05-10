@@ -228,13 +228,13 @@ func TestUnifiedAdditionGetsBgAndSyntax(t *testing.T) {
 	m.state.DiffViewMode = model.DiffViewUnified
 	m.paneWidthDiff = 80
 
-	// Use distinct idx values; rowCache is keyed on (mode, idx, halfW, commented)
+	// Use distinct idx values; rowCache is keyed on (mode, idx, halfW, marker)
 	// and these two calls would otherwise alias on idx=0.
-	plusRows := m.renderUnifiedBufferLine("+func main() { return }", 0, -1, false, false)
+	plusRows := m.renderUnifiedBufferLine("+func main() { return }", 0, -1, 0, false)
 	if len(plusRows) == 0 {
 		t.Fatalf("expected at least one row for '+' line")
 	}
-	minusRows := m.renderUnifiedBufferLine("-func main() { return }", 1, -1, false, false)
+	minusRows := m.renderUnifiedBufferLine("-func main() { return }", 1, -1, 0, false)
 	if len(minusRows) == 0 {
 		t.Fatalf("expected at least one row for '-' line")
 	}

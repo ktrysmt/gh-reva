@@ -41,6 +41,15 @@ type ReviewComment struct {
 	Line             int       `json:"line"`
 	OriginalLine     int       `json:"original_line"`
 	Side             string    `json:"side,omitempty"`
+	// StartLine / OriginalStartLine / StartSide describe the upper edge
+	// of a multi-line range comment. Zero values mean "single-line"
+	// (the comment anchors only at Line / Side). When the live
+	// StartLine resolves to 0 on an outdated comment, the renderer falls
+	// back to OriginalStartLine the same way Line falls back to
+	// OriginalLine.
+	StartLine         int    `json:"start_line,omitempty"`
+	OriginalStartLine int    `json:"original_start_line,omitempty"`
+	StartSide         string `json:"start_side,omitempty"`
 	DiffHunk         string    `json:"diff_hunk"`
 	InReplyTo        int64     `json:"in_reply_to"`
 	User             string    `json:"user"`

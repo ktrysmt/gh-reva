@@ -124,6 +124,11 @@ func commentsLeftSideFixture(t *testing.T) Model {
 func TestCommentsViewShowsLeftSideThreadOnDeletedLine(t *testing.T) {
 	m := commentsLeftSideFixture(t)
 	m.state.DiffCursor.Line = 2 // the `-removed_line2` buffer row
+	// j/k auto-skip never lands a RIGHT cursor on a `-` row, so the only
+	// reachable real-world state for a cursor at buffer 2 is Side=LEFT.
+	// Pin that explicitly so the Side filter does not hide the LEFT
+	// thread we are asserting on.
+	m.state.DiffCursor.Side = model.DiffSideLeft
 
 	got := m.commentsView()
 	if !strings.Contains(got, "carol") {
@@ -152,19 +157,66 @@ func TestCommentsViewShowsRightSideThreadOnAddedLine(t *testing.T) {
 	}
 }
 
-// TestCommentLineSetIncludesLeftAndRightAnchors pins that the ◆ marker set
+// TestCommentsView_FilterBySideOnContextRow pins that the Comments
+// column shows ONLY threads matching the cursor's Side. Both threads
+// anchor on the same context buffer line (` line1` exists on both
+// sides at oldLine=1 / newLine=1, so buffer index 1 is shared) but with
+// opposite Side values; flipping cursor.Side flips which one renders.
+func TestCommentsView_FilterBySideOnContextRow(t *testing.T) {
+	m := commentsModelFixture(t)
+	leftComment := &model.ReviewComment{
+		ID: 100, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 1, Side: "LEFT", User: "leftie",
+		CreatedAt: time.Date(2024, 2, 1, 10, 0, 0, 0, time.Local),
+		Body:      "before-side note",
+	}
+	rightComment := &model.ReviewComment{
+		ID: 101, Path: "src/foo.go", CommitID: "abcdef0123456",
+		Line: 1, Side: "RIGHT", User: "rightie",
+		CreatedAt: time.Date(2024, 2, 1, 11, 0, 0, 0, time.Local),
+		Body:      "after-side note",
+	}
+	m.state.PR.Comments = []*model.ReviewComment{leftComment, rightComment}
+	m.state.DiffCursor.Line = 1
+
+	m.state.DiffCursor.Side = model.DiffSideLeft
+	gotLeft := m.commentsView()
+	if !strings.Contains(gotLeft, "leftie") {
+		t.Errorf("LEFT cursor must show LEFT-side thread:\n%s", gotLeft)
+	}
+	if strings.Contains(gotLeft, "rightie") {
+		t.Errorf("LEFT cursor must NOT show RIGHT-side thread:\n%s", gotLeft)
+	}
+
+	m.state.DiffCursor.Side = model.DiffSideRight
+	gotRight := m.commentsView()
+	if !strings.Contains(gotRight, "rightie") {
+		t.Errorf("RIGHT cursor must show RIGHT-side thread:\n%s", gotRight)
+	}
+	if strings.Contains(gotRight, "leftie") {
+		t.Errorf("RIGHT cursor must NOT show LEFT-side thread:\n%s", gotRight)
+	}
+}
+
+// TestCommentLineMarkersIncludesLeftAndRightAnchors pins that the ◆ marker
 // covers both the `-` row (LEFT comment) and the `+` row (RIGHT comment).
 // Without side-aware mapping, the LEFT comment's Line=2 would either find
 // the `+` row (because newLine 2 happens to land there in this fixture)
 // or no row at all, and the `-` row would never get a marker.
-func TestCommentLineSetIncludesLeftAndRightAnchors(t *testing.T) {
+func TestCommentLineMarkersIncludesLeftAndRightAnchors(t *testing.T) {
 	m := commentsLeftSideFixture(t)
-	got := m.commentLineSet()
-	if !got[2] {
-		t.Errorf("commentLineSet must include buffer index 2 (the `-` row anchored by LEFT comment); got %#v", got)
+	got := m.commentLineMarkers()
+	if got.Left[2] != '◆' {
+		t.Errorf("Left map must place ◆ at buffer index 2 (the `-` row anchored by LEFT comment); got Left=%#v", got.Left)
 	}
-	if !got[3] {
-		t.Errorf("commentLineSet must include buffer index 3 (the `+` row anchored by RIGHT comment); got %#v", got)
+	if got.Right[3] != '◆' {
+		t.Errorf("Right map must place ◆ at buffer index 3 (the `+` row anchored by RIGHT comment); got Right=%#v", got.Right)
+	}
+	if _, leaked := got.Right[2]; leaked {
+		t.Errorf("Right map must not leak the LEFT-side ◆ onto buffer index 2: got Right=%#v", got.Right)
+	}
+	if _, leaked := got.Left[3]; leaked {
+		t.Errorf("Left map must not leak the RIGHT-side ◆ onto buffer index 3: got Left=%#v", got.Left)
 	}
 }
 

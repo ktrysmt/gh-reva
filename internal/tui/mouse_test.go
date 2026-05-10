@@ -238,23 +238,56 @@ func TestMouse_ClickDiffContent_MovesCursor(t *testing.T) {
 	m := mouseModelFixture(t)
 	m.state.FocusedPane = model.PaneFiles
 	m.state.DiffViewport.Top = 0
-	// halfW=11 in split mode wraps the hunk header (`@@ -1,3 +1,5 @@`,
-	// 16 chars) onto 2 display rows, so the buffer-line / display-row
-	// mapping is shifted by one past the hunk:
+	// Under m.width=140 the Diff pane gets paneWidthDiff=39, so split
+	// halfW = (39-21)/2 = 9. The hunk header (`@@ -1,3 +1,5 @@`,
+	// 16 chars) wraps to 2 display rows on both sides, and `+addedLine*`
+	// (11 chars) wraps to 2 rows on its RIGHT side. Buffer / display
+	// mapping under this layout:
 	//   display 0..1 → buffer 0 (hunk header, 2 wraps)
-	//   display 2    → buffer 1 (` line1`)
-	//   display 3    → buffer 2 (`+addedLine2`)
-	//   display 4    → buffer 3 (`+addedLine3`)
-	//   display 5    → buffer 4 (` line4`)
-	// Pick content row 5 (y=3+5=8) and assert buffer line 4 to lock the
+	//   display 2    → buffer 1 (` line1`, both sides 1 row)
+	//   display 3..4 → buffer 2 (`+addedLine2`, RIGHT wraps to 2 rows)
+	//   display 5..6 → buffer 3 (`+addedLine3`)
+	//   display 7    → buffer 4 (` line4`)
+	// Pick content row 7 (y=3+7=10) and assert buffer line 4 to lock the
 	// wrap-aware path explicitly.
-	res, _ := m.handleMouse(leftClick(60, 8))
+	res, _ := m.handleMouse(leftClick(60, 10))
 	m = res.(Model)
 	if m.state.FocusedPane != model.PaneDiff {
 		t.Errorf("FocusedPane=%v, want Diff", m.state.FocusedPane)
 	}
 	if m.state.DiffCursor.Line != 4 {
 		t.Errorf("DiffCursor.Line=%d, want 4 (wrap-aware mapping)", m.state.DiffCursor.Line)
+	}
+}
+
+// TestMouse_ClickDiffLeftCell_SetsLeftSide pins that a click landing in
+// the LEFT half of the split-mode Diff pane parks DiffCursor.Side on
+// LEFT. Inner col 17 is inside the leftCell area (oldLn=cols 4..7,
+// space=8, leftCell starts at col 9, divider at col 10+halfW=19).
+func TestMouse_ClickDiffLeftCell_SetsLeftSide(t *testing.T) {
+	m := mouseModelFixture(t)
+	m.state.DiffViewport.Top = 0
+	m.state.DiffCursor.Side = model.DiffSideRight
+
+	// x=60 → relX=18 → ContentCol=17, well inside LEFT half.
+	res, _ := m.handleMouse(leftClick(60, 5))
+	m = res.(Model)
+	if m.state.DiffCursor.Side != model.DiffSideLeft {
+		t.Errorf("click in LEFT half must set Side=LEFT; got %q", m.state.DiffCursor.Side)
+	}
+}
+
+// TestMouse_ClickDiffRightCell_SetsRightSide pins the symmetric case.
+// x=80 lands well past the inner divider, in the RIGHT half.
+func TestMouse_ClickDiffRightCell_SetsRightSide(t *testing.T) {
+	m := mouseModelFixture(t)
+	m.state.DiffViewport.Top = 0
+	m.state.DiffCursor.Side = model.DiffSideLeft
+
+	res, _ := m.handleMouse(leftClick(80, 5))
+	m = res.(Model)
+	if m.state.DiffCursor.Side != model.DiffSideRight {
+		t.Errorf("click in RIGHT half must set Side=RIGHT; got %q", m.state.DiffCursor.Side)
 	}
 }
 

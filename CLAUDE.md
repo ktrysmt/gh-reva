@@ -39,27 +39,27 @@ go run testdata/gen_large_fixture.go testdata/large-pr.json
 - `--theme <name>` — default `gruvbox`. Any chroma styles registry name (74) plus `builtin-dark`. `GH_REVA_THEME` env fallback. Empty → `defaultThemeName` in `internal/theme/theme.go`.
 - `--no-color` — honors `NO_COLOR` / `CLICOLOR` (`termenv.EnvNoColor`).
 - `--list-themes` — print accepted names and exit 0.
-- `--config <path>` — load `reva.toml`. Defaults: `$XDG_CONFIG_HOME/reva.toml` → `$HOME/.config/reva.toml`. Schema: `[syntax.extensions]` table mapping a filename suffix (`.j2`) to a chroma lexer name. Explicit `--config` whose target does not exist is a hard error; implicit search tolerates absence. Authoritative: `internal/config/config.go` + `internal/tui/syntax.go::lexerFromOverride` (longest-suffix-match wins; unknown lexer names fall back to chroma's default extension matcher).
+- `--config <path>` — load `reva.toml`. Defaults: `$XDG_CONFIG_HOME/reva.toml` → `$HOME/.config/reva.toml`. Schema: `[syntax.extensions]` mapping filename suffix (e.g. `.j2`) → chroma lexer name. Explicit `--config` missing target = hard error; implicit search tolerates absence. Authoritative: `internal/config/config.go` + `internal/tui/syntax.go::lexerFromOverride` (longest-suffix-match wins; unknown lexer names fall back to chroma's default extension matcher).
 
 ---
 
 ## 2. Workflow discipline
 
 ### TDD is mandatory
-1. Write failing test(s) first.
-2. Run targeted, confirm failure with the actual assertion mismatch (not timeout / build break).
+1. Failing test(s) first.
+2. Targeted run; confirm failure shows the assertion mismatch (not timeout / build break).
 3. Implement.
-4. Run targeted, confirm pass.
-5. Run full e2e (`pnpm test`), confirm no regressions.
-6. If unrelated tests fail under the new behavior, update them in the same change. Never leave the suite red.
+4. Targeted run; confirm pass.
+5. Full e2e (`pnpm test`); confirm no regressions.
+6. Unrelated tests failing under new behavior → update in the same change. Never leave the suite red.
 
-Skipping the failing-test-first step is forbidden — even for trivial changes.
+Skipping step 1 is forbidden — even for trivial changes.
 
 ### Decision-first vs. action-first
-For non-trivial design space (key bindings, fallback semantics, visual markers), present 2–3 options with tradeoffs and ask before writing tests. For straightforward asks, proceed directly with TDD.
+Non-trivial design space (key bindings, fallback semantics, visual markers) → present 2–3 options with tradeoffs and ask before writing tests. Straightforward asks → proceed with TDD.
 
 ### Risky operations require confirmation
-Confirm before: `git push`, `git reset --hard`, force push (push to main / master forbidden without explicit direction); deleting fixtures / snapshots; adding top-level Go deps; renaming branches. The user runs `git commit` unless they explicitly delegate it.
+Confirm before: `git push`, `git reset --hard`, force push (push to main / master forbidden without explicit direction); deleting fixtures / snapshots; adding top-level Go deps; renaming branches. User runs `git commit` unless explicitly delegated.
 
 ---
 
@@ -121,15 +121,15 @@ gh-reva/
 ```
 
 ### Receiver conventions
-- Mutating helpers: pointer `(m *Model)` (`selectFile`, `advanceFile`, `scrollDiffIntoView`).
-- Pure queries / renderers: value `(m Model)` (`filesView`, `diffView`, `visibleCommits`).
-- `handleKey*` are value receivers; mutate via Go auto-addressing.
-- `m.state` is `*model.AppState`; mutations propagate regardless of receiver kind.
+- Mutating helpers — pointer `(m *Model)`: `selectFile`, `advanceFile`, `scrollDiffIntoView`.
+- Pure queries / renderers — value `(m Model)`: `filesView`, `diffView`, `visibleCommits`.
+- `handleKey*` — value receivers; mutate via Go auto-addressing.
+- `m.state` — `*model.AppState`; mutations propagate regardless of receiver kind.
 
 ### Single source of truth
-- `model.AppState` owns all mutable state. No globals beyond constants.
-- `m.state.SelectedFile` drives the app: `visibleCommits`, `commentsForView`, Diff cache key on it.
-- Per-pane render budgets (`paneWidthFiles`, `paneHeightDiff`, …) set by `View()`, read by pane renderers.
+- `model.AppState` — all mutable state. No globals beyond constants.
+- `m.state.SelectedFile` — drives `visibleCommits`, `commentsForView`, Diff cache key.
+- Per-pane render budgets (`paneWidthFiles`, `paneHeightDiff`, …): populated by `(*Model).measureLayout`, called once at the top of `Update` (before the type switch) and once by `View()` for the first frame. Persistence rides on `Update`'s value-receiver return — Bubbletea stores the returned Model, so paneWidth* survive between messages without per-handler re-measure. View's measurements never persist (string-only return).
 
 ---
 
@@ -146,21 +146,43 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
    - total < 80: degenerate; tests do not pin.
 4. Active pane: `▶ ` prefix on its title row. Exactly one.
 5. Cursor row: `> ` prefix in Files / Commits / Diff / Comments. Visual-range rows also `> `.
-6. Status bar: 2-row borderless block at bottom — content row + blank, always reserved (`statusBarRows = 2`). `bodyHeight = m.height - statusBarRows`. Authoritative: `internal/tui/statusbar.go`. Suppressed when `m.width <= 0`, `m.height <= statusBarRows`, or during loading splash. URL from `api.Target.PRShortForms` (4-step ladder); per-pane context is mode-selected (normal / compose / help / modal / visual) and joins suffix `tab/shift+tab:pane J/K:file ctrl+e:comments ?:help q:quit` only in normal. Transient `AppState.Notice` replaces context, clears on next keystroke. Pane bottom borders sit above the bar's content row — they double as the visual separator.
-7. Loading view: splash + blank gap + (optional version line + blank) + `<spinner> Loading PR…`. Centered both axes. Pre-`tea.WindowSizeMsg` falls back to top-left text. Status bar suppressed during loading. `loadPRCmd` is an `errgroup` fan-out over `GetPR` / `ListCommits` / `ListFiles` / `ListComments` / `ViewerLogin` — total wall time bounded by the slowest leg (typically `ListCommits`, parallelized at `api.commitDetailConcurrency = 8`). Comment counts derived in the assembler from the comments list (outdated excluded, mirroring #25), so `api.ListFiles` no longer round-trips through `ListComments`. `ViewerLogin` failure is swallowed (`""`) — Comments-pane Enter falls back to reply-only (#24b). `model.LoadStage` is `{LoadStagePR, LoadStageDone}` (the latter still gates `SpinnerTickMsg` re-tick). Locked by `internal/tui/load_test.go` and `internal/api/parallel_test.go`.
-7a. Splash: 3 layouts × 3 ASCII REVA arts in `internal/tui/splash.go`; `chooseSplashLayout` / `chooseSplashArt` chosen once in `NewModel` (no flicker). Random by default; pinnable via `GH_REVA_SPLASH_LAYOUT` (1/2/3) and `GH_REVA_SPLASH_ART` (0/1/2). Layouts: `1` dome + `reva vX.Y.Z` + spinner; `2` art + `vX.Y.Z` + spinner; `3` art ▌ dome + `vX.Y.Z` + spinner. Version from `cmd/root.go::SetVersion`; empty suppresses the line.
+6. Status bar (`internal/tui/statusbar.go`): 2-row borderless block — content + blank, `statusBarRows = 2`, `bodyHeight = m.height - statusBarRows`. Suppressed when `m.width <= 0`, `m.height <= statusBarRows`, or during loading splash. URL from `api.Target.PRShortForms` (4-step ladder). Per-pane context: mode-selected (normal / compose / help / modal / visual); suffix `tab/shift+tab:pane J/K:file ctrl+e:comments ?:help q:quit` joined only in normal. Diff context built by `(Model).diffHint`: `[A]` (RIGHT) or `[B]` (LEFT) prepended to `hintDiffKeys`. `AppState.Notice` replaces context for one keystroke. Pane bottom borders sit above the bar's content row — visual separator.
+7. Loading view: splash + blank gap + optional version+blank + `<spinner> Loading PR…`. Centered. Pre-`tea.WindowSizeMsg` → top-left fallback. Status bar suppressed.
+   - `loadPRCmd`: errgroup fan-out over `GetPR` / `ListCommits` / `ListFiles` / `ListComments` / `ViewerLogin`; wall time = slowest leg (typically `ListCommits` at `api.commitDetailConcurrency = 8`).
+   - Comment counts derived in assembler from comments list (outdated excluded, mirroring #25); `api.ListFiles` no longer round-trips through `ListComments`.
+   - `ViewerLogin` failure swallowed (`""`); Comments Enter falls back to reply-only (#24b).
+   - `model.LoadStage = {LoadStagePR, LoadStageDone}`; Done gates `SpinnerTickMsg` re-tick.
+   - Pinned by `internal/tui/load_test.go` + `internal/api/parallel_test.go`.
+7a. Splash (`internal/tui/splash.go`): 3 layouts × 3 ASCII REVA arts. `chooseSplashLayout` / `chooseSplashArt` picked once in `NewModel` (no flicker). Random by default; pinnable via `GH_REVA_SPLASH_LAYOUT` (1/2/3) + `GH_REVA_SPLASH_ART` (0/1/2). Layouts: `1` dome + `reva vX.Y.Z` + spinner; `2` art + `vX.Y.Z` + spinner; `3` art ▌ dome + `vX.Y.Z` + spinner. Version from `cmd/root.go::SetVersion`; empty suppresses.
 
 ### Diff pane
-8. Split row layout: `<cursor 2><marker 2><oldLn 4><sp 1><leftCell halfW><sp 1>│<sp 1><newLn 4><sp 1><rightCell halfW>`. Overhead = 17. `halfW = (paneWidthDiff − 17) / 2`. Degrades to unified when `halfW < 8`.
+8. Split row layout: `<Lcursor 2><Lmarker 2><oldLn 4><sp 1><leftCell halfW><sp 1>│<sp 1><Rmarker 2><Rcursor 2><newLn 4><sp 1><rightCell halfW>`. Overhead = 21; `halfW = (paneWidthDiff − 21) / 2`. Degrades to unified when `halfW < 8` (split engages at `paneWidthDiff ≥ 37`). Per-side cursor / marker columns required for h/l Side switching — a single cursor column can't indicate which physical lane is parked. `splitColumnWidths` ladder unchanged; at total 130–135 the layout still splits, but the overhead may push narrow terminals into the early-unified fallback.
 9. Tab expansion: `expandTabs(line, 4)` before wrap/pad. Without it, terminal-side tab expansion shifts `│`.
-10. `◆` gutter marker in cols 2–3 on the first display row of any buffer line carrying a review comment. Continuation rows leave it blank.
+10. Gutter markers per-side. `commentLineMarkers` (`internal/tui/diffmap.go`) returns `sideMarkers{Left, Right}`; Side captured from `root.Side` at classification time so the same buffer index never collides across columns.
+    - Column placement: LEFT-side → Lmarker col (cols 2–3, immediately left of `oldLn`); RIGHT-side → Rmarker col (immediately right of `│`, just before `Rcursor` / `newLn`).
+    - Glyph set: single-line root → `◆`; multi-line range → `┌` start-edge, `│` intermediate, `◆` end-edge (anchor diamond doubles as bottom edge — `└` intentionally absent because the 2-col gutter can't host both).
+    - Continuation rows: `┌` / `│` lines redraw `│` in the SAME side's gutter (keeps wrapped multi-line ranges connected); `◆` continuation stays blank.
+    - Mixed-side ranges (`StartSide=LEFT`, `Side=RIGHT`) follow END's column — splitting half/half would visually conflate two columns.
+    - Replies ignored — only the thread root carries the range.
+    - Overlap precedence on same Side: `◆ > ┌ > │` (`markerRank`). LEFT and RIGHT at the same buffer row coexist (per-side maps).
+    - Unified mode: `foldMarker(left, right)` collapses to one glyph by rank.
+    - Range data: `model.ReviewComment.{StartLine, OriginalStartLine, StartSide}`. Populator: `internal/api/graphql_comments.go::convertGQLComment`. `OriginalStartLine` is the outdated-fallback (mirrors `OriginalLine` for `Line`).
 11. Split row distribution: header (`---`/`+++`/`@@`) and context render both sides; `-` left only; `+` right only.
-12. Wrap always on. Buffer line ↔ display row is 1:N. `DiffCursor.Line` indexes raw patch buffer; cursor `>` and `◆` only on first display row. Continuation rows: unified indents 5 cols; split leaves cursor / marker / line-number columns blank, prefixes each cell with 1 blank, redraws `│`.
+12. Wrap always on; buffer line ↔ display row is 1:N. `DiffCursor.Line` indexes raw patch buffer; `>` and `◆` appear only on the first display row. Cursor `>` follows active Side: RIGHT (default) → `Rcursor` col; LEFT → `Lcursor` col; opposite stays blank. Continuation rows: unified indents 5 cols; split blanks both cursor / line-number cols, prefixes each cell with 1 blank, redraws inter-half `│`. Per-side gutter blank on continuation EXCEPT `┌` / `│` lines on the same side (redraw `│` to keep wrapped multi-line ranges connected; see #10).
 13. `fitPaneTitle` preserves the `[mode]` suffix at narrow widths; label shrinks with `…`.
 14. Diff Enter:
-    - Cursor row has NO existing comments → queues inline compose confirm via `startComposeInline`. Anchor = `internal/diff.ResolveAnchor` (Path = SelectedFile, CommitSHA = `PR.HeadSHA`, Line + Side). Header / hunk rows rejected. In Diff visual mode, Enter consumes the visual range via `ResolveRange`; mixed-side ranges supported (#27d). Editor / textarea launch held until confirm (#27j).
-    - Cursor row HAS comments (`threadsForCursor()` non-empty) → `focusCommentsAtCursor` shifts focus to Comments (`CommentsCursor = 0`, `Modal = nil`). When Comments is hidden via Ctrl+E (#30c), it auto-reveals first. The user acts via the Comments-pane keymap (Enter = edit own / `r` = reply / Space = open zoom modal). Adding another thread on the same line is intentionally not exposed.
-14b. `gg` is a true two-key sequence: first `g` sets `AppState.PendingPrefix = "g"`; next `g` runs gotoTop; any non-`g` key clears pending AND falls through. The slot is global — Files / Commits / Diff / Comments each call `handlePendingG` (in `search.go`). `G` is the symmetric gotoBottom. Files gg/G move `FilesCursor` only (#19); Commits gg/G still auto-select.
+    - No comments at cursor → `startComposeInline` queues inline compose confirm. Anchor = `internal/diff.ResolveAnchor` (Path = SelectedFile, CommitSHA = `PR.HeadSHA`, Line + Side). Header / hunk rows rejected. In Diff visual mode, Enter consumes the visual range via `ResolveRange`; mixed-side ranges supported (#27d). Editor / textarea launch held until confirm (#27j).
+    - Comments at cursor (`threadsForCursor()` non-empty) → `focusCommentsAtCursor` shifts focus to Comments (`CommentsCursor = 0`, `Modal = nil`). Hidden Comments column (#30c) auto-reveals first. User acts via Comments keymap (Enter = edit own / `r` = reply / Space = zoom modal). Adding another thread on the same line: intentionally not exposed.
+14b. `gg` — true two-key sequence: first `g` sets `AppState.PendingPrefix = "g"`; next `g` runs gotoTop; any non-`g` key clears pending AND falls through. Slot is global — every pane calls `handlePendingG` (`search.go`). `G` is the symmetric gotoBottom. Per-pane semantics: Files moves `FilesCursor` only (#19); Commits auto-selects; Diff honors per-side filter (walks to FIRST / LAST row on `DiffCursor.Side`; LEFT skips `+`, RIGHT skips `-`; headers / hunks / context exist on both).
+
+14c. Diff per-column UX (`internal/tui/diffmap.go::lineExistsOnSide`):
+   - `DiffCursor.Side` (`model.DiffSide`, "LEFT"/"RIGHT", default RIGHT) drives every Side decision: cursor visual position (#12), ◆ marker placement (#10), Comments filter (#23), Compose anchor Side (#27c).
+   - `j/k` auto-skip: RIGHT skips `-` rows, LEFT skips `+` rows. Headers / hunks / context never skipped. `nextSideLine` returns -1 when no further row exists → `j/k` no-op (cursor stays). Wheel uses the same path.
+   - `h` → LEFT, `l` → RIGHT. If cursor row absent on the new Side, `nearestSideLine` repositions the cursor (prefers upward — `h` from `+` lands on the `-` or context above, matching "the line this `+` replaced"). Idempotent when Side matches.
+   - `h/l` in unified mode (`<space>` toggle): no-op + `state.Notice = "h/l: split mode only"`. Side preserved internally; split → unified → split round-trips don't reset column.
+   - `h/l` during Diff visual range: no-op + `state.Notice = "side locked in visual (esc to leave)"`. Anchor + cursor share Side by construction (auto-skip never crosses); mid-range switch would strand an endpoint.
+   - `selectFile` (#19), `autoSelectCommit`, `RangeWholePR` reset → `DiffCursor = model.DiffCursor{Side: DiffSideRight}` so every context switch lands on a known column. Empty-string Side would freeze j/k entirely.
+   - Mouse click in Diff sets Side from inner col: `< halfW+10` → LEFT, `> halfW+10` → RIGHT (divider `│` preserves Side). After Side change, `switchSide` repositions cursor to nearest same-side row if click row is opposite-side. Wheel preserves Side.
 
 ### Commits pane
 15. `visibleCommits` auto-filtered by `SelectedFile`. Set on load (`PR.Files[0].Path`) so the filter is always engaged.
@@ -170,16 +192,21 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 18. `[A]/[M]/[D]/[R]` annotates each commit row that touches `SelectedFile`.
 
 ### Files pane
-19. `j/k` in Files moves `FilesCursor` only — `SelectedFile` does not change on every keystroke (per-keystroke Diff re-render felt sluggish). `Enter` (commit) or `Shift+J/K` (`advanceFile`, works from any pane) is the deliberate gesture that calls `selectFile(path)`. `selectFile` resets `DiffCursor`, `DiffViewport.Top`, `CommitsCursor`, `CommentsCursor` only when path changes. The incsearch (`/`) auto-select retained — typing a query expects the cursor to follow.
+19. `j/k` in Files moves `FilesCursor` only — no Diff re-render per keystroke (sluggish). Deliberate selection gestures: `Enter` (commit) or `Shift+J/K` (`advanceFile`, any pane) → `selectFile(path)`. `selectFile` resets `DiffCursor`, `DiffViewport.Top`, `CommitsCursor`, `CommentsCursor` only when path changes. Incsearch (`/`) auto-select retained — typing expects the cursor to follow.
 20. Tree mode (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + status + comment count.
 21. `autoSelectTree` skips `selectFile` on dir rows so a search-driven cursor jump onto a dir does not clobber Diff.
 22. `remapCursorOnTreeToggle` preserves the conceptual cursor position when toggling flat ⇄ tree.
-22b. Enter on a file row (flat or tree) is the commit gesture: calls `selectFile(path)` and shifts `FocusedPane = PaneDiff`. Tree-mode dir rows still fold/unfold and keep focus on Files. Inside the Files zoom modal, `Enter` performs the same commit (selectFile + close modal + Diff focus); the modal-Enter path lives in `keys.go::handleKey` because it needs to clear `Modal` first.
+22b. Enter on a file row (flat or tree) — commit gesture: `selectFile(path)` + `FocusedPane = PaneDiff`. Tree dir rows fold / unfold, focus stays. Files zoom modal Enter = same commit (selectFile + close modal + Diff focus); modal-Enter path lives in `keys.go::handleKey` because it must clear `Modal` first.
 
 ### Comments pane
-23. Diff-cursor coupling: `commentsView` shows ONLY threads anchored at the Diff cursor's current buffer line (`◆` rows). Off `◆` row → column reads `(no comment at cursor)` and `<space>` is a no-op. Visible-thread set computed by `threadsForCursor` (maps `DiffCursor.Line` through `patchNewLineNumbers`). `flatComments` is scoped to `threadsForCursor` so cursor index never drifts past visible content.
-23b. Render shape: header + indented body. Header = `<name>: <yyyy-mm-dd hh:mm> <hash>[ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`). `[pending]` (yellow) and `[outdated]` (red) mutually exclusive; pending wins. Body indent = `2 + 2*(depth+1)`. Body line-break mirrors GitHub web: every `\n` is a row break; 2+ consecutive `\n`s emit one extra blank row. Each source line wraps at `paneWidthComments − bodyLeader` via `wrapText`.
-23c. Word-boundary rule: `wrapText` calls `splitWrapWords` (in `styles.go`), which splits on whitespace ONLY when both adjacent runes are ASCII word runes. CJK / emoji on either side keeps whitespace inside the running word — `hardBreak` then splits mid-CJK.
+23. Diff-cursor coupling: `commentsView` shows ONLY threads anchored at the Diff cursor's buffer line AND matching `DiffCursor.Side` (`◆` rows on the active column). Off `◆` → `(no comment at cursor)`, `<space>` no-op. Visible set: `threadsForCursor` filters by buffer index (`commentBufferIndex`) then by `root.Side` (`threadOnSide`). `flatComments` scoped to `threadsForCursor` so cursor never drifts past visible content. Empty `root.Side` → RIGHT (legacy, mirroring GitHub default).
+23b. Render shape: header + indented body.
+   - Header: `<name>: <yyyy-mm-dd hh:mm> <hash>[ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`).
+   - `[pending]` (yellow) / `[outdated]` (red) mutually exclusive; pending wins.
+   - Body indent: `2 + 2*(depth+1)`.
+   - Body line-break mirrors GitHub web: every `\n` → row break; 2+ consecutive `\n`s → one extra blank row.
+   - Per-source-line wrap: `paneWidthComments − bodyLeader` via `wrapText`.
+23c. Word-boundary rule: `wrapText` → `splitWrapWords` (`styles.go`) splits on whitespace ONLY when both adjacent runes are ASCII word runes. CJK / emoji on either side keeps whitespace inside the running word; `hardBreak` then splits mid-CJK.
 24. Cursor movement (`j/k`) auto-scrolls Diff to the cursored comment via `syncDiffToCursorComment`. `h/l` and `backspace` are unbound.
 24b. Comments Enter / `r` split:
     - Enter → `startComposeEdit` opens an in-place body edit on the cursor comment when `User == AppState.ViewerLogin`. Body preloaded; saved body POSTs via `updatePullRequestReviewComment`. Foreign user → `state.Notice = "cannot edit comments by other users (press r to reply)"`.
@@ -202,33 +229,50 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 
 27a. `AppState.Compose *ComposeState` is a global overlay state, peer to `Visual` / `Modal` / `HelpOpen`. While non-nil, `handleKey` routes every keystroke to `handleKeyTextarea`; background panes frozen.
 27b. Lifecycle (`ComposeStatus`):
-   - `ComposeEditing` — body collection. Default `UseTextarea = false` runs `$EDITOR <tempfile>` on `gh-reva-compose-*.md` (so `EDITOR='code --wait'` works); tempfile pre-populated for `ComposeEdit`. vim-family editors (vim, nvim, vi, gvim, mvim — detected by `internal/tui/compose.go::startInsertFlag` against the first whitespace token of `$EDITOR`/`$VISUAL` after stripping leading directory and `.exe`) get `+startinsert` injected before the file argument so the buffer opens in Insert mode; non-vim editors are launched unmodified. Dispatch by `$TMUX`: unset → `tea.ExecProcess(sh -c "$EDITOR <tempfile>")` releases the alt-screen so the editor takes the whole terminal. Set → `runEditorOverlay` calls `cmd.Run()` directly inside a `tea.Cmd` goroutine on `tmux display-popup -E -w 80% -h 80% <shellCmd>`; `tea.ExecProcess` is bypassed because the popup is rendered by the tmux server as an overlay over reva's pane, and releasing alt-screen would force a redraw of the underlying shell screen. `display-popup -E` blocks the calling client until the popup closes; `-E` also closes popup on any editor exit code so `:q!` returns control cleanly. Tests force-empty `TMUX` in `e2e/helpers/launch.mjs`. `UseTextarea = true`: `overlayCompose` modal collects rune-by-rune; Ctrl+S saves, Esc / Ctrl+C cancels.
+   - `ComposeEditing` — body collection.
+     - Default `UseTextarea = false`: runs `$EDITOR <tempfile>` on `gh-reva-compose-*.md` (so `EDITOR='code --wait'` works); tempfile pre-populated for `ComposeEdit`.
+     - vim-family detection (`internal/tui/compose.go::startInsertFlag`): first whitespace token of `$EDITOR` / `$VISUAL` after stripping leading dir + `.exe`. Match set: vim, nvim, vi, gvim, mvim. Match → inject `+startinsert` before the file arg so the buffer opens in Insert mode. Non-match → unchanged.
+     - Dispatch by `$TMUX`:
+       - Unset → `tea.ExecProcess(sh -c "$EDITOR <tempfile>")` releases the alt-screen; editor takes the whole terminal.
+       - Set → `runEditorOverlay` calls `cmd.Run()` in a `tea.Cmd` goroutine on `tmux display-popup -E -w 80% -h 80% <shellCmd>`. `tea.ExecProcess` bypassed because the popup overlays reva's pane via tmux server; releasing alt-screen would redraw the shell underneath. `-E` blocks the client and closes the popup on any editor exit code (`:q!` returns cleanly).
+     - Tests force-empty `TMUX` in `e2e/helpers/launch.mjs`.
+     - `UseTextarea = true`: `overlayCompose` modal collects rune-by-rune; Ctrl+S saves, Esc / Ctrl+C cancels.
    - `ComposeSubmitting` — `submitComposeCmd` in flight. Status bar: `posting to GitHub…`. Esc / Ctrl+C detaches.
-   - `ComposeFailed` — POST errored. `Body` and `ErrMsg` preserved; Ctrl+S retries, Esc cancels.
-27c. Inline (`Kind = ComposeInline`) anchors via `ResolveAnchor`. `Path = state.SelectedFile`, `CommitSHA = state.PR.HeadSHA` (always — comments anchor to PR head, mirroring web). Header / hunk rows rejected.
+   - `ComposeFailed` — POST errored. `Body` + `ErrMsg` preserved; Ctrl+S retries, Esc cancels.
+27c. Inline (`Kind = ComposeInline`): anchored via `ResolveAnchor`. `Path = state.SelectedFile`; `CommitSHA = state.PR.HeadSHA` always (comments anchor to PR head, mirroring web). Header / hunk rows rejected. Side resolution: `+` → RIGHT (fixed), `-` → LEFT (fixed), CONTEXT → `DiffCursor.Side` (user's h/l choice). Override fires only on context rows because `+`/`-` exist on one column and `lineExistsOnSide` / auto-skip already pin `cursor.Side`. Line number recomputed via `lineForSide` after Side override → LEFT context anchor reports `OldLine`, not `NewLine`.
 27d. Multi-line range: enter Diff visual, move cursor, Enter. `ResolveRange` collapses anchor + cursor into `(start_line, start_side) → (line, side)` normalized by buffer position. Mixed-side ranges accepted as-is. Single-line ranges drop `start_*` fields.
 27e. Reply (`Kind = ComposeReply`) captures the cursor thread's GraphQL node ID via `threadIdentityForCursor` → `addPullRequestReviewThreadReply`.
 27e2. Edit (`Kind = ComposeEdit`) captures comment node ID via `buildComposeEdit` and pre-loads the body. Mutation `updatePullRequestReviewComment`; gated by `User == ViewerLogin`. Anchor stitched back from cached comment list (response carries only the comment row).
-27f. Pending review session: `ghClient.ensurePendingReview` queries `reviews(states: [PENDING], first: 50)` filtered by `viewer.login` (NOT `viewerLatestReview` — that one can hide a PENDING draft when a non-PENDING review by the same viewer is more recent, which 422s the next `addPullRequestReview` on GitHub's "one pending review per user per PR" rule). Falls back to `addPullRequestReview` if no viewer-owned PENDING. Cached on `pendingReviewID[n]` for process lifetime. `viewerLogin` exposed via `Client.ViewerLogin(ctx)` for the edit gate.
-27g. POST mutations routed by `submitComposeCmd`: Inline → `addPullRequestReviewThread`; Reply → `addPullRequestReviewThreadReply`; Edit → `updatePullRequestReviewComment`. On success, `convertGQLComment` shapes into `model.ReviewComment` (with `Pending` from review state). `applyComposeSubmitted` appends (Inline / Reply) or replaces in place by NodeID (Edit). Header tags Pending entries `[pending]` (`theme.CommentPending`).
+27f. Pending review session: `ghClient.ensurePendingReview` queries `reviews(states: [PENDING], first: 50)` filtered by `viewer.login` (NOT `viewerLatestReview` — that one hides a PENDING draft when a non-PENDING review by the same viewer is more recent, which 422s the next `addPullRequestReview` under GitHub's "one pending per user per PR" rule). Falls back to `addPullRequestReview` if none owned. Cached on `pendingReviewID[n]` for process lifetime. `viewerLogin` exposed via `Client.ViewerLogin(ctx)` for the edit gate.
+27g. POST routing (`submitComposeCmd`): Inline → `addPullRequestReviewThread`; Reply → `addPullRequestReviewThreadReply`; Edit → `updatePullRequestReviewComment`. Success path: `convertGQLComment` → `model.ReviewComment` (`Pending` from review state); `applyComposeSubmitted` appends (Inline / Reply) or replaces by NodeID (Edit) AND drops `m.threadsCache.valid` so the cached thread tree rebuilds. Header tags Pending entries `[pending]` (`theme.CommentPending`).
 27h. Status-bar contexts handled in `internal/tui/statusbar.go` (#6).
-27i. Post-compose refresh: `applyComposeSubmitted` queues `refreshCommentsCmd`, which re-runs `Client.ListComments`. `mergeRefreshedComments(local, refreshed)` preserves any locally-known Pending whose NodeID is NOT in the refresh — `pullRequest.reviewThreads` has eventual-consistency lag; a naive REPLACE silently drops the just-posted draft. Edit POSTs flip body in place by NodeID. `CommentCount` recomputed. Refetch failure tolerated silently. Success also clears `CommentsHidden` (#30c) so a draft posted from Diff while the column was hidden becomes visible immediately; failure leaves the toggle alone.
-27j. Confirm gate: every entry point (Diff Enter, Diff visual range Enter, Comments Enter on own, Comments `r`) parks the built `ComposeState` in `AppState.PendingConfirm` instead of starting the editor immediately. While `PendingConfirm != nil`, the top-level guard in `keys.go::handleKey` routes every keystroke through `handleKeyConfirm` (sits ahead of Compose / Help / Visual absorbers): `y` / `Enter` → `confirmComposeStart` (PendingConfirm clears, payload moves into `Compose`, Visual cleared for inline ranges, body collection begins); `n` / `Esc` / `q` / `Ctrl+C` → `cancelComposeConfirm` (payload discarded; Visual stays so the user can refine). The prompt itself is rendered as a centered confirm modal by `internal/tui/confirm.go::overlayConfirm`, layered on top of every other overlay (zoom modal, Help, compose textarea). Modal title is the action verb (`Start new comment?` / `Post reply?` / `Edit comment?`); body carries the target subject (Inline → `<path>:<line> <SIDE>` or `<path>:<start>-<line> <SIDE>` for ranges; Reply → `<path>:<line> by <root.User>` from PR.Comments lookup; Edit → `<path>:<line> <SIDE>` from NodeID lookup); footer is `[y]es   [n]o`. Status bar intentionally does NOT mirror the prompt — the focused-pane hint stays visible underneath so URL / keymap context survives the confirm step. Foreign-author Comments Enter still short-circuits inside `buildComposeEdit` and surfaces `state.Notice` — no confirm queued. `buildComposeInline` deliberately does NOT clear `Visual`; that mutation lives in `confirmComposeStart` so the highlight survives the y/n prompt.
+27i. Post-compose refresh: `applyComposeSubmitted` queues `refreshCommentsCmd` → re-runs `Client.ListComments`. `mergeRefreshedComments(local, refreshed)` preserves locally-known Pending whose NodeID is absent from the refresh (`pullRequest.reviewThreads` has eventual-consistency lag; a naive REPLACE drops the just-posted draft). Edit POSTs flip body in place by NodeID. `CommentCount` recomputed. `applyCommentsRefreshed` also drops `m.threadsCache.valid`. Refetch failure tolerated silently. Success clears `CommentsHidden` (#30c) so a draft posted from Diff while the column was hidden becomes visible; failure leaves the toggle alone.
+27j. Confirm gate. Entry points (Diff Enter, Diff visual range Enter, Comments Enter on own, Comments `r`) park the built `ComposeState` in `AppState.PendingConfirm` — editor not started yet.
+   - Guard in `keys.go::handleKey` routes every keystroke through `handleKeyConfirm` while `PendingConfirm != nil` (sits ahead of Compose / Help / Visual absorbers).
+     - `y` / `Enter` → `confirmComposeStart` (PendingConfirm cleared, payload → `Compose`, Visual cleared for inline ranges, body collection begins).
+     - `n` / `Esc` / `q` / `Ctrl+C` → `cancelComposeConfirm` (payload discarded; Visual preserved so the user can refine).
+   - Render: centered confirm modal (`internal/tui/confirm.go::overlayConfirm`), layered above every other overlay (zoom modal, Help, compose textarea).
+     - Title: action verb (`Start new comment?` / `Post reply?` / `Edit comment?`).
+     - Body: target subject — Inline `<path>:<line> <SIDE>` (or `<path>:<start>-<line> <SIDE>` for ranges); Reply `<path>:<line> by <root.User>` (from PR.Comments lookup); Edit `<path>:<line> <SIDE>` (from NodeID lookup).
+     - Footer: `[y]es   [n]o`.
+   - Status bar intentionally NOT mirroring the prompt — focused-pane hint stays visible so URL / keymap context survives the confirm step.
+   - Foreign-author Comments Enter short-circuits inside `buildComposeEdit` with a `state.Notice` — no confirm queued.
+   - `buildComposeInline` deliberately does NOT clear `Visual`; that mutation lives in `confirmComposeStart` so the highlight survives the y/n prompt.
 
 ### Search (global `/`)
-27k. `AppState.Search *SearchState` is a global overlay state, peer to Compose / Visual / Modal / PendingConfirm. Two phases: `SearchEditing` (incsearch input collection) and `SearchActive` (post-Enter; n/N cycles). `internal/tui/search.go` owns the state machine; `keys.go` slots the Editing absorber between the Compose absorber and the Help absorber. `Active` falls through to normal dispatch — n/N intercepted before per-pane handlers; everything else (j/k, etc.) keeps working with the cursor parked on the current match.
+27k. `AppState.Search *SearchState` — global overlay, peer to Compose / Visual / Modal / PendingConfirm. Two phases: `SearchEditing` (incsearch input collection), `SearchActive` (post-Enter; n/N cycles). State machine: `internal/tui/search.go`. `keys.go` slots the Editing absorber between Compose and Help. Active falls through to normal dispatch — n/N intercepted before per-pane handlers; everything else (j/k etc.) works with the cursor parked on the current match.
 27l. Lifecycle:
-   - `/` (normal) → `startSearch` snapshots cursor state into `SearchState.Saved*` (FilesCursor, CommitsCursor, DiffCursor, DiffViewport.Top, CommentsCursor, SelectedFile, SelectedRange, FocusedPane), sets `Status = SearchEditing`, scopes `TargetPane = m.state.FocusedPane`.
-   - `/` (Active) → re-enters Editing without dropping the saved snapshot (vim convention).
-   - `/` (Comments pane) → silent no-op. Comments search is intentionally disabled until the modal-vs-flat UX is decided. The hint set in Comments omits `/:search` to match.
-   - Each printable rune → `recomputeSearch` (smart-case literal substring) + `applySearchCursor` (jumps the live cursor to the nearest match ≥ saved position). Files / Commits search auto-selects via the same path j/k uses; Diff calls `scrollDiffIntoView`.
-   - `Backspace` → drops one rune; on empty query, `cancelSearch`.
-   - `Enter` → `commitSearch`. Empty / no-match → `cancelSearch` + `state.Notice = "no match: <query>"`.
-   - `Esc` / `Ctrl+C` (Editing) → `cancelSearch` restores every Saved* field.
-   - `Esc` / `Ctrl+C` / `Tab` / `Shift+Tab` (Active) → clears `state.Search` (no Saved* restore). Tab / Shift+Tab additionally advance the focused pane after clearing.
-27m. Per-pane match providers (in `search.go`): Files matches `FileEntry.Path` (or `FilesRow.Path` in tree mode); Commits matches `Commit.Message` / `SHA` / `ShortSHA` and emits cursor index `i+1` to skip the synthetic "All commits" row; Diff matches each `patchLines()` entry by buffer index. Comments has a provider (`collectCommentMatches`) but the Comments pane currently rejects `/`. Smart-case via `smartCaseFold`: lowercase query → fold; any uppercase → exact.
-27n. Match highlight: `theme.SearchMatchBg` (theme-uniform muted dark yellow, `#574b00`). Files / Commits / Files-tree dirs wrap each occurrence via `Model.searchHighlight` → `highlightMatches` (byte-indexed; CJK / mixed bodies stay correct because `strings.ToLower` preserves byte length on non-ASCII runes). Commits short-SHA is rendered without highlight to avoid lipgloss SGR-nesting collisions; cursor `>` carries the visual signal for sha-only matches. Diff applies `bgRow(_, theme.SearchMatchBg)` to every buffer line in `searchMatchLines()` — visual-range bg still wins. Match-highlighted Diff rows skip `rowCache` because the match set drifts per keystroke.
-27o. Status-bar contexts: `hintSearchEditing` is replaced by the live `/<query>_` prompt; Active shows `n:next  N:prev  /:edit  esc:clear  [idx/count] /<query>`. Suffix dropped in both. Per-pane normal hints carry `/:search` EXCEPT `hintComments`.
+   - `/` (normal) → `startSearch` snapshots cursor state into `SearchState.Saved*` (FilesCursor, CommitsCursor, DiffCursor, DiffViewport.Top, CommentsCursor, SelectedFile, SelectedRange, FocusedPane); `Status = SearchEditing`; `TargetPane = m.state.FocusedPane`.
+   - `/` (Active) → re-enter Editing, saved snapshot retained (vim convention).
+   - `/` (Comments) → silent no-op. Disabled until modal-vs-flat UX decided. Comments hint omits `/:search`.
+   - Printable rune → `recomputeSearch` (smart-case literal substring) + `applySearchCursor` (jumps live cursor to nearest match ≥ saved position). Files / Commits auto-select via the j/k path; Diff calls `scrollDiffIntoView`.
+   - Backspace → drops one rune; empty query → `cancelSearch`.
+   - Enter → `commitSearch`. Empty / no-match → `cancelSearch` + `state.Notice = "no match: <query>"`.
+   - Esc / Ctrl+C (Editing) → `cancelSearch` restores every Saved* field.
+   - Esc / Ctrl+C / Tab / Shift+Tab (Active) → clears `state.Search` (no Saved* restore). Tab / Shift+Tab additionally advance focus.
+27m. Per-pane match providers (`search.go`): Files matches `FileEntry.Path` (or `FilesRow.Path` in tree mode); Commits matches `Commit.Message` / `SHA` / `ShortSHA` and emits cursor `i+1` to skip the "All commits" row; Diff matches each `patchLines()` entry by buffer index; Comments has `collectCommentMatches` but `/` rejected for now. Smart-case via `smartCaseFold`: lowercase → fold; any uppercase → exact.
+27n. Match highlight: `theme.SearchMatchBg` (theme-uniform muted dark yellow, `#574b00`). Files / Commits / Files-tree dirs wrap each occurrence via `Model.searchHighlight` → `highlightMatches` (byte-indexed; CJK / mixed bodies stay correct because `strings.ToLower` preserves byte length on non-ASCII runes). Commits short-SHA rendered without highlight to avoid lipgloss SGR-nesting collisions; cursor `>` carries the signal for sha-only matches. Diff applies `bgRow(_, theme.SearchMatchBg)` per buffer line in `searchMatchLines()` — visual-range bg wins. Match-highlighted Diff rows skip `rowCache` (match set drifts per keystroke).
+27o. Status-bar contexts: `hintSearchEditing` replaced by live `/<query>_` prompt; Active shows `n:next  N:prev  /:edit  esc:clear  [idx/count] /<query>`. Suffix dropped in both. Per-pane normal hints carry `/:search` EXCEPT `hintComments`.
 
 ### Global keys
 28. Tab / Shift-Tab cycle Files → Commits → Diff → Comments. Only keys that move focus across panes.
@@ -243,15 +287,19 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
     While `state.Compose != nil`, `handleKey` absorbs every keystroke.
 30. Shift+J / Shift+K advance to next/prev file from any pane via `advanceFile(forward bool)`. Focus preserved.
 30b. `gg` / `G` work in every pane (#14b). `/` opens search scoped to the focused pane (#27k–n). `n` / `N` cycle while Search is Active.
-30c. `Ctrl+E` toggles `AppState.CommentsHidden`. Hidden state collapses the right column to width 0 and adds the saved width to the middle (Diff) column via `splitColumnWidths(total, hidden)`. Layout fallback (m.width<=0 or bodyHeight<8) drops Comments from the stacked join. Hiding while `FocusedPane == PaneComments` shifts focus to Diff so keystrokes don't strand on an invisible target. `Tab` / `Shift+Tab` skip Comments while hidden. `focusCommentsAtCursor` (Diff Enter handoff, #14) auto-reveals before shifting focus.
+30c. `Ctrl+E` toggles `AppState.CommentsHidden`. Hidden: right column width 0, saved width added to Diff via `splitColumnWidths(total, hidden)`. Stacked-fallback (`m.width<=0` or `bodyHeight<8`) drops Comments from the join. Hide while `FocusedPane == PaneComments` → focus → Diff. Tab / Shift+Tab skip Comments while hidden. `focusCommentsAtCursor` (Diff Enter handoff #14) auto-reveals first.
 
 ### Mouse
-30d. Mouse capture: `tea.WithMouseCellMotion()` in `cmd/root.go`. Cell motion is sufficient (no in-app drag selection). Standard terminals honor `Shift`-held drag as terminal-side text selection while mouse tracking is active, so copy/paste works without a `--no-mouse` toggle. `Update` routes `tea.MouseMsg` through `(Model).handleMouse`; only `MouseActionPress` dispatches.
-30e. Hit testing: `internal/tui/mouse.go::paneAt` resolves `(x, y)` to a pane and content row. Pane outer rect: row 0 = top border, row 1 = title, row 2 = divider, rows [3, h-1) = content, row h-1 = bottom border. Borders / dividers / side bars / status-bar coords reject. Title-row hits set `OnTitle=true`; content-row hits carry `ContentRow / ContentCol`. Stacked fallback (m.width<=0 or bodyHeight<8) and loading phase (PR == nil) also reject.
-30f. Per-pane click semantics: `handleMouseClick` always sets `FocusedPane = hit.Pane`, then dispatches when `OnTitle == false`. Files: `mouseClickFiles` moves `FilesCursor` AND calls `selectFile(path)` so Diff follows the click — j/k stays cursor-only (#19) but a click is a deliberate one-shot gesture. Tree-mode dir rows fold / unfold instead. Focus stays on Files. Commits: `mouseClickCommits` sets `CommitsCursor` and `autoSelectCommit` (mirrors j/k #16). Diff: `mouseClickDiff` resolves the buffer line via `bufferLineAtDiffDisplayRow` (wrap-aware reverse of `displayRowsForLine`) and calls `scrollDiffIntoView`. Comments: `mouseClickComments` resolves the flat-comment index via `commentIndexAtDisplayRow` and calls `syncDiffToCursorComment`.
-30g. Wheel: `MouseButtonWheelUp` / `Down` dispatch through `handleMouseWheel(hit, ±1)` and DO NOT change focus. Files: cursor up/down only (no auto-select). Commits: cursor + `autoSelectCommit`. Diff: `DiffCursor.Line` ± 1 with `scrollDiffIntoView`. Comments: `CommentsCursor` ± 1 with `syncDiffToCursorComment`.
-30h. Absorbed layers: `Compose != nil`, `PendingConfirm != nil`, `HelpOpen`, `Modal != nil`, and `Search.Status == SearchEditing` short-circuit `handleMouse` to a no-op. SearchActive intentionally falls through (n/N stay live so wheel scroll can re-position the cursor on a match).
-30i. Layout measurement: `(*Model).measureLayout` populates `paneWidth* / paneHeight*` from the current terminal size. Called by `View()` before pane renderers run, and by `handleMouse` before hit-testing — Bubbletea's value-receiver `Update` delivers a fresh Model that does not carry View's in-flight measurements. Pre-WindowSize and stacked fallback skip the assignment.
+30d. Mouse capture: `tea.WithMouseCellMotion()` in `cmd/root.go`. Cell motion sufficient (no in-app drag selection). Standard terminals honor `Shift`-held drag as terminal-side text selection while tracking is active → copy/paste works without `--no-mouse`. `Update` routes `tea.MouseMsg` through `(Model).handleMouse`; only `MouseActionPress` dispatches.
+30e. Hit testing (`internal/tui/mouse.go::paneAt`): `(x, y)` → pane + content row. Pane outer rect: row 0 = top border, 1 = title, 2 = divider, [3, h-1) = content, h-1 = bottom border. Borders / dividers / side bars / status-bar reject. Title hit → `OnTitle=true`; content hit → `ContentRow / ContentCol`. Stacked fallback (`m.width<=0` or `bodyHeight<8`) and loading phase (`PR == nil`) reject.
+30f. Per-pane click (`handleMouseClick`): sets `FocusedPane = hit.Pane`, then dispatches when `OnTitle == false`.
+   - Files: `mouseClickFiles` moves `FilesCursor` AND `selectFile(path)` — j/k stays cursor-only (#19), but a click is deliberate one-shot. Tree-mode dir rows fold / unfold instead. Focus stays on Files.
+   - Commits: `mouseClickCommits` sets `CommitsCursor` + `autoSelectCommit` (mirrors j/k #16).
+   - Diff: `mouseClickDiff` resolves buffer line via `bufferLineAtDiffDisplayRow` (wrap-aware reverse of `displayRowsForLine`); calls `scrollDiffIntoView`.
+   - Comments: `mouseClickComments` resolves flat-comment index via `commentIndexAtDisplayRow`; calls `syncDiffToCursorComment`.
+30g. Wheel (`MouseButtonWheelUp` / `Down` → `handleMouseWheel(hit, ±1)`): focus unchanged. Files: cursor only. Commits: cursor + `autoSelectCommit`. Diff: `DiffCursor.Line` ± 1 + `scrollDiffIntoView`. Comments: `CommentsCursor` ± 1 + `syncDiffToCursorComment`.
+30h. Absorbed layers: `Compose != nil` / `PendingConfirm != nil` / `HelpOpen` / `Modal != nil` / `Search.Status == SearchEditing` short-circuit `handleMouse` to no-op. SearchActive falls through (n/N + wheel both live so wheel can re-position the cursor on a match).
+30i. Layout measurement: `(*Model).measureLayout` populates `paneWidth* / paneHeight*` from the current terminal size. Called once at the top of `Update` (before the type switch — covers KeyMsg / MouseMsg / ScrollDiffToLineMsg etc. uniformly) and once at the start of `View()` for the first frame. Persistence rides on `Update`'s value-receiver return: Bubbletea stores the returned Model so paneWidth* survive between messages. View's mutations never persist (string-only return). Stacked fallback (`m.width<=0` or `bodyHeight<8`) skips assignment.
 
 ### Color theming
 31. `internal/theme.Theme` is the single source of truth — 28 `lipgloss.Color` fields plus `SyntaxStyle *chroma.Style`. `Resolve(name)` accepts `"builtin-dark"`, any chroma registry name, or `""` (→ `defaultThemeName`). Unknown names error.
@@ -262,16 +310,19 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 36. Pane border / title coloring in `app.go::renderPaneBox`. Active uses `PaneBorderActive` + `PaneTitleActive` (Bold); inactive uses `PaneBorderInactive` + `PaneTitle`.
 37. Visual-mode rows get row-wide bg via `bgRow(row, theme.VisualRangeBg)` after padding to `paneWidthDiff`. Bg ends inside the pane; borders stay border-colored.
 38. Diff cells: bg-for-change + per-token syntax fg (`syntax.go::styledDiffCell`). `+` rows: `DiffPlusBg` row-wide + chroma fg per token; `-` similar with `DiffMinusBg`. Context rows pass `bg=""`. File / hunk headers stay flat-fg. Leading marker excluded from lexer and re-emitted bold under same bg with theme-uniform `theme.DiffPlus` / `theme.DiffMinus` (`#3fb950` / `#f85149`); marker fgs are NOT in the `syntaxCache` key.
-39. `Model` has 3 caches that must propagate across Bubbletea's value-copied Updates:
+39. `Model` caches that must propagate across Bubbletea's value-copied Updates:
    - `syntaxCache` — `*syncMap` keyed on `lexer.Name + style.Name + bg + cell`. Pointer identity shared.
-   - `rowCache` — `*diffRowCache` (`map[string][]string`) keyed on `(mode, lineIdx, halfW, commented)`. Width / patch identity changes invalidate via `m.invalidateRowCacheIfStale()`. Skips cursor + visual-range rows.
-   - `patchLinesC` — struct value (`patchLinesCache`); `cache` field is `map[string]*patchInfo` keyed on `diffKey(sha, path)`. Maps are reference types, so the struct value embedding works — replacing it with a slice / scalar breaks propagation.
+   - `rowCache` — `*diffRowCache` (`map[string][]string`) keyed on split `(s, lineIdx, halfW, leftMarker, rightMarker)` or unified `(u, lineIdx, 0, marker)`. cursorSide intentionally NOT keyed — affects only cursor / visual rows, both of which take the no-cache path; including it would over-invalidate non-cursor rows on every h/l. Width / patch identity changes invalidate via `m.invalidateRowCacheIfStale()`. Skips cursor + visual-range + match-bg rows.
+   - `patchLinesC` — struct value (`patchLinesCache`); `cache` is `map[string]*patchInfo` keyed on `diffKey(sha, path)`. Maps are reference types so struct-value embedding propagates — replacing with slice / scalar breaks propagation. `patchInfo` carries lazy fields: `lines`, `specs`, `newNums`, `oldNums`, plus `markers *sideMarkers` + `markersGen uint64` (commentLineMarkers cache; see #39a).
+   - `threadsCache` — `*threadsViewCache`: single-entry memo of `threadsForView()`. Key: `(SelectedFile, SelectedRange.Kind, SelectedRange.SHA)`. Mutation sites for `m.state.PR.Comments` MUST set `m.threadsCache.valid = false`: `applyComposeSubmitted` (`compose.go`) and `applyCommentsRefreshed` (`refresh.go`) are the only two; new sites do the same. Each successful rebuild bumps `gen` (uint64).
 
-   Hot-path rule: never call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly. Go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers()`.
+   Hot-path rule: never call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly. Go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers() / m.commentLineMarkers() / m.threadsForView()`.
+
+39a. `commentLineMarkers` caches its `sideMarkers` result on `patchInfo.markers` keyed by `markersGen == m.threadsCache.gen`. Call `m.threadsForView()` BEFORE reading the markers cache so `gen` reflects the latest invalidation — `commentLineMarkers` does this internally; new callers must keep the order if they re-implement.
 40. `waitReady` defaults to 10s in `e2e/helpers/launch.mjs` to absorb chroma init + first-frame tokenization.
 41. `session.press` / `session.type` are wrapped with a 120ms settle in `launchReva`. Don't reach for `session.press` in helpers — use the wrapped session.
-42. Pane modal (`<space>` zoom): gated by `model.ModalState{Pane, Origin}`, toggled by `<space>` in Files / Commits / Comments. Diff `<space>` is unchanged (split⇄unified). Modal closes on `tab`, `shift+tab`, `?`, `esc`, `q`, `Ctrl+C`; `q` and `Ctrl+C` quit only when modal is closed. `J` / `K` leave modal open by design. Visual mode allowed inside; Comments-pane Enter / `r` keep working in the Comments modal. Title row uses single leading space (`│ Files`) — distinct from regular pane titles (`▶ ` / `  `); that's the e2e detection signature.
-42b. Modal focus restore: `ModalState.Origin` records the opener pane. `toggleModal` reads `m.state.FocusedPane` at open time. Close gestures route through `closeModal`, which restores `FocusedPane = Origin` before clearing `Modal`. `Tab` / `Shift+Tab` / `?` (Help) also call `closeModal` first. Files-modal-Enter / Commits-modal-Enter intentionally bypass `closeModal` and explicitly set `FocusedPane = PaneDiff`.
+42. Pane modal (`<space>` zoom): gated by `model.ModalState{Pane, Origin}`. Toggled by `<space>` in Files / Commits / Comments; Diff `<space>` is split⇄unified. Closes on tab / shift+tab / `?` / esc / `q` / Ctrl+C; `q` and Ctrl+C quit only when modal closed. `J` / `K` leave modal open by design. Visual mode allowed inside; Comments Enter / `r` work in Comments modal. Title row uses single leading space (`│ Files`) — distinct from regular pane titles (`▶ ` / `  `); the e2e detection signature.
+42b. Modal focus restore: `ModalState.Origin` records the opener. `toggleModal` reads `m.state.FocusedPane` at open. Close routes through `closeModal` → `FocusedPane = Origin` then clears `Modal`. Tab / Shift+Tab / `?` (Help) also call `closeModal` first. Files-modal-Enter / Commits-modal-Enter bypass `closeModal` and explicitly set `FocusedPane = PaneDiff`.
 
 ---
 
@@ -286,7 +337,9 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 - `countSelectedRows(screen, label)` — count `> ` rows in the pane's slice.
 
 ### Patterns
-`describe + before + screen capture` for read-only observation tests (capture once, run many `test()` blocks). `describe + before/after + shared session` for navigation tests beginning and ending at Files focus. Independent `test()` blocks for tests that mutate state (visual, file selection, single-commit drill).
+- Read-only observation: `describe + before + screen capture` (capture once, many `test()` blocks).
+- Navigation tests beginning + ending at Files focus: `describe + before/after + shared session`.
+- State mutation (visual, file selection, single-commit drill): independent `test()` blocks.
 
 ### Substring rules
 - Prefer short, contiguous substrings (≤ ~20 chars) for column-wrap safety.
@@ -317,8 +370,11 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 - Bubbletea v1 has no color profile option: `lipgloss.SetColorProfile(termenv.Ascii)` and `SetHasDarkBackground(true)` must be called BEFORE `tea.NewProgram`. `cmd/root.go` does this; new entry points must replicate.
 - Chroma init is eager (~500ms cold). Don't import `chroma/v2/styles` or `chroma/v2/lexers` outside `internal/theme` and `internal/tui/syntax.go`.
 - Cache pointer identity: see §4 #39. Dropping `Model.syntaxCache` makes e2e fail on `waitReady`; deep-copying caches in `NewModel` or making `patchLinesC.cache` non-reference breaks propagation.
+- rowCache key over-keying: fields affecting only cursor / visual rows (already cache-skipped) belong OUT of the key — extra keying turns h/l / cursor moves into full invalidation. Minimal split key: `(s, lineIdx, halfW, leftMarker, rightMarker)`.
+- `m.state.PR.Comments` mutation sites must drop `m.threadsCache.valid = false`. Threads cache feeds `commentLineMarkers` via `gen` → stale flag stales gutter markers too.
+- `measureLayout` lives ONLY at top of `Update` (pre-type-switch) + start of `View()`. Per-handler re-measure is redundant and was the source of the "j/k doesn't scroll on wrapping diffs" bug.
 - `s.press` / `s.type` are auto-settled (120ms) in tests via `launchReva`. Don't add manual `await sleep(N)`; use `await s.waitForText(<expected>)` if a test still races.
-- `launchReva` forces `TERM=tmux-256color` via `sh -c`: bubbletea v1's `tea_init.go` calls `lipgloss.HasDarkBackground()` at package import, which makes termenv send OSC 11 + DSR queries and block up to 5s. termenv short-circuits when `TERM` starts with `screen` / `tmux`. Tuistory's `session.js` hard-codes `TERM: 'xterm-truecolor'`, so the value cannot pass via `env:` — the wrapper re-applies `TERM` before `exec`.
+- `launchReva` forces `TERM=tmux-256color` via `sh -c`. Why: bubbletea v1's `tea_init.go` calls `lipgloss.HasDarkBackground()` at package import → termenv sends OSC 11 + DSR queries (blocks up to 5s); termenv short-circuits when `TERM` starts with `screen` / `tmux`. Tuistory's `session.js` hard-codes `TERM: 'xterm-truecolor'`, so the value can't pass via `env:` — the wrapper re-applies `TERM` before `exec`.
 
 ---
 
@@ -341,7 +397,7 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 
 ## 8. Release procedure
 
-Releases are driven by the `v*` tag pushed to `origin`. `release.yml` runs goreleaser, which reads the version from `{{.Version}}` (= the tag) and produces `gh-reva_<os>-<arch>` binaries (the hyphen is required — gh CLI matches assets by `strings.HasSuffix(name, "<os>-<arch>")`, so `_` in that slot breaks `gh extension install`; see `.goreleaser.yaml:20-25`). NO `version.go` to bump and NO changelog — the tag is the single source of truth.
+Driven by `v*` tag pushed to `origin`. `release.yml` runs goreleaser; version from `{{.Version}}` (= the tag); produces `gh-reva_<os>-<arch>` binaries. Hyphen required — gh CLI matches assets by `strings.HasSuffix(name, "<os>-<arch>")`, so `_` in that slot breaks `gh extension install` (see `.goreleaser.yaml:20-25`). NO `version.go` to bump and NO changelog — the tag is the single source of truth.
 
 ### Steps for a patch / minor / major release
 

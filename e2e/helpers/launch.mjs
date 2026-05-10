@@ -174,15 +174,28 @@ export function paneText (screen, label) {
 }
 
 /**
- * Count rows in the given pane that render with a `> ` cursor prefix at the
- * pane's left edge. Used to verify visual-selection extents.
+ * Count rows in the given pane that render with a `> ` cursor marker.
+ * Files / Commits / Comments place the marker at the pane's left edge,
+ * so a `startsWith('> ')` check is correct. Diff in split mode places
+ * the cursor in either the Lcursor (col 0–1) or the Rcursor column
+ * (mid-row, between Rmarker and newLn) depending on DiffCursor.Side,
+ * so the leftmost test misses RIGHT-side cursors. Match the leading-
+ * `> ` form OR a free-floating ` >` followed by a space (the
+ * Rcursor's surrounding cells are blanks, so `<sp>>` is unique to
+ * the cursor column).
  */
 export function countSelectedRows (screen, label) {
   const sliced = paneText(screen, label)
   if (!sliced) return 0
   let n = 0
   for (const line of sliced.split('\n').slice(1)) {  // skip header
-    if (line.startsWith('> ')) n++
+    if (line.startsWith('> ')) {
+      n++
+      continue
+    }
+    if (label === 'Diff' && / >\s/.test(line)) {
+      n++
+    }
   }
   return n
 }

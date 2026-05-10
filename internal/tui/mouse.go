@@ -152,7 +152,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress {
 		return m, nil
 	}
-	m.measureLayout()
 	hit, ok := m.paneAt(msg.X, msg.Y)
 	if !ok {
 		return m, nil
@@ -181,7 +180,7 @@ func (m Model) handleMouseClick(hit mouseHit) (tea.Model, tea.Cmd) {
 	case model.PaneCommits:
 		m.mouseClickCommits(hit.ContentRow)
 	case model.PaneDiff:
-		m.mouseClickDiff(hit.ContentRow)
+		m.mouseClickDiff(hit.ContentRow, hit.ContentCol)
 	case model.PaneComments:
 		m.mouseClickComments(hit.ContentRow)
 	}
@@ -234,13 +233,45 @@ func (m *Model) mouseClickCommits(row int) {
 	m.autoSelectCommit(commits)
 }
 
-func (m *Model) mouseClickDiff(row int) {
+func (m *Model) mouseClickDiff(row, col int) {
 	idx := m.bufferLineAtDiffDisplayRow(row)
 	if idx < 0 {
 		return
 	}
 	m.state.DiffCursor.Line = idx
+	if side, ok := m.diffSideAtCol(col); ok {
+		// Park cursor on the clicked column. Re-snap to the nearest
+		// row that exists on the new Side when the click lands on a
+		// `+` row but the user clicked the LEFT half (or vice versa)
+		// — the user's column gesture wins, the row repositions
+		// rather than producing a Side+row state j/k could never
+		// produce naturally.
+		m.switchSide(side, m.patchLines())
+	}
 	m.scrollDiffIntoView(len(m.patchLines()))
+}
+
+// diffSideAtCol reports which physical column the click landed in.
+// Splits on the inner divider position. Returns ok=false in unified
+// mode (no Side concept) so the caller leaves DiffCursor.Side alone.
+func (m Model) diffSideAtCol(col int) (model.DiffSide, bool) {
+	isSplit, halfW := m.splitLayout()
+	if !isSplit {
+		return "", false
+	}
+	// Inner column of the divider: leadup = Lcursor 2 + Lmarker 2 +
+	// oldLn 4 + sp 1 + leftCell halfW + sp 1 = halfW + 10. The │
+	// itself sits at col halfW+10; everything strictly less is LEFT,
+	// everything greater is RIGHT, the divider itself defaults to
+	// the cursor's existing Side (passed-through caller).
+	divider := halfW + 10
+	if col < divider {
+		return model.DiffSideLeft, true
+	}
+	if col > divider {
+		return model.DiffSideRight, true
+	}
+	return "", false
 }
 
 func (m *Model) mouseClickComments(row int) {

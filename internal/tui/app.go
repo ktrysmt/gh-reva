@@ -21,9 +21,10 @@ type Model struct {
 	target      *api.Target
 	state       *model.AppState
 	theme       *theme.Theme
-	syntaxCache *syntaxCache
-	patchLinesC patchLinesCache
-	rowCache    *diffRowCache
+	syntaxCache  *syntaxCache
+	patchLinesC  patchLinesCache
+	rowCache     *diffRowCache
+	threadsCache *threadsViewCache
 	width       int
 	height      int
 	err         error
@@ -98,6 +99,7 @@ func NewModel(client api.Client, target *api.Target) Model {
 		syntaxCache:  &syntaxCache{},
 		patchLinesC:  patchLinesCache{cache: map[string]*patchInfo{}},
 		rowCache:     &diffRowCache{m: map[string][]string{}},
+		threadsCache: &threadsViewCache{},
 		splashLayout: chooseSplashLayout(),
 		splashArtIdx: chooseSplashArt(),
 	}
@@ -108,10 +110,21 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Apply any new dimensions FIRST so the unconditional measureLayout
+	// below sees the latest width / height. A single call here covers
+	// every downstream branch — handleKey, handleMouse,
+	// ScrollDiffToLineMsg etc. all read paneWidth* / paneHeight* off
+	// the value-receiver model returned by the previous Update, so
+	// once measured they stay measured until the next resize. View
+	// still calls measureLayout for the very first frame (before any
+	// Update has fired).
+	if w, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = w.Width
+		m.height = w.Height
+	}
+	m.measureLayout()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -640,6 +653,14 @@ type patchInfo struct {
 	specs   []diffLineSpec // populated lazily; only split mode reads it
 	newNums []int          // populated lazily; commentLineSet etc.
 	oldNums []int          // populated lazily; LEFT-side comment anchoring
+	// markers caches commentLineMarkers' result for this patch keyed on
+	// the threadsCache generation counter. nil = uncomputed; mismatched
+	// markersGen = stale (recompute). The threads-cache gen bumps on
+	// every successful threadsForView rebuild, which itself fires when
+	// PR.Comments mutates (compose / refresh) or the file/range key
+	// changes — so this single counter covers all invalidation triggers.
+	markers    *sideMarkers
+	markersGen uint64
 }
 
 // diffRowCache memoizes the per-buffer-line render output for the Diff
@@ -672,14 +693,11 @@ func (c *diffRowCache) reset(patchKey string, width, halfW int) {
 
 // rowCacheKey composes the cache key for a Diff buffer line. The key
 // only carries the bits the renderer actually branches on — line index,
-// commented gutter, plus a mode tag (`s` split, `u` unified). The width
-// dimensions are validated by the cache itself in invalidateRowCacheIfStale.
-func (m Model) rowCacheKey(mode string, idx, halfW int, commented bool) string {
-	c := byte('0')
-	if commented {
-		c = '1'
-	}
-	return mode + "\x00" + strconv.Itoa(idx) + "\x00" + strconv.Itoa(halfW) + "\x00" + string(c)
+// gutter glyph (markerAnchor / markerStart / markerMiddle / 0), plus a
+// mode tag (`s` split, `u` unified). The width dimensions are validated
+// by the cache itself in invalidateRowCacheIfStale.
+func (m Model) rowCacheKey(mode string, idx, halfW int, marker rune) string {
+	return mode + "\x00" + strconv.Itoa(idx) + "\x00" + strconv.Itoa(halfW) + "\x00" + string(marker)
 }
 
 // invalidateRowCacheIfStale clears the row cache when the patch identity

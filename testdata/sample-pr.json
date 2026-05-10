@@ -35,7 +35,7 @@
   ],
   "files": [
     {"path": "src/greeting.go", "status": 1, "additions": 30, "deletions": 5, "comment_count": 2},
-    {"path": "src/greeting_test.go", "status": 0, "additions": 50, "deletions": 0, "comment_count": 1},
+    {"path": "src/greeting_test.go", "status": 0, "additions": 50, "deletions": 0, "comment_count": 2},
     {"path": "src/main.go", "status": 1, "additions": 3, "deletions": 1, "comment_count": 0},
     {"path": "docs/api.md", "status": 0, "additions": 10, "deletions": 0, "comment_count": 0},
     {"path": "go.mod", "status": 1, "additions": 1, "deletions": 0, "comment_count": 0}
@@ -95,6 +95,24 @@
       "user": "carol",
       "created_at": "2026-04-03T10:00:00Z",
       "body": "Add a test for the empty input case",
+      "outdated": false
+    },
+    {
+      "id": 1005,
+      "path": "src/greeting_test.go",
+      "commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "original_commit_id": "ccc3333ccccccccccccccccccccccccccccccccc",
+      "line": 10,
+      "original_line": 10,
+      "side": "RIGHT",
+      "start_line": 5,
+      "original_start_line": 5,
+      "start_side": "RIGHT",
+      "diff_hunk": "@@ -0,0 +1,50 @@",
+      "in_reply_to": 0,
+      "user": "dave",
+      "created_at": "2026-04-03T11:00:00Z",
+      "body": "Consider rewriting this as a table-driven test",
       "outdated": false
     }
   ],

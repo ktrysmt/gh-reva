@@ -232,16 +232,25 @@ func renderCommentBody(body, bodyLeader string, bodyWidth int) []string {
 }
 
 // threadsForCursor returns the comment threads anchored at the current Diff
-// cursor's buffer line. Empty when the cursor is not on a ◆ row, when no
-// patch is loaded, or when no thread anchors at the cursor's buffer
-// index. Ordering matches threadsForView (chronological by root time).
+// cursor's buffer line AND matching the cursor's Side. Empty when the
+// cursor is not on a ◆ row, when no patch is loaded, or when no thread
+// anchors at the cursor's buffer index on the current Side. Ordering
+// matches threadsForView (chronological by root time).
 //
-// Side-aware: each thread's anchor buffer index is computed via
-// commentBufferIndex (LEFT comments → oldLineNumbers; others →
-// newLineNumbers). Matching a thread to the cursor by buffer index lets
-// LEFT comments anchor on `-` rows, which the previous "look up
-// mapping[cursor]" approach silently dropped (mapping[cursor] is 0 for
-// `-` rows under newLineNumbers).
+// Side-aware in two senses:
+//
+//  1. Each thread's anchor buffer index is computed via
+//     commentBufferIndex (LEFT comments → oldLineNumbers; others →
+//     newLineNumbers). Matching a thread to the cursor by buffer index
+//     lets LEFT comments anchor on `-` rows, which the previous "look
+//     up mapping[cursor]" approach silently dropped (mapping[cursor] is
+//     0 for `-` rows under newLineNumbers).
+//  2. The thread's root.Side must match cursor.Side. Without this
+//     filter a context buffer row carrying both a LEFT and a RIGHT
+//     thread would render both regardless of which column the user is
+//     currently parked in — which defeats the per-column comment UX.
+//     Empty / missing root.Side is treated as RIGHT (legacy comments
+//     pre-dating the Side field; matches GitHub's display default).
 func (m Model) threadsForCursor() []*commentThread {
 	all := m.threadsForView()
 	if len(all) == 0 {
@@ -256,13 +265,31 @@ func (m Model) threadsForCursor() []*commentThread {
 	if cursor < 0 {
 		return nil
 	}
+	side := m.state.DiffCursor.Side
+	if side == "" {
+		side = model.DiffSideRight
+	}
 	var out []*commentThread
 	for _, t := range all {
+		if !threadOnSide(t, side) {
+			continue
+		}
 		if anyCommentAtBuffer(t, cursor, oldMap, newMap) {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// threadOnSide reports whether a thread belongs to the given column.
+// The root's Side decides for the whole thread — replies inherit it on
+// GitHub. Empty Side defaults to RIGHT (legacy comments).
+func threadOnSide(t *commentThread, side model.DiffSide) bool {
+	rs := model.DiffSide(t.Root.Side)
+	if rs == "" {
+		rs = model.DiffSideRight
+	}
+	return rs == side
 }
 
 func anyCommentAtBuffer(t *commentThread, cursor int, oldNums, newNums []int) bool {
@@ -300,7 +327,35 @@ func (m Model) commentsForView() []*model.ReviewComment {
 	return out
 }
 
+// threadsViewCache memoizes the most recent threadsForView() result.
+// Single-entry: a key mismatch (different file or range) rebuilds and
+// overwrites; PR.Comments mutations invalidate via `valid = false` from
+// applyComposeSubmitted / applyCommentsRefreshed. The cache pointer
+// lives on Model so propagation across Bubbletea's value-receiver
+// Update mirrors the patchLinesC / rowCache pattern.
+type threadsViewCache struct {
+	valid     bool
+	file      string
+	rangeKind model.CommitRangeKind
+	rangeSHA  string
+	threads   []*commentThread
+	// gen bumps on every successful rebuild. Downstream caches keyed on
+	// "the threads we last saw" (e.g. patchInfo.markersGen) compare gen
+	// to detect staleness without holding a slice pointer that would
+	// pin freed memory or lie when the underlying array is reused.
+	gen uint64
+}
+
 func (m Model) threadsForView() []*commentThread {
+	file := m.state.SelectedFile
+	rangeKind := m.state.SelectedRange.Kind
+	rangeSHA := m.state.SelectedRange.SHA
+	if m.threadsCache != nil && m.threadsCache.valid &&
+		m.threadsCache.file == file &&
+		m.threadsCache.rangeKind == rangeKind &&
+		m.threadsCache.rangeSHA == rangeSHA {
+		return m.threadsCache.threads
+	}
 	comments := m.commentsForView()
 	rootByID := map[int64]*commentThread{}
 	var roots []*commentThread
@@ -325,6 +380,14 @@ func (m Model) threadsForView() []*commentThread {
 		sort.SliceStable(t.Replies, func(i, j int) bool {
 			return t.Replies[i].CreatedAt.Before(t.Replies[j].CreatedAt)
 		})
+	}
+	if m.threadsCache != nil {
+		m.threadsCache.valid = true
+		m.threadsCache.file = file
+		m.threadsCache.rangeKind = rangeKind
+		m.threadsCache.rangeSHA = rangeSHA
+		m.threadsCache.threads = roots
+		m.threadsCache.gen++
 	}
 	return roots
 }

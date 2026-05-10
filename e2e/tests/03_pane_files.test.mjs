@@ -25,7 +25,7 @@ describe('D1+D2: Files pane initial render (flat list)', () => {
   test('D2: each file shows status (A/M/D/R) and comment count when > 0', () => {
     const files = paneText(screen, 'Files')
     assert.match(files, /M\s+src\/greeting\.go\s+\(2\)/, 'expected M + (2) for greeting.go')
-    assert.match(files, /A\s+src\/greeting_test\.go\s+\(1\)/, 'expected A + (1) for greeting_test.go')
+    assert.match(files, /A\s+src\/greeting_test\.go\s+\(2\)/, 'expected A + (2) for greeting_test.go')
     assert.match(files, /M\s+src\/main\.go(?!\s*\()/, 'main.go has no comments → no count')
     assert.match(files, /A\s+docs\/api\.md(?!\s*\()/, 'api.md has no comments → no count')
     assert.match(files, /M\s+go\.mod(?!\s*\()/, 'go.mod has no comments → no count')

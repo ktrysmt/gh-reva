@@ -128,17 +128,43 @@ func (m *Model) buildComposeInline() bool {
 		Path:      m.state.SelectedFile,
 		CommitSHA: m.state.PR.HeadSHA,
 	}
+	cursorSide := string(m.state.DiffCursor.Side)
+	if cursorSide == "" {
+		cursorSide = "RIGHT"
+	}
 	if v := m.state.Visual; v != nil && v.OriginPane == model.PaneDiff {
 		r, ok := diff.ResolveRange(patch, v.AnchorLine, m.state.DiffCursor.Line)
 		if !ok {
 			return false
 		}
-		cs.Line = r.Line
-		cs.Side = r.Side
+		// ResolveRange's per-endpoint Side comes from walkSpecs which
+		// hard-codes context to "RIGHT". Override end Side with the
+		// cursor's column when the end row is context — h/l on a
+		// context line is the user's gesture for "post on this side"
+		// and must reach the GitHub payload. `+`/`-` rows ignore the
+		// override (their Side is fixed by the line type) because
+		// auto-skip guarantees cursor.Side already matches.
+		side := r.Side
+		startSide := r.StartSide
+		if isContextRow(patch, m.state.DiffCursor.Line) {
+			side = cursorSide
+		}
+		anchorBuf := m.state.DiffCursor.Line
+		if v.AnchorLine < anchorBuf {
+			anchorBuf = v.AnchorLine
+		}
+		if r.StartLine > 0 && isContextRow(patch, anchorBuf) {
+			startSide = cursorSide
+		}
+		// When the range collapses to a single endpoint (StartLine==0)
+		// the line value comes from the END side; recompute against
+		// the overridden Side so a LEFT context anchor reports OldLine.
+		cs.Line = lineForSide(patch, m.state.DiffCursor.Line, side)
+		cs.Side = side
 		if r.StartLine > 0 {
-			sl := r.StartLine
+			sl := lineForSide(patch, anchorBuf, startSide)
 			cs.StartLine = &sl
-			cs.StartSide = r.StartSide
+			cs.StartSide = startSide
 		}
 		// Visual is left intact here so the highlighted range stays
 		// visible while the confirm prompt is up. confirmComposeStart
@@ -148,15 +174,49 @@ func (m *Model) buildComposeInline() bool {
 		if !ok {
 			return false
 		}
+		side := a.Side
+		// Context rows in walkSpecs default to Side="RIGHT". Override
+		// with the cursor's column so h/l on a context line drives the
+		// compose target. Non-context rows (`+`/`-`) keep walkSpecs'
+		// fixed Side because the line only exists on one column.
+		if a.Kind == ' ' {
+			side = cursorSide
+		}
 		line := a.NewLine
-		if a.Side == "LEFT" {
+		if side == "LEFT" {
 			line = a.OldLine
 		}
 		cs.Line = line
-		cs.Side = a.Side
+		cs.Side = side
 	}
 	m.state.Compose = cs
 	return true
+}
+
+// isContextRow reports whether the buffer line at `idx` in `patch` is a
+// context row (kind=' '). Headers, hunks, additions, and deletions all
+// return false. Used by buildComposeInline so the cursor.Side override
+// only applies where ambiguity exists (`+`/`-` rows have a fixed Side).
+func isContextRow(patch string, idx int) bool {
+	a, ok := diff.ResolveAnchor(patch, idx)
+	if !ok {
+		return false
+	}
+	return a.Kind == ' '
+}
+
+// lineForSide returns the file-line number at buffer index `idx` on the
+// given Side. LEFT → OldLine, RIGHT → NewLine. 0 when the row has no
+// counterpart on that Side.
+func lineForSide(patch string, idx int, side string) int {
+	a, ok := diff.ResolveAnchor(patch, idx)
+	if !ok {
+		return 0
+	}
+	if side == "LEFT" {
+		return a.OldLine
+	}
+	return a.NewLine
 }
 
 // buildComposeReply populates m.state.Compose with the reply target
@@ -464,6 +524,11 @@ func (m *Model) applyComposeSubmitted(msg composeSubmittedMsg) tea.Cmd {
 		} else {
 			m.state.PR.Comments = append(m.state.PR.Comments, msg.comment)
 			bumpFileCommentCount(m.state.PR.Files, msg.comment.Path)
+		}
+		// PR.Comments mutated — drop the threadsForView cache so the
+		// next render rebuilds the thread tree with the new entry.
+		if m.threadsCache != nil {
+			m.threadsCache.valid = false
 		}
 	}
 	// Auto-reveal the Comments column after a successful submit so the

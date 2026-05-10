@@ -26,7 +26,11 @@ const (
 	hintFilesFlat     = "j/k:move /:search space:zoom t:tree"
 	hintFilesTree     = "j/k:move /:search enter:fold t:tree"
 	hintCommits       = "j/k:move /:search space:zoom"
-	hintDiff          = "j/k:move H/M/L:viewport gg/G:top/bottom /:search space:split enter:comment"
+	// hintDiff carries an `[A]`/`[B]` Side indicator at the head — the
+	// per-column UX (h/l switch, per-side ◆) makes "which lane am I
+	// on?" the most-asked question, so the bar surfaces it ahead of
+	// any keymap. See diffHint() for the dynamic composition.
+	hintDiffKeys      = "h/l:side j/k:move H/M/L:viewport gg/G:top/bottom /:search space:split enter:comment"
 	hintComments      = "j/k:move space:zoom enter:edit r:reply"
 	hintVisual        = "-- VISUAL --  y:yank esc/ctrl+c:cancel"
 	hintModal         = "space/esc/q/ctrl+c:close"
@@ -161,11 +165,24 @@ func (m Model) statusBarContent() (string, string) {
 	case model.PaneCommits:
 		return hintCommits, statusCommonSuffix
 	case model.PaneDiff:
-		return hintDiff, statusCommonSuffix
+		return m.diffHint(), statusCommonSuffix
 	case model.PaneComments:
 		return hintComments, statusCommonSuffix
 	}
 	return "", statusCommonSuffix
+}
+
+// diffHint composes the Diff-pane status hint with a leading
+// `[A]`/`[B]` indicator showing which physical column the cursor is
+// parked on. RIGHT (after) → `[A]`; LEFT (before) → `[B]`. The two-char
+// tag is short on purpose so the keymap that follows still fits on a
+// narrow terminal. Empty Side defaults to RIGHT.
+func (m Model) diffHint() string {
+	tag := "[A]"
+	if m.state.DiffCursor.Side == model.DiffSideLeft {
+		tag = "[B]"
+	}
+	return tag + " " + hintDiffKeys
 }
 
 // composeStatusBar assembles the bar:

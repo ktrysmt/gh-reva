@@ -52,6 +52,11 @@ func (m *Model) applyCommentsRefreshed(msg commentsRefreshedMsg) {
 	for _, f := range m.state.PR.Files {
 		f.CommentCount = counts[f.Path]
 	}
+	// PR.Comments was just replaced wholesale — drop the threadsForView
+	// cache so subsequent renders pick up the merged list.
+	if m.threadsCache != nil {
+		m.threadsCache.valid = false
+	}
 }
 
 // mergeRefreshedComments returns refreshed plus any Pending comments in

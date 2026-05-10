@@ -13,7 +13,8 @@ import (
 )
 
 func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	totalLines := len(m.patchLines())
+	lines := m.patchLines()
+	totalLines := len(lines)
 	if totalLines == 0 {
 		// Avoid division/clamp wrap when there is no diff to navigate.
 		totalLines = 1
@@ -24,22 +25,46 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Resolve the `g`-prefix sequence (vim semantics). See handlePendingG
 	// for the shared two-key state machine.
 	if handled := m.handlePendingG(key, func() {
-		m.state.DiffCursor.Line = 0
+		m.state.DiffCursor.Line = firstSideLine(lines, m.state.DiffCursor.Side)
 		m.scrollDiffIntoView(totalLines)
 	}); handled {
 		return m, nil
 	}
 	switch key {
+	case "h":
+		// h/l are no-op in unified mode (column has no meaning) and in
+		// visual mode (Side pinned at anchor). Both surface a Notice so
+		// the user understands why the keystroke didn't move them.
+		// Visual handling lives in handleKeyVisual; this branch only
+		// fires when Visual is nil because handleKeyVisual absorbs
+		// every key first.
+		if m.effectiveDiffViewMode() != "split" {
+			m.state.Notice = "h/l: split mode only"
+			return m, nil
+		}
+		m.switchSide(model.DiffSideLeft, lines)
+		m.scrollDiffIntoView(totalLines)
+		return m, nil
+	case "l":
+		if m.effectiveDiffViewMode() != "split" {
+			m.state.Notice = "h/l: split mode only"
+			return m, nil
+		}
+		m.switchSide(model.DiffSideRight, lines)
+		m.scrollDiffIntoView(totalLines)
+		return m, nil
 	case "j", "down":
-		if m.state.DiffCursor.Line < totalLines-1 {
-			m.state.DiffCursor.Line++
+		next := nextSideLine(lines, m.state.DiffCursor.Line, m.state.DiffCursor.Side, +1)
+		if next >= 0 {
+			m.state.DiffCursor.Line = next
 		}
 	case "k", "up":
-		if m.state.DiffCursor.Line > 0 {
-			m.state.DiffCursor.Line--
+		next := nextSideLine(lines, m.state.DiffCursor.Line, m.state.DiffCursor.Side, -1)
+		if next >= 0 {
+			m.state.DiffCursor.Line = next
 		}
 	case "G":
-		m.state.DiffCursor.Line = totalLines - 1
+		m.state.DiffCursor.Line = lastSideLine(lines, m.state.DiffCursor.Side)
 		if m.state.DiffCursor.Line < 0 {
 			m.state.DiffCursor.Line = 0
 		}
@@ -108,6 +133,27 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// switchSide flips DiffCursor.Side and, when the new Side does not
+// host the cursor's current row, repositions the cursor to the nearest
+// row that does (preferring upward — see nearestSideLine). Idempotent
+// when the requested Side already matches.
+func (m *Model) switchSide(target model.DiffSide, lines []string) {
+	if m.state.DiffCursor.Side == target {
+		return
+	}
+	m.state.DiffCursor.Side = target
+	if len(lines) == 0 {
+		return
+	}
+	cur := m.state.DiffCursor.Line
+	if cur >= 0 && cur < len(lines) && lineExistsOnSide(lines[cur], target) {
+		return
+	}
+	if next := nearestSideLine(lines, cur, target); next >= 0 {
+		m.state.DiffCursor.Line = next
+	}
+}
+
 // focusCommentsAtCursor shifts focus to the Comments pane so the user
 // can read and act on the threads anchored at the current Diff cursor.
 // CommentsCursor resets to 0 so the user lands on the first thread of
@@ -150,7 +196,7 @@ func (m Model) diffView() string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	commented := m.commentLineSet()
+	markers := m.commentLineMarkers()
 	matched := m.searchMatchLines()
 	isSplit, halfW := m.splitLayout()
 	var specs []diffLineSpec
@@ -158,13 +204,19 @@ func (m Model) diffView() string {
 		specs = m.patchSpecs()
 	}
 	cursorLine := m.state.DiffCursor.Line
+	cursorSide := m.state.DiffCursor.Side
 	var out []string
 	for i := top; i < end && len(out) < height; i++ {
 		var rows []string
 		if isSplit {
-			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, commented[i], matched[i])
+			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, cursorSide, markers.Left[i], markers.Right[i], matched[i])
 		} else {
-			rows = m.renderUnifiedBufferLine(lines[i], i, cursorLine, commented[i], matched[i])
+			// Unified mode collapses both columns into one cell, so the
+			// per-side ◆ split is meaningless — fold the two maps and
+			// pass whichever rank-wins. markerRank's precedence runs
+			// here so a buffer carrying ◆ on one side and │ on the
+			// other still shows ◆ in the lone gutter.
+			rows = m.renderUnifiedBufferLine(lines[i], i, cursorLine, foldMarker(markers.Left[i], markers.Right[i]), matched[i])
 		}
 		for _, r := range rows {
 			if len(out) >= height {
@@ -181,7 +233,15 @@ func (m Model) diffView() string {
 // the wrap-cell head. Continuation rows are `<4 blanks><wrap-cell tail>`,
 // where the tail's leading blank aligns past the diff marker (`+`/`-`/space)
 // — so total continuation indent is 5 cols (cursor 2 + marker 2 + 1).
-func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, commented, matched bool) []string {
+//
+// `marker` is the gutter glyph for this buffer line (markerAnchor /
+// markerStart / markerMiddle, see commentLineMarkers). Zero value = no
+// glyph (blank gutter). When the buffer line wraps and `marker` is
+// markerStart or markerMiddle, continuation rows redraw `│` in the
+// gutter so the multi-line range visual stays connected on narrow panes.
+// markerAnchor stops at the first row — the diamond doubles as the
+// bottom edge of the range.
+func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker rune, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
 	// Match-bg rows skip the cache because the match set varies with the
@@ -189,7 +249,7 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 	// rows keeps the cache consistent without growing its key.
 	cacheKey := ""
 	if !isCursor && !inVisual && !matched && m.rowCache != nil {
-		cacheKey = m.rowCacheKey("u", idx, 0, commented)
+		cacheKey = m.rowCacheKey("u", idx, 0, marker)
 		if v, ok := m.rowCache.get(cacheKey); ok {
 			return v
 		}
@@ -217,15 +277,21 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 			if cursor == "> " {
 				cursor = fgBold(cursor, m.theme.CursorRow)
 			}
-			marker := "  "
-			if commented {
-				marker = fg("◆ ", m.theme.CommentAnchor)
+			gutter := "  "
+			if marker != 0 {
+				gutter = fg(string(marker)+" ", m.theme.CommentAnchor)
 			}
-			prefix = cursor + marker
-		} else if inVisual {
-			prefix = fgBold("> ", m.theme.CursorRow) + "  "
+			prefix = cursor + gutter
 		} else {
-			prefix = "    "
+			cursorCol := "  "
+			if inVisual {
+				cursorCol = fgBold("> ", m.theme.CursorRow)
+			}
+			gutterCol := "  "
+			if marker == markerStart || marker == markerMiddle {
+				gutterCol = fg(string(markerMiddle)+" ", m.theme.CommentAnchor)
+			}
+			prefix = cursorCol + gutterCol
 		}
 		row := padTrunc(prefix+colored, m.paneWidthDiff)
 		if inVisual {
@@ -242,10 +308,10 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 }
 
 // renderSplitBufferLine returns the display rows for one buffer line in split
-// mode. First row carries cursor / ◆ / line numbers / both half-cells with the
-// │ separator. Continuation rows blank cursor / marker / line-number columns,
-// re-draw │ at the same column, and prefix each half-cell with 1 blank to
-// align past the diff marker.
+// mode. First row carries Lcursor / Lmarker / oldLn / leftCell / │ / Rmarker /
+// Rcursor / newLn / rightCell. Continuation rows blank cursor / marker /
+// line-number columns, re-draw │ at the same column, and prefix each half-cell
+// with 1 blank to align past the diff marker.
 //
 // Hot path under j/k repeat: split mode does ~2× the per-row work of
 // unified (two cells, two line-number gutters, separator). To keep
@@ -253,14 +319,25 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, comment
 // inputs that actually affect rendering. The cursor and visual rows are
 // not cached (they change every keystroke); everything else is, so 28/30
 // visible rows hit the cache on each redraw.
-func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, commented, matched bool) []string {
+//
+// `cursorSide` decides which physical column carries the `> ` glyph
+// (Lcursor when LEFT, Rcursor when RIGHT). `leftMarker` / `rightMarker`
+// are the per-side gutter glyphs (markerAnchor / markerStart /
+// markerMiddle); 0 leaves the corresponding gutter blank.
+func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, cursorSide model.DiffSide, leftMarker, rightMarker rune, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
 	// Match-bg rows skip the cache for the same reason as the unified
 	// path (#renderUnifiedBufferLine): per-keystroke match-set drift.
 	cacheKey := ""
 	if !isCursor && !inVisual && !matched && m.rowCache != nil {
-		cacheKey = m.rowCacheKey("s", idx, halfW, commented)
+		// cursorSide intentionally NOT in the key: it only changes the
+		// `> ` glyph in the cursor / visual cells, both of which take
+		// the no-cache path above. Including it would invalidate every
+		// non-cursor row on each h/l press and accumulate dead entries
+		// until the user flipped Side back. rightMarker and leftMarker
+		// both stay because they DO render on every row.
+		cacheKey = m.rowCacheKey("s", idx, halfW, leftMarker) + "\x00" + string(rightMarker)
 		if v, ok := m.rowCache.get(cacheKey); ok {
 			return v
 		}
@@ -276,6 +353,7 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 	blank := strings.Repeat(" ", halfW)
 	sep := fg("│", m.theme.DiffSeparator)
 	out := make([]string, 0, n)
+	cursorActive := isCursor || inVisual
 	for j := 0; j < n; j++ {
 		left := blank
 		if j < len(leftCells) {
@@ -288,29 +366,39 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 		left = m.colorDiffCell(left, spec.Kind, false)
 		right = m.colorDiffCell(right, spec.Kind, true)
 
-		var cursor, marker, oldLn, newLn string
+		var lCursor, lGutter, rCursor, rGutter, oldLn, newLn string
 		if j == 0 {
-			cursor = m.cursorMarker(model.PaneDiff, idx, cursorLine)
-			if cursor == "> " {
-				cursor = fgBold(cursor, m.theme.CursorRow)
+			lCursor = "  "
+			rCursor = "  "
+			if cursorActive {
+				glyph := fgBold("> ", m.theme.CursorRow)
+				if cursorSide == model.DiffSideLeft {
+					lCursor = glyph
+				} else {
+					rCursor = glyph
+				}
 			}
-			marker = "  "
-			if commented {
-				marker = fg("◆ ", m.theme.CommentAnchor)
-			}
+			lGutter = renderGutter(leftMarker, m.theme.CommentAnchor)
+			rGutter = renderGutter(rightMarker, m.theme.CommentAnchor)
 			oldLn = fg(lnFmt(spec.OldLn, kindHasOld(spec.Kind)), m.theme.DiffLineNumber)
 			newLn = fg(lnFmt(spec.NewLn, kindHasNew(spec.Kind)), m.theme.DiffLineNumber)
 		} else {
+			lCursor = "  "
+			rCursor = "  "
 			if inVisual {
-				cursor = fgBold("> ", m.theme.CursorRow)
-			} else {
-				cursor = "  "
+				glyph := fgBold("> ", m.theme.CursorRow)
+				if cursorSide == model.DiffSideLeft {
+					lCursor = glyph
+				} else {
+					rCursor = glyph
+				}
 			}
-			marker = "  "
+			lGutter = continuationGutter(leftMarker, m.theme.CommentAnchor)
+			rGutter = continuationGutter(rightMarker, m.theme.CommentAnchor)
 			oldLn = "    "
 			newLn = "    "
 		}
-		row := padTrunc(cursor+marker+oldLn+" "+left+" "+sep+" "+newLn+" "+right, m.paneWidthDiff)
+		row := padTrunc(lCursor+lGutter+oldLn+" "+left+" "+sep+" "+rGutter+rCursor+newLn+" "+right, m.paneWidthDiff)
 		if inVisual {
 			row = bgRow(row, m.theme.VisualRangeBg)
 		} else if matched {
@@ -322,6 +410,38 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 		m.rowCache.put(cacheKey, out)
 	}
 	return out
+}
+
+// renderGutter returns the 2-col gutter glyph for the FIRST display row
+// of a buffer line. Empty marker → 2 blanks; otherwise the glyph plus a
+// trailing blank, colored with the comment-anchor accent.
+func renderGutter(marker rune, color lipgloss.Color) string {
+	if marker == 0 {
+		return "  "
+	}
+	return fg(string(marker)+" ", color)
+}
+
+// continuationGutter mirrors renderGutter for continuation rows: only
+// markerStart / markerMiddle redraw │ (so the multi-row range visual
+// stays connected when wrap splits a buffer line); markerAnchor and 0
+// leave the gutter blank — the diamond doubles as the bottom edge.
+func continuationGutter(marker rune, color lipgloss.Color) string {
+	if marker == markerStart || marker == markerMiddle {
+		return fg(string(markerMiddle)+" ", color)
+	}
+	return "  "
+}
+
+// foldMarker collapses a (Left, Right) marker pair into a single glyph
+// for unified mode. Higher rank wins so a row carrying ◆ on one side
+// and │ on the other still draws ◆ in the lone unified gutter. Both
+// zero → 0.
+func foldMarker(left, right rune) rune {
+	if markerRank(left) >= markerRank(right) {
+		return left
+	}
+	return right
 }
 
 // diffLineKind classifies a unified-diff buffer line into the same byte tags
@@ -405,9 +525,12 @@ func wrapCell(content string, cellW int) []string {
 // the per-side content cell width. Falls back to unified when the column is
 // too narrow to make a useful split. Layout per row:
 //
-//	<cursor 2><marker 2><lnL 4>< 1><leftCell halfW>< 1><│ 1>< 1><lnR 4>< 1><rightCell halfW>
+//	<Lcursor 2><Lmarker 2><lnL 4>< 1><leftCell halfW>< 1><│ 1>< 1><Rmarker 2><Rcursor 2><lnR 4>< 1><rightCell halfW>
 //
-// fixed overhead = 2+2 + (4+1) + 3 + (4+1) = 17, so halfW = (paneWidthDiff-17)/2.
+// fixed overhead = 2+2 + (4+1) + 3 + 2 + 2 + (4+1) = 21,
+// so halfW = (paneWidthDiff - 21) / 2. Per-side cursor / marker columns
+// are required for h/l Side switching: a single cursor column can't
+// indicate which physical lane the user is parked in.
 func (m Model) splitLayout() (bool, int) {
 	if m.effectiveDiffViewMode() != "split" {
 		return false, 0
@@ -415,7 +538,7 @@ func (m Model) splitLayout() (bool, int) {
 	if m.paneWidthDiff <= 0 {
 		return false, 0
 	}
-	avail := m.paneWidthDiff - 17
+	avail := m.paneWidthDiff - 21
 	if avail < 16 {
 		return false, 0
 	}
@@ -552,39 +675,6 @@ func lnFmt(n int, has bool) string {
 		return "    "
 	}
 	return fmt.Sprintf("%4d", n)
-}
-
-// commentLineSet returns the set of buffer-line indices that carry an anchored
-// review comment in the current Diff view. Built once per render so per-line
-// rendering stays O(1).
-//
-// Side-aware: LEFT comments resolve against the old-file line mapping,
-// every other side resolves against the new-file mapping. Without this
-// split, a comment posted on a `-` row never matches any buffer index
-// (newLineNumbers returns 0 for `-` rows) and the ◆ marker disappears.
-func (m Model) commentLineSet() map[int]bool {
-	newMap := m.patchNewLineNumbers()
-	oldMap := m.patchOldLineNumbers()
-	if len(newMap) == 0 && len(oldMap) == 0 {
-		return nil
-	}
-	threads := m.threadsForView()
-	if len(threads) == 0 {
-		return nil
-	}
-	targets := map[int]bool{}
-	collect := func(c *model.ReviewComment) {
-		if i := commentBufferIndex(c, oldMap, newMap); i >= 0 {
-			targets[i] = true
-		}
-	}
-	for _, t := range threads {
-		collect(t.Root)
-		for _, r := range t.Replies {
-			collect(r)
-		}
-	}
-	return targets
 }
 
 // diffViewportHeight returns the configured viewport height, falling back to

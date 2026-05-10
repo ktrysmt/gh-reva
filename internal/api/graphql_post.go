@@ -397,6 +397,15 @@ func (c *ghClient) threadByCommentNodeID(n int, commentNodeID string, partial gq
 		if out.DiffSide == "" {
 			out.DiffSide = rc.Side
 		}
+		if out.StartLine == 0 {
+			out.StartLine = rc.StartLine
+		}
+		if out.OriginalStartLine == 0 {
+			out.OriginalStartLine = rc.OriginalStartLine
+		}
+		if out.StartDiffSide == "" {
+			out.StartDiffSide = rc.StartSide
+		}
 		return out
 	}
 	return partial
@@ -435,6 +444,15 @@ func (c *ghClient) fallbackThreadFromCache(n int, parentThreadID string, partial
 		}
 		if out.DiffSide == "" {
 			out.DiffSide = rc.Side
+		}
+		if out.StartLine == 0 {
+			out.StartLine = rc.StartLine
+		}
+		if out.OriginalStartLine == 0 {
+			out.OriginalStartLine = rc.OriginalStartLine
+		}
+		if out.StartDiffSide == "" {
+			out.StartDiffSide = rc.StartSide
 		}
 		return out
 	}

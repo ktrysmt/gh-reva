@@ -91,8 +91,44 @@ type AppState struct {
 	LoadFrame int
 }
 
+// DiffSide identifies which physical column of the split-mode Diff pane
+// the cursor lives in. The string values are intentionally identical to
+// GitHub's GraphQL DiffSide enum (LEFT / RIGHT) so the value can flow
+// straight into ReviewComment.Side / Compose anchors without a translator.
+//
+// "before" / "after" describe what the user sees: the LEFT column shows
+// the file as it was before the change, the RIGHT column shows it after.
+// The default for a fresh PR / fresh file is RIGHT, matching GitHub's
+// web review default — most reviews are about the new code, and Enter on
+// a context line posts to the after column unless the user explicitly
+// switches with `h`.
+type DiffSide string
+
+const (
+	DiffSideRight DiffSide = "RIGHT"
+	DiffSideLeft  DiffSide = "LEFT"
+)
+
+// Opposite returns the column on the other side. Unknown / empty values
+// default to RIGHT so a stray Opposite() call never sends the cursor to
+// a non-existent third column.
+func (s DiffSide) Opposite() DiffSide {
+	if s == DiffSideLeft {
+		return DiffSideRight
+	}
+	return DiffSideLeft
+}
+
 type DiffCursor struct {
 	Line int
+	// Side identifies which physical column the cursor is parked in.
+	// Drives the per-column ◆ marker placement, the threadsForCursor
+	// filter (so Comments shows only same-side threads), and the Side
+	// field of any new comment the user composes via Enter on a context
+	// row. h/l toggles between LEFT / RIGHT in split mode; in unified
+	// mode h/l is no-op but Side is preserved so split → unified →
+	// split round-trips do not reset the user's column.
+	Side DiffSide
 }
 
 type DiffViewport struct {
@@ -287,6 +323,7 @@ func NewAppState() *AppState {
 	return &AppState{
 		FocusedPane:  PaneFiles,
 		DiffViewMode: DiffViewSplit,
+		DiffCursor:   DiffCursor{Side: DiffSideRight},
 		FoldedDirs:   map[string]bool{},
 		DiffCache:    map[string]string{},
 		Loading:      map[string]bool{},

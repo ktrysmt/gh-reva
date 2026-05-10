@@ -41,11 +41,16 @@ test('F2c: split mode shows old/new line numbers per side', async () => {
     /1\s+package src.*│.*1\s+package src/,
     `context line should expose both old and new line numbers (=1); Diff:\n${diff}`,
   )
-  // Added line "// Hello returns" — new line 3, no old line. Right gutter shows 3.
+  // Added line "// Hello returns" — new line 3, no old line. Right gutter
+  // sits past `│` + Rmarker + Rcursor cols (the new per-column layout
+  // adds 4 cols between `│` and newLn). The marker on this row is
+  // ◆ (carried by comment 1001 on greeting.go new line 3); the regex
+  // is intentionally loose about what fills the per-side gutter so a
+  // future glyph swap doesn't fragment this assertion.
   assert.match(
     diff,
-    /│\s*3\s+\+\/\/ Hello returns/,
-    `added line should show new-line gutter on the right side`,
+    /│[^0-9]*3\s+\+\/\/ Hello returns/,
+    `added line should show new-line gutter on the right side; Diff:\n${diff}`,
   )
   await quit(s)
 })
@@ -331,12 +336,15 @@ test('F13: cursor `>` appears only on the first display row of a wrapped line', 
   const lines = diff.split('\n')
   const headRow = lines.findIndex(l => l.includes('Hello returns'))
   assert.ok(headRow >= 0, `expected first row of wrap; Diff:\n${diff}`)
-  assert.ok(lines[headRow].startsWith('> '), `head row must carry "> "; got "${lines[headRow]}"`)
-  // Continuation row carries the wrap of "...for the given..." (split halfW=22).
-  const contRow = lines.findIndex(l => /for the give/.test(l))
+  // Per-column layout: the `>` sits in the Rcursor column (between Rmarker
+  // and newLn) for a RIGHT-side cursor. Just check that `> ` appears
+  // somewhere on the head row — the leading-`> ` form was the pre-Side
+  // layout where Lcursor sat at col 0.
+  assert.ok(lines[headRow].includes('> '), `head row must carry "> " somewhere; got "${lines[headRow]}"`)
+  const contRow = lines.findIndex(l => /given name/.test(l))
   assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
   assert.ok(
-    !lines[contRow].startsWith('> '),
+    !lines[contRow].includes('> '),
     `continuation row must not carry "> " (cursor lives on the buffer line, not display row); got "${lines[contRow]}"`,
   )
   await quit(s)
@@ -352,7 +360,7 @@ test('F15: ◆ marker appears only on the first display row of a wrapped comment
   const headRow = lines.findIndex(l => l.includes('Hello returns'))
   assert.ok(headRow >= 0, `expected wrap row; Diff:\n${diff}`)
   assert.ok(lines[headRow].includes('◆'), `first row of commented wrapped line must show ◆; got "${lines[headRow]}"`)
-  const contRow = lines.findIndex(l => /for the give/.test(l))
+  const contRow = lines.findIndex(l => /given name/.test(l))
   assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
   assert.ok(
     !lines[contRow].includes('◆'),
@@ -371,7 +379,7 @@ test('F16: split `│` separator continues on every continuation display row', a
   assert.ok(headRow >= 0)
   const firstCol = lines[headRow].indexOf('│')
   assert.ok(firstCol >= 0, 'first row of wrapped buffer line must include │')
-  const contRow = lines.findIndex(l => /for the give/.test(l))
+  const contRow = lines.findIndex(l => /given name/.test(l))
   assert.ok(contRow >= 0, `expected wrap continuation; Diff:\n${diff}`)
   const contCol = lines[contRow].indexOf('│')
   assert.equal(contCol, firstCol, `│ on continuation row must be at the same column; first=${firstCol} cont=${contCol}; row="${lines[contRow]}"`)
@@ -392,6 +400,136 @@ test('F17: unified mode wraps long lines and indents continuation by 5 cols', as
   assert.ok(cont !== undefined, `expected at least one continuation row; Diff:\n${diff}`)
   // Continuation must indent 5 cols (cursor 2 + ◆marker 2 + diff-marker 1).
   assert.match(cont, /^ {5}\S/, `unified continuation must indent 5 cols past the diff marker; got "${cont}"`)
+  await quit(s)
+})
+
+test('F18: multi-line range comment renders ┌/│/◆ gutter on greeting_test.go', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  await s.type('J')                            // advance to greeting_test.go
+  await s.press('space')                       // unified mode for tight gutter
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  // Range comment 1005 (start_line=5, line=10, RIGHT) on greeting_test.go.
+  // file lines 5..10 inside the diff buffer:
+  //   5: +func TestHello(t *testing.T) {  ← ┌
+  //   6: +\tgot := Hello("world")          ← │
+  //   7: +\twant := "Hello, world"         ← │
+  //   8: +\tif got != want {               ← │
+  //   9: +\t\tt.Errorf(...)                ← │
+  //  10: +\t}                              ← ◆
+  // Single-line comment 1004 still anchors at file line 11 (closing `}`).
+  const rowFunc   = lines.find(l => l.includes('func TestHello'))
+  const rowGot    = lines.find(l => l.includes('got := Hello'))
+  const rowWant   = lines.find(l => l.includes('want := '))
+  const rowIf     = lines.find(l => l.includes('if got != want'))
+  const rowErrorf = lines.find(l => l.includes('t.Errorf'))
+  assert.ok(rowFunc,   `expected diff row containing "func TestHello"; Diff:\n${diff}`)
+  assert.ok(rowGot,    `expected diff row containing "got := Hello"`)
+  assert.ok(rowWant,   `expected diff row containing "want :="`)
+  assert.ok(rowIf,     `expected diff row containing "if got != want"`)
+  assert.ok(rowErrorf, `expected diff row containing "t.Errorf"`)
+  assert.ok(rowFunc.includes('┌'),  `range start row must show ┌; got "${rowFunc}"`)
+  assert.ok(rowGot.includes('│'),    `range middle row must show │; got "${rowGot}"`)
+  assert.ok(rowWant.includes('│'),   `range middle row must show │; got "${rowWant}"`)
+  assert.ok(rowIf.includes('│'),     `range middle row must show │; got "${rowIf}"`)
+  assert.ok(rowErrorf.includes('│'), `range middle row must show │; got "${rowErrorf}"`)
+  // Range end (file line 10, "+\t}") collides with single-line cmt 1004 (line 11).
+  // We assert that the closer of the two `}` lines (file line 10) carries ◆.
+  // Both `+}` style rows exist (10 and 11); the count of ◆ rows must be ≥ 2.
+  const diamondRows = lines.filter(l => l.includes('◆'))
+  assert.ok(
+    diamondRows.length >= 2,
+    `expected at least 2 ◆ rows (range end + single-line); got ${diamondRows.length}; Diff:\n${diff}`,
+  )
+  // No ◆ on the range start row (must be ┌).
+  assert.ok(!rowFunc.includes('◆'), `range start row must NOT carry ◆; got "${rowFunc}"`)
+  await quit(s)
+})
+
+test('F18b: narrow pane keeps │ on continuation rows of wrapped range lines', async () => {
+  // Reproduces the bug where a multi-line range comment's gutter line
+  // visibly broke when a `┌` / `│` buffer line wrapped to multiple
+  // display rows: the wrapped continuation rows had blank gutters,
+  // fragmenting the range visual on narrow terminals.
+  const s = await launchReva({ cols: 80 })   // forces unified (F3) + wraps
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  await s.type('J')                            // advance to greeting_test.go
+  const diff = paneText(await s.text(), 'Diff')
+  const lines = diff.split('\n')
+  // Range comment 1005 (start_line=5, line=10, RIGHT). At cols=80 the
+  // unified content area is narrow enough to wrap the `t.Errorf(...)`
+  // row (file line 9, a markerMiddle row) to at least 2 display rows.
+  const errIdx = lines.findIndex(l => l.includes('t.Errorf'))
+  assert.ok(errIdx >= 0, `expected diff row containing "t.Errorf"; Diff:\n${diff}`)
+  assert.ok(lines[errIdx].includes('│'), `range middle row must show │; got "${lines[errIdx]}"`)
+  const cont = lines[errIdx + 1]
+  assert.ok(cont !== undefined, `expected at least one continuation row; Diff:\n${diff}`)
+  // Continuation row of a markerMiddle row must redraw │ in the gutter so
+  // the multi-line range visual stays connected. Without the fix this row
+  // was a 5-space indent — the gutter line broke here.
+  assert.ok(
+    cont.includes('│'),
+    `continuation of wrapped range row must keep │; got "${cont}" (prev="${lines[errIdx]}")`,
+  )
+  await quit(s)
+})
+
+test('F19: status bar shows the Side tag ([A] default, [B] after h)', async () => {
+  // The Diff hint composes a leading [A]/[B] tag (RIGHT/after vs
+  // LEFT/before) so the user always sees which column the cursor is
+  // parked on without opening Help. l switches back to RIGHT.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  let screen = await s.text()
+  assert.match(screen, /\[A\] h\/l:side/, `default Diff hint must show [A] tag with h/l binding; tail:\n${screen.split('\n').slice(-3).join('\n')}`)
+  await s.type('h')
+  screen = await s.text()
+  assert.match(screen, /\[B\] h\/l:side/, `after h, hint must flip to [B]; tail:\n${screen.split('\n').slice(-3).join('\n')}`)
+  await s.type('l')
+  screen = await s.text()
+  assert.match(screen, /\[A\] h\/l:side/, `after l, hint must restore [A]; tail:\n${screen.split('\n').slice(-3).join('\n')}`)
+  await quit(s)
+})
+
+test('F20: j on RIGHT skips a `-` row (auto-skip per side)', async () => {
+  // main.go is the only fixture file with a `-` row inside the diff
+  // buffer (`-import "fmt"` at buffer index 4). Cursor in RIGHT mode
+  // must hop over it.
+  const s = await launchReva()
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab')   // focus Diff
+  await s.type('J'); await s.type('J')         // greeting.go → greeting_test.go → main.go
+  let screen = await s.text()
+  assert.match(screen, /Diff: src\/main\.go/, 'expected main.go to be selected')
+  // Walk down to the `package main` context row (buffer index 3 from top).
+  await s.type('g'); await s.type('g')         // gg → top of side
+  // After gg in RIGHT mode the cursor lands on the first RIGHT-existing
+  // row (the file header `--- a/src/main.go` is still considered
+  // header / both-sides per lineExistsOnSide). Step down to context.
+  await s.type('j')                             // 0 → 1
+  await s.type('j')                             // 1 → 2 (@@)
+  await s.type('j')                             // 2 → 3 (` package main`)
+  await s.type('j')                             // 3 → SKIP `-import "fmt"`, land on `+import (`
+  const diff = paneText(await s.text(), 'Diff')
+  // Cursor (`> `) must sit on the RIGHT-cursor column of the `+import (` row.
+  // Look for the row containing `import (` — the cursor marker should be on
+  // its physical row.
+  const lines = diff.split('\n')
+  const cursorRowIdx = lines.findIndex(l => l.includes('> ') && l.includes('import ('))
+  assert.ok(
+    cursorRowIdx >= 0,
+    `expected cursor on the \`+import (\` row (RIGHT-side after auto-skip); Diff:\n${diff}`,
+  )
+  // The skipped `-import "fmt"` row exists in the buffer but must NOT
+  // carry the cursor.
+  const minusRow = lines.find(l => l.includes('-import "fmt"') || l.includes('import "fmt"'))
+  if (minusRow) {
+    assert.ok(!minusRow.startsWith('> '), `cursor must not land on the skipped \`-\` row; got "${minusRow}"`)
+  }
   await quit(s)
 })
 

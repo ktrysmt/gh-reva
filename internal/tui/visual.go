@@ -37,6 +37,20 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.startComposeInline()
 		}
 		return m, nil
+	case "h", "l":
+		// Side switching is locked while a visual range is active —
+		// the range's anchor and cursor share the same Side by
+		// construction (auto-skip never crosses sides), and allowing
+		// h/l would force one of those endpoints onto a row that
+		// doesn't exist on the new Side. Surface a Notice so the
+		// user understands the no-op.
+		if m.state.Visual.OriginPane == model.PaneDiff {
+			m.state.Notice = "side locked in visual (esc to leave)"
+			return m, nil
+		}
+		// Visual on a non-Diff pane has no Side concept — fall
+		// through to the per-pane handler so j/k-style behavior is
+		// unaffected.
 	case "tab", "shift+tab", "backspace", "v", " ", "q", "?":
 		// State-mutating / mode keys are inert in visual mode:
 		//   Tab / Shift-Tab — would move focus mid-selection.

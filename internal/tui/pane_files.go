@@ -113,7 +113,13 @@ func (m *Model) selectFile(path string) {
 	if m.state.SelectedFile != path {
 		m.state.SelectedFile = path
 		m.state.SelectedRange = model.CommitRange{Kind: model.RangeWholePR}
-		m.state.DiffCursor = model.DiffCursor{}
+		// Reset to the after column so per-file context Enter posts to
+		// RIGHT by default (CLAUDE.md §4 #19 chose "保持しない。初期列に
+		// リセット" for file switches). Persisting Side across files
+		// would surprise the user — they would press Enter on a fresh
+		// file and post to the side they last touched on a different
+		// file, with no visual cue tying the two together.
+		m.state.DiffCursor = model.DiffCursor{Side: model.DiffSideRight}
 		m.state.DiffViewport.Top = 0
 		m.state.CommitsCursor = 0
 		m.state.CommentsCursor = 0

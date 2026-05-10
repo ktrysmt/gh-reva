@@ -232,30 +232,36 @@ func (c *ghClient) listThreadComments(ctx context.Context, threadID, startCursor
 // themselves only expose body / author / commit metadata.
 func convertGQLComment(gc gqlReviewComment, thread gqlReviewThread) *model.ReviewComment {
 	rc := &model.ReviewComment{
-		ID:               gc.DatabaseID,
-		NodeID:           gc.ID,
-		ThreadID:         thread.ID,
-		Path:             thread.Path,
-		CommitID:         gc.Commit.OID,
-		OriginalCommitID: gc.OriginalCommit.OID,
-		Line:             thread.Line,
-		OriginalLine:     thread.OriginalLine,
-		Side:             thread.DiffSide,
-		DiffHunk:         gc.DiffHunk,
-		User:             gc.Author.Login,
-		CreatedAt:        gc.CreatedAt,
-		Body:             gc.Body,
-		Outdated:         thread.IsOutdated,
-		Pending:          gc.PullRequestReview.State == "PENDING",
+		ID:                gc.DatabaseID,
+		NodeID:            gc.ID,
+		ThreadID:          thread.ID,
+		Path:              thread.Path,
+		CommitID:          gc.Commit.OID,
+		OriginalCommitID:  gc.OriginalCommit.OID,
+		Line:              thread.Line,
+		OriginalLine:      thread.OriginalLine,
+		Side:              thread.DiffSide,
+		StartLine:         thread.StartLine,
+		OriginalStartLine: thread.OriginalStartLine,
+		StartSide:         thread.StartDiffSide,
+		DiffHunk:          gc.DiffHunk,
+		User:              gc.Author.Login,
+		CreatedAt:         gc.CreatedAt,
+		Body:              gc.Body,
+		Outdated:          thread.IsOutdated,
+		Pending:           gc.PullRequestReview.State == "PENDING",
 	}
 	if gc.ReplyTo != nil {
 		rc.InReplyTo = gc.ReplyTo.DatabaseID
 	}
 	// Fall back from line==0 to originalLine so outdated anchors still
 	// land on a buffer row in the Diff renderer (mirroring the REST
-	// fallback behaviour).
+	// fallback behaviour). Same rule for the range upper edge.
 	if rc.Line == 0 {
 		rc.Line = rc.OriginalLine
+	}
+	if rc.StartLine == 0 {
+		rc.StartLine = rc.OriginalStartLine
 	}
 	return rc
 }
