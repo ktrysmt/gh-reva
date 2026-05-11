@@ -294,9 +294,7 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 			prefix = cursorCol + gutterCol
 		}
 		row := padTrunc(prefix+colored, m.paneWidthDiff)
-		if inVisual {
-			row = bgRow(row, m.theme.VisualRangeBg)
-		} else if matched {
+		if matched {
 			row = bgRow(row, m.theme.SearchMatchBg)
 		}
 		out = append(out, row)
@@ -399,9 +397,7 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 			newLn = "    "
 		}
 		row := padTrunc(lCursor+lGutter+oldLn+" "+left+" "+sep+" "+rGutter+rCursor+newLn+" "+right, m.paneWidthDiff)
-		if inVisual {
-			row = bgRow(row, m.theme.VisualRangeBg)
-		} else if matched {
+		if matched {
 			row = bgRow(row, m.theme.SearchMatchBg)
 		}
 		out = append(out, row)
