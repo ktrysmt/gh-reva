@@ -180,12 +180,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// don't strand on an invisible target. Revealing keeps focus
 		// where it is — the user may have been working in Diff /
 		// Files / Commits and merely wants the column back.
+		//
+		// tea.ClearScreen forces a full repaint after the toggle.
+		// bubbletea's standardRenderer skips rewriting any output line
+		// whose content equals the previous frame's line at the same
+		// y (standard_renderer.go canSkip path). Layout-shifting
+		// toggles change the per-line content of most rows but blank
+		// rows in narrow panes can match between hide / show frames,
+		// leaving stale cells from the prior (wider) Diff column
+		// underneath the new Comments column — wezterm visibly
+		// preserves the +/- bg of those cells. Forcing a full clear
+		// is the only fix that's robust across terminals; the cost is
+		// one extra erase-screen sequence per toggle, which is
+		// invisible to the user.
 		m.state.PendingPrefix = ""
 		m.state.CommentsHidden = !m.state.CommentsHidden
 		if m.state.CommentsHidden && m.state.FocusedPane == model.PaneComments {
 			m.state.FocusedPane = model.PaneDiff
 		}
-		return m, nil
+		return m, tea.ClearScreen
 	case "v":
 		m.state.PendingPrefix = ""
 		// Forbid entering visual on the synthetic Files All row — there

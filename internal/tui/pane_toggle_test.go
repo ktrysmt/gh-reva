@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,31 @@ func TestCommentsToggle_FlipsHiddenFlag(t *testing.T) {
 		if m.state.CommentsHidden {
 			t.Errorf("ctrl+e from pane %v: expected CommentsHidden=false after second press", p)
 		}
+	}
+}
+
+// TestCommentsToggle_ReturnsClearScreenCmd pins that Ctrl+E returns
+// tea.ClearScreen as its Cmd. Bubbletea's standardRenderer skips
+// rewriting a line when the new line equals the previous frame's line at
+// the same y; toggling the Comments column changes overall layout but
+// some rows (e.g. blank-body rows in narrow panes) can coincide between
+// hide / show frames, leaving stale cells from the prior wider Diff
+// (carrying DiffPlusBg / DiffMinusBg) underneath the new Comments
+// column. wezterm's reported leak is the most visible symptom but the
+// underlying gap is generic. Returning ClearScreen forces a full repaint
+// (EraseEntireScreen + CursorHome) so no stale SGR survives.
+func TestCommentsToggle_ReturnsClearScreenCmd(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.FocusedPane = model.PaneDiff
+
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
+	if cmd == nil {
+		t.Fatalf("ctrl+e must return a non-nil Cmd to force full repaint")
+	}
+	wantPtr := reflect.ValueOf(tea.ClearScreen).Pointer()
+	gotPtr := reflect.ValueOf(cmd).Pointer()
+	if gotPtr != wantPtr {
+		t.Errorf("ctrl+e Cmd must be tea.ClearScreen; got a different func pointer")
 	}
 }
 
