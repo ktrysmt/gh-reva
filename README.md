@@ -119,7 +119,15 @@ If none exist, `gh-reva` runs with defaults — no config file required.
 
 ### `[syntax.extensions]`
 
-Map a filename suffix (with leading dot) to a chroma lexer name or alias:
+Map a filename suffix (with leading dot) to a chroma lexer name or
+alias. The table is empty by default — copy the block below into
+your `reva.toml` and add entries:
+
+```toml
+[syntax.extensions]
+```
+
+Example with a few useful mappings:
 
 ```toml
 [syntax.extensions]
@@ -142,11 +150,12 @@ Map a filename suffix (with leading dot) to a chroma lexer name or alias:
 ### `[layout]`
 
 Tune the on-screen split. Today the only knob is the Comments column's
-share of the total terminal width:
+share of the total terminal width. The block below is the built-in
+default — copy it into your `reva.toml` and tweak the number:
 
 ```toml
 [layout]
-comments_width_percent = 40
+comments_width_percent = 35
 ```
 
 - Value is an integer percentage; honored in `[10, 70]`. Zero or
@@ -156,6 +165,29 @@ comments_width_percent = 40
   never collapses below readability even under aggressive overrides.
 - `Ctrl-E` still toggles the Comments column open / closed at runtime;
   the percent setting controls only the open-state width.
+
+### `[editor]`
+
+Tune the geometry of the `tmux display-popup` window that hosts the
+external editor when you compose / reply / edit a review comment from
+inside a tmux session. The block below is the built-in default — copy
+it into your `reva.toml` and tweak the numbers:
+
+```toml
+[editor]
+popup_width_percent = 50
+popup_height_percent = 50
+```
+
+- Values are integer percentages of the terminal's width / height;
+  each honored in `[20, 95]`. Zero or out-of-range falls back to the
+  built-in default (`50`).
+- Only affects the tmux popup branch — `tmux display-popup -w <W>%
+  -h <H>%`. Outside tmux the editor takes over the whole terminal
+  regardless and these values are ignored.
+- The smaller the popup, the more of the reva frame stays visible
+  underneath while you write; the larger it is, the closer the
+  experience gets to a full-screen editor swap.
 
 ## Color theming
 

@@ -69,6 +69,13 @@ type Model struct {
 	// [layout.comments_width_percent]. Zero / out-of-range falls back
 	// to defaultCommentsWidthPercent inside splitColumnWidths.
 	commentsWidthPercent int
+
+	// editorPopupWidthPct / editorPopupHeightPct carry reva.toml's
+	// [editor].popup_*_percent overrides used by buildEditorCmd when
+	// the user is inside a tmux session. Zero / out-of-range falls
+	// back to defaultEditorPopupPercent inside resolveEditorPopupPercent.
+	editorPopupWidthPct  int
+	editorPopupHeightPct int
 }
 
 func (m Model) Err() error { return m.err }
@@ -111,6 +118,16 @@ func (m *Model) SetSyntaxExtensions(ext map[string]string) {
 // the default in effect.
 func (m *Model) SetCommentsWidthPercent(p int) {
 	m.commentsWidthPercent = p
+}
+
+// SetEditorPopupSize installs the user's [editor].popup_*_percent
+// overrides used by the tmux display-popup branch of buildEditorCmd.
+// Out-of-range / zero is tolerated per resolveEditorPopupPercent;
+// callers can pass cfg.Editor.PopupWidthPercent / PopupHeightPercent
+// directly without sanitizing. Has no effect outside tmux.
+func (m *Model) SetEditorPopupSize(widthPct, heightPct int) {
+	m.editorPopupWidthPct = widthPct
+	m.editorPopupHeightPct = heightPct
 }
 
 func NewModel(client api.Client, target *api.Target) Model {

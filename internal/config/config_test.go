@@ -96,6 +96,48 @@ func TestLoad_EmptyConfigZeroesLayout(t *testing.T) {
 	}
 }
 
+// TestLoad_EditorPopupSize pins the [editor] section schema. Two integer
+// percentages drive the tmux display-popup geometry; the consumer
+// (buildEditorCmd) owns the clamp range and falls back to the built-in
+// 50/50 default when either value is zero or out-of-range. The loader
+// stays a thin TOML→struct adapter, so it must surface whatever the
+// user wrote — including out-of-range values — and let the consumer
+// decide.
+func TestLoad_EditorPopupSize(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "reva.toml")
+	body := `[editor]
+popup_width_percent = 70
+popup_height_percent = 40
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(%s): %v", path, err)
+	}
+	if got := cfg.Editor.PopupWidthPercent; got != 70 {
+		t.Errorf("Editor.PopupWidthPercent = %d; want 70", got)
+	}
+	if got := cfg.Editor.PopupHeightPercent; got != 40 {
+		t.Errorf("Editor.PopupHeightPercent = %d; want 40", got)
+	}
+}
+
+// TestLoad_EmptyConfigZeroesEditor pins that an unset [editor] block
+// surfaces as zero values, matching the "unset means default" contract
+// that [layout] uses.
+func TestLoad_EmptyConfigZeroesEditor(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load(\"\"): %v", err)
+	}
+	if cfg.Editor.PopupWidthPercent != 0 || cfg.Editor.PopupHeightPercent != 0 {
+		t.Errorf("zero-value Editor = %+v; want {0 0}", cfg.Editor)
+	}
+}
+
 // TestResolvePath_ExplicitWins pins that --config takes precedence over
 // XDG / HOME defaults — user intent always wins.
 func TestResolvePath_ExplicitWins(t *testing.T) {

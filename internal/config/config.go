@@ -17,6 +17,7 @@ import (
 type Config struct {
 	Syntax SyntaxConfig `toml:"syntax"`
 	Layout LayoutConfig `toml:"layout"`
+	Editor EditorConfig `toml:"editor"`
 }
 
 // SyntaxConfig holds syntax-highlight-related overrides. Today only
@@ -42,6 +43,23 @@ type LayoutConfig struct {
 	// doesn't claim. Subject to the existing narrow-terminal floors so
 	// Diff and Files never collapse below readable widths.
 	CommentsWidthPercent int `toml:"comments_width_percent"`
+}
+
+// EditorConfig holds overrides for the external-editor invocation used
+// by the compose flow. Today only the tmux display-popup geometry is
+// configurable; fields are int percentages with zero = "use the
+// built-in default", mirroring LayoutConfig's convention. The consumer
+// owns the valid range and the fallback — the loader stays a thin
+// TOML→struct adapter.
+type EditorConfig struct {
+	// PopupWidthPercent / PopupHeightPercent override the
+	// `tmux display-popup -w <PCT>% -h <PCT>%` geometry used when
+	// reva is invoked from inside a tmux session. Honored when each
+	// value is in [20, 95]; out-of-range or zero falls back to the
+	// built-in default (50). Has no effect outside tmux — the bare
+	// $EDITOR path takes over the whole terminal regardless.
+	PopupWidthPercent  int `toml:"popup_width_percent"`
+	PopupHeightPercent int `toml:"popup_height_percent"`
 }
 
 // Load reads `path` and unmarshals into a Config. An empty path yields

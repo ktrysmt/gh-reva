@@ -134,6 +134,7 @@ var rootCmd = &cobra.Command{
 		m.SetVersion(version)
 		m.SetSyntaxExtensions(cfg.Syntax.Extensions)
 		m.SetCommentsWidthPercent(cfg.Layout.CommentsWidthPercent)
+		m.SetEditorPopupSize(cfg.Editor.PopupWidthPercent, cfg.Editor.PopupHeightPercent)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}

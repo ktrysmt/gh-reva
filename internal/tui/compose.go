@@ -365,7 +365,31 @@ func (m *Model) beginEditing() tea.Cmd {
 		m.state.Compose.UseTextarea = true
 		return nil
 	}
-	return runEditorCmd(m.state.Compose.Body)
+	return runEditorCmd(m.state.Compose.Body, m.editorPopupWidthPct, m.editorPopupHeightPct)
+}
+
+// editorPopupPercentMin / Max bound the accepted range for the
+// reva.toml [editor] popup_*_percent overrides. Below the min the popup
+// can't fit a single readable line; above the max it eats the entire
+// reva frame, which defeats the "transient overlay" framing of the
+// popup mode. Out-of-range values fall back to defaultEditorPopupPercent
+// instead of being clamped — mirrors splitColumnWidths' contract so a
+// typo in reva.toml lands on the safe default rather than a degraded
+// experience.
+const (
+	editorPopupPercentMin  = 20
+	editorPopupPercentMax  = 95
+	defaultEditorPopupPercent = 50
+)
+
+// resolveEditorPopupPercent applies the "0 / out-of-range → default"
+// contract for a single dimension. Extracted so buildEditorCmd stays
+// readable.
+func resolveEditorPopupPercent(pct int) int {
+	if pct < editorPopupPercentMin || pct > editorPopupPercentMax {
+		return defaultEditorPopupPercent
+	}
+	return pct
 }
 
 // buildEditorCmd assembles the *exec.Cmd that runs `shellCmd` (an
@@ -373,15 +397,20 @@ func (m *Model) beginEditing() tea.Cmd {
 // a tmux session ($TMUX non-empty), the editor floats in a centered
 // `display-popup` so gh-reva's TUI stays painted underneath instead of
 // being swapped out for the full-screen editor. Outside tmux, the
-// canonical `sh -c <shellCmd>` path runs the editor inline as before.
+// canonical `sh -c <shellCmd>` path runs the editor inline as before;
+// the popup size parameters are ignored on that branch because there
+// is no popup to size.
 //
 // `-E` makes tmux close the popup automatically when the editor exits
 // (regardless of exit code), so vim `:q!` and friends still return
-// control to gh-reva. `-w 80% -h 80%` keeps the popup roomy enough for
-// real edits while leaving the surrounding pane chrome visible.
-func buildEditorCmd(shellCmd string) *exec.Cmd {
+// control to gh-reva. `widthPct` / `heightPct` carry the user's
+// [editor].popup_*_percent overrides from reva.toml; zero / out-of-range
+// falls back to the built-in 50/50 default via resolveEditorPopupPercent.
+func buildEditorCmd(shellCmd string, widthPct, heightPct int) *exec.Cmd {
 	if os.Getenv("TMUX") != "" {
-		return exec.Command("tmux", "display-popup", "-E", "-w", "80%", "-h", "80%", shellCmd)
+		w := fmt.Sprintf("%d%%", resolveEditorPopupPercent(widthPct))
+		h := fmt.Sprintf("%d%%", resolveEditorPopupPercent(heightPct))
+		return exec.Command("tmux", "display-popup", "-E", "-w", w, "-h", h, shellCmd)
 	}
 	return exec.Command("sh", "-c", shellCmd)
 }
@@ -410,7 +439,11 @@ func buildEditorCmd(shellCmd string) *exec.Cmd {
 //     popup overlays (instead of reva's frame).
 //   - TMUX unset → tea.ExecProcess: the editor takes over the whole
 //     terminal, so bubbletea must release alt-screen / raw mode first.
-func runEditorCmd(initialBody string) tea.Cmd {
+//
+// `popupWidthPct` / `popupHeightPct` are forwarded into buildEditorCmd
+// for the tmux popup branch; both zero leaves the built-in 50/50 default
+// in effect. They have no effect on the non-tmux branch.
+func runEditorCmd(initialBody string, popupWidthPct, popupHeightPct int) tea.Cmd {
 	f, err := os.CreateTemp("", "gh-reva-compose-*.md")
 	if err != nil {
 		return func() tea.Msg { return composeBodyMsg{err: err} }
@@ -426,7 +459,7 @@ func runEditorCmd(initialBody string) tea.Cmd {
 	_ = f.Close()
 	editor := editorEnv()
 	shellCmd := fmt.Sprintf("%s%s %s", editor, startInsertFlag(editor), shellSingleQuote(tmpPath))
-	cmd := buildEditorCmd(shellCmd)
+	cmd := buildEditorCmd(shellCmd, popupWidthPct, popupHeightPct)
 	if os.Getenv("TMUX") != "" {
 		return runEditorOverlay(cmd, tmpPath)
 	}
