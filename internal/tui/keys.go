@@ -188,6 +188,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "v":
 		m.state.PendingPrefix = ""
+		// Forbid entering visual on the synthetic Files All row — there
+		// is no real path to yank and a range anchored at the All row
+		// would either drag the user out of "browse mode" or yank a
+		// truncated path set. Notice surfaces the no-op.
+		if m.state.FocusedPane == model.PaneFiles && m.state.FilesCursor == 0 {
+			m.state.Notice = "visual unavailable on the All row"
+			return m, nil
+		}
 		vs := &model.VisualState{
 			OriginPane: m.state.FocusedPane,
 			Linewise:   m.state.FocusedPane != model.PaneDiff,
@@ -233,16 +241,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// Commit the cursor file before leaving the modal.
 				// j/k no longer auto-select, so without this the user
 				// would close the modal and find Diff still parked on
-				// the previous SelectedFile.
+				// the previous SelectedFile. Cursor 0 (flat) and the
+				// FilesRowAll row (tree) commit the synthetic All view.
 				if !m.state.FilesTreeMode {
-					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(m.state.PR.Files) {
-						m.selectFile(m.state.PR.Files[m.state.FilesCursor].Path)
+					switch {
+					case m.state.FilesCursor == 0:
+						m.selectAllFiles()
+					case m.state.FilesCursor >= 1 && m.state.FilesCursor <= len(m.state.PR.Files):
+						m.selectFile(m.state.PR.Files[m.state.FilesCursor-1].Path)
 					}
 				} else {
 					rows := m.filesTreeRows()
 					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(rows) {
 						r := rows[m.state.FilesCursor]
-						if r.Kind == model.FilesRowFile {
+						switch r.Kind {
+						case model.FilesRowAll:
+							m.selectAllFiles()
+						case model.FilesRowFile:
 							m.selectFile(r.Path)
 						}
 					}

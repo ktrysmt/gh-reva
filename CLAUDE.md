@@ -185,18 +185,27 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
    - Mouse click in Diff sets Side from inner col: `< halfW+10` → LEFT, `> halfW+10` → RIGHT (divider `│` preserves Side). After Side change, `switchSide` repositions cursor to nearest same-side row if click row is opposite-side. Wheel preserves Side.
 
 ### Commits pane
-15. `visibleCommits` auto-filtered by `SelectedFile`. Set on load (`PR.Files[0].Path`) so the filter is always engaged.
-15a. Cursor index 0 is the synthetic "All commits" row representing `RangeWholePR`. Cursor space `[0, len(visibleCommits)]`: idx 0 → `RangeWholePR`, idx 1..N → `RangeSingleCommit{commits[idx-1].SHA}`. Label: `All commits (N)` identity, `All commits (M of N)` filtered. Bold; `selectFile` resets `CommitsCursor = 0`. Visual yank skips this row.
+15. `visibleCommits` auto-filtered by `SelectedFile`. Set on load (`PR.Files[0].Path`) so the filter is always engaged. AllFilesPath bypasses the filter (see #19a).
+15a. Cursor index 0 is the synthetic "All commits" row representing `RangeWholePR`. Cursor space `[0, len(visibleCommits)]`: idx 0 → `RangeWholePR`, idx 1..N → `RangeSingleCommit{commits[idx-1].SHA}`. Label: `All commits (N)` identity, `All commits (M of N)` filtered. Bold; `selectFile` resets `CommitsCursor = 0`. Visual yank skips this row. Under `SelectedFile == model.AllFilesPath` (#19a) the filter is dropped → label always `All commits (N)` and the `[<status>]` annotation slot is blank.
 16. `j/k` in Commits auto-selects the cursor row. Visual mode gates this so multi-row yank does not mutate `SelectedRange`.
 17. Enter on Commits is a no-op (cursor commit is already auto-selected).
-18. `[A]/[M]/[D]/[R]` annotates each commit row that touches `SelectedFile`.
+18. `[A]/[M]/[D]/[R]` annotates each commit row that touches `SelectedFile`. Suppressed when `SelectedFile == model.AllFilesPath` — the cross-file browse has no per-file status to display.
 
 ### Files pane
 19. `j/k` in Files moves `FilesCursor` only — no Diff re-render per keystroke (sluggish). Deliberate selection gestures: `Enter` (commit) or `Shift+J/K` (`advanceFile`, any pane) → `selectFile(path)`. `selectFile` resets `DiffCursor`, `DiffViewport.Top`, `CommitsCursor`, `CommentsCursor` only when path changes. Incsearch (`/`) auto-select retained — typing expects the cursor to follow.
-20. Tree mode (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + status + comment count.
-21. `autoSelectTree` skips `selectFile` on dir rows so a search-driven cursor jump onto a dir does not clobber Diff.
-22. `remapCursorOnTreeToggle` preserves the conceptual cursor position when toggling flat ⇄ tree.
-22b. Enter on a file row (flat or tree) — commit gesture: `selectFile(path)` + `FocusedPane = PaneDiff`. Tree dir rows fold / unfold, focus stays. Files zoom modal Enter = same commit (selectFile + close modal + Diff focus); modal-Enter path lives in `keys.go::handleKey` because it must clear `Modal` first.
+19a. Cursor index 0 is the synthetic "All (N files)" row, symmetric to the Commits pane's "All commits" row (#15a). Cursor space `[0, len(PR.Files)]`: idx 0 → `selectAllFiles()` (sets `SelectedFile = model.AllFilesPath`); idx 1..N → `selectFile(PR.Files[i-1].Path)`. Loader lands on cursor 1 so initial UX matches the pre-feature behaviour; users opt into the cross-file view via `k` / `gg`. Under AllFilesPath:
+   - `visibleCommits` returns the full commit list unfiltered (#15) so the user can walk the entire PR history.
+   - `commitsView` / `allCommitsRow` drop the per-commit `[A/M/D/R]` annotation and the `(M of N)` filtered count (#15a, #18).
+   - `patchInfo` reads the pre-built concatenated diff under `diffKey(sha, AllFilesPath)` — `loadPRCmd` builds these in PR.Files order alongside the per-file entries (one for `sha=""` / WholePR + one per single-commit SHA over its touched files).
+   - `commentsView` renders the placeholder `(no file selected — Comments disabled in All view)`; `commentsForView` / `threadsForCursor` return empty so no `◆` markers appear in Diff.
+   - `buildComposeInline` short-circuits with `state.Notice = "comments unavailable in All view (select a file first)"` so Diff Enter / visual+Enter / Comments `r` are blocked.
+   - Visual entry on Files idx 0 is forbidden (`handleKey "v"` returns early with `state.Notice = "visual unavailable on the All row"`); Files yank skips idx 0 in both flat and tree modes (symmetric to the Commits-pane skip for All commits).
+   - `advanceFile` (Shift+J/K) skips the All row — that gesture is "next file diff", not "browse mode entry". Reach All via Tab to Files + `k` / `gg`.
+   - Diff title renders `Diff: All files (N)` (or `Diff: All files (N) @ <sha>` for a single commit) instead of leaking the AllFilesPath sentinel (which contains NUL bytes).
+20. Tree mode (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + status + comment count. Tree row 0 is the FilesRowAll entry — rendered as `All (N files)` (bold, no status/count column).
+21. `autoSelectTree` skips `selectFile` on dir rows so a search-driven cursor jump onto a dir does not clobber Diff. `FilesRowAll` rows route to `selectAllFiles`.
+22. `remapCursorOnTreeToggle` preserves the conceptual cursor position when toggling flat ⇄ tree. The All row is shared between modes (flat idx 0 ⇄ tree idx 0).
+22b. Enter on a file row (flat or tree) — commit gesture: `selectFile(path)` + `FocusedPane = PaneDiff`. Enter on the All row (flat idx 0 / tree FilesRowAll) — `selectAllFiles()` + `FocusedPane = PaneDiff`. Tree dir rows fold / unfold, focus stays. Files zoom modal Enter = same commit gestures (All / file / dir); modal-Enter path lives in `keys.go::handleKey` because it must clear `Modal` first.
 
 ### Comments pane
 23. Diff-cursor coupling: `commentsView` shows ONLY threads anchored at the Diff cursor's buffer line AND matching `DiffCursor.Side` (`◆` rows on the active column). Off `◆` → `(no comment at cursor)`, `<space>` no-op. Visible set: `threadsForCursor` filters by buffer index (`commentBufferIndex`) then by `root.Side` (`threadOnSide`). `flatComments` scoped to `threadsForCursor` so cursor never drifts past visible content. Empty `root.Side` → RIGHT (legacy, mirroring GitHub default).

@@ -141,7 +141,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.DiffCache = msg.Diffs
 		m.state.ViewerLogin = msg.ViewerLogin
 		if len(msg.PR.Files) > 0 {
+			// Cursor 1 is files[0] under the All-row shifted indexing.
+			// Lands on the first file to preserve pre-feature initial
+			// UX; users opt into the All view via `k` / `gg`.
 			m.state.SelectedFile = msg.PR.Files[0].Path
+			m.state.FilesCursor = 1
 		}
 		m.state.LoadStage = model.LoadStageDone
 		return m, nil
@@ -607,18 +611,40 @@ func loadPRCmd(c api.Client, t *api.Target) tea.Cmd {
 		// I/O happens here in production. The fixture client serves
 		// directly from its in-memory diff map.
 		diffs := map[string]string{}
+		// PR-wide (WholePR) per-file slices + the cross-file concat
+		// served under diffKey("", AllFilesPath). Iterate PR.Files
+		// order so the concat reads top-to-bottom as the user sees
+		// them in the Files pane.
+		var allWhole strings.Builder
 		for _, f := range files {
 			d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, "", f.Path)
 			if err == nil && d != "" {
 				diffs[diffKey("", f.Path)] = d
+				allWhole.WriteString(d)
 			}
 		}
+		if allWhole.Len() > 0 {
+			diffs[diffKey("", model.AllFilesPath)] = allWhole.String()
+		}
+		// Per-commit per-file slices + per-commit cross-file concat
+		// under diffKey(sha, AllFilesPath). Each commit's iteration
+		// order follows PR.Files so the concat shows files in the
+		// same order the user navigates in Files (the ChangedFiles
+		// map is unordered).
 		for _, com := range commits {
-			for path := range com.ChangedFiles {
-				d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, com.SHA, path)
-				if err == nil && d != "" {
-					diffs[diffKey(com.SHA, path)] = d
+			var allCommit strings.Builder
+			for _, f := range files {
+				if _, touched := com.ChangedFiles[f.Path]; !touched {
+					continue
 				}
+				d, err := c.GetFileDiff(ctx, t.Owner, t.Repo, t.Number, com.SHA, f.Path)
+				if err == nil && d != "" {
+					diffs[diffKey(com.SHA, f.Path)] = d
+					allCommit.WriteString(d)
+				}
+			}
+			if allCommit.Len() > 0 {
+				diffs[diffKey(com.SHA, model.AllFilesPath)] = allCommit.String()
 			}
 		}
 

@@ -12,9 +12,11 @@ import { launchReva, waitReady, quit, paneText } from '../helpers/launch.mjs'
 
 // ---- gg / G ---------------------------------------------------------------
 
-test('P1: gg / G in Files pane jump cursor to first / last file', async () => {
+test('P1: gg / G in Files pane jump cursor to All-row / last file', async () => {
   // gg / G move the Files cursor only — they no longer auto-select
-  // the file they land on. Confirm via the cursor row in the Files
+  // the file they land on. Files index 0 is now the synthetic All row
+  // (symmetric to the Commits pane's All-commits row); gg lands there,
+  // not on the first file. Confirm via the cursor row in the Files
   // pane (the `> ` glyph) rather than the Diff title.
   const s = await launchReva()
   await waitReady(s)
@@ -26,8 +28,8 @@ test('P1: gg / G in Files pane jump cursor to first / last file', async () => {
   await s.type('gg')
   files = paneText(await s.text(), 'Files')
   cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
-  assert.ok(/src\/greeting\.go(?!_)/.test(cursorRow),
-    `gg should land cursor on greeting.go; got "${cursorRow}"`)
+  assert.ok(/All \(\d+ files\)/.test(cursorRow),
+    `gg should land cursor on the All row; got "${cursorRow}"`)
   await quit(s)
 })
 

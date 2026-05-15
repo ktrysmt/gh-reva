@@ -118,6 +118,13 @@ func (m Model) commentsView() string {
 	if m.state.PR == nil || m.state.SelectedFile == "" {
 		return title
 	}
+	if m.state.SelectedFile == model.AllFilesPath {
+		// All view spans every file; the per-anchor Comments column has
+		// no sensible content to show. Diff Enter / `r` are blocked
+		// upstream by buildComposeInline so the user gets a Notice on
+		// attempted compose.
+		return title + "\n(no file selected — Comments disabled in All view)"
+	}
 	threads := m.threadsForCursor()
 	if len(threads) == 0 {
 		return title + "\n(no comment at cursor)"
@@ -305,7 +312,7 @@ func anyCommentAtBuffer(t *commentThread, cursor int, oldNums, newNums []int) bo
 }
 
 func (m Model) commentsForView() []*model.ReviewComment {
-	if m.state.PR == nil || m.state.SelectedFile == "" {
+	if m.state.PR == nil || m.state.SelectedFile == "" || m.state.SelectedFile == model.AllFilesPath {
 		return nil
 	}
 	var out []*model.ReviewComment

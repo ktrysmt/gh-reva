@@ -118,6 +118,13 @@ func (m *Model) buildComposeInline() bool {
 	if m.state == nil || m.state.PR == nil || m.state.SelectedFile == "" {
 		return false
 	}
+	// The synthetic All view spans every file; a single comment anchor
+	// cannot identify which file the user means, so compose is disabled
+	// here. The user must select a real file first.
+	if m.state.SelectedFile == model.AllFilesPath {
+		m.state.Notice = "comments unavailable in All view (select a file first)"
+		return false
+	}
 	patch := m.currentPatch()
 	if patch == "" {
 		return false

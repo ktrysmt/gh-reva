@@ -8,7 +8,9 @@ import (
 )
 
 // buildFilesTree groups PR.Files by directory and returns a flat list of
-// rows in tree-display order. Subtrees of folded dirs are skipped.
+// rows in tree-display order. Subtrees of folded dirs are skipped. The
+// first row is the synthetic All entry (FilesRowAll) so flat and tree
+// modes share the same "cursor 0 = All" invariant.
 func buildFilesTree(files []*model.FileEntry, foldedDirs map[string]bool) []model.FilesRow {
 	type node struct {
 		name     string
@@ -34,7 +36,12 @@ func buildFilesTree(files []*model.FileEntry, foldedDirs map[string]bool) []mode
 		}
 		cur.files = append(cur.files, i)
 	}
-	var out []model.FilesRow
+	out := []model.FilesRow{{
+		Kind:      model.FilesRowAll,
+		Depth:     0,
+		Path:      model.AllFilesPath,
+		FileIndex: -1,
+	}}
 	var walk func(n *node, depth int)
 	walk = func(n *node, depth int) {
 		dirs := make([]string, 0, len(n.children))
@@ -95,28 +102,40 @@ func (m Model) fileIndexFromTreeCursor() int {
 }
 
 // remapCursorOnTreeToggle keeps the cursor pointing at the same conceptual
-// row when switching between flat and tree modes.
+// row when switching between flat and tree modes. Flat cursor 0 (the All
+// row) maps to tree row 0 (also the All row) and vice versa. Flat cursor
+// n (n ≥ 1) corresponds to PR.Files[n-1] in the shifted indexing.
 func (m *Model) remapCursorOnTreeToggle(prevTree bool) {
 	if m.state.PR == nil {
 		return
 	}
 	if prevTree {
-		// tree → flat: cursor was a tree-row index; convert via FileIndex.
+		// tree → flat
 		rows := buildFilesTree(m.state.PR.Files, m.state.FoldedDirs)
 		if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(rows) {
 			r := rows[m.state.FilesCursor]
-			if r.Kind == model.FilesRowFile {
-				m.state.FilesCursor = r.FileIndex
+			switch r.Kind {
+			case model.FilesRowAll:
+				m.state.FilesCursor = 0
+				return
+			case model.FilesRowFile:
+				m.state.FilesCursor = r.FileIndex + 1
 				return
 			}
 		}
 		m.state.FilesCursor = 0
 		return
 	}
-	// flat → tree: cursor was a file index; locate that file in the tree.
+	// flat → tree
 	rows := buildFilesTree(m.state.PR.Files, m.state.FoldedDirs)
+	if m.state.FilesCursor == 0 {
+		// All row stays at tree index 0.
+		m.state.FilesCursor = 0
+		return
+	}
+	wantIdx := m.state.FilesCursor - 1
 	for i, r := range rows {
-		if r.Kind == model.FilesRowFile && r.FileIndex == m.state.FilesCursor {
+		if r.Kind == model.FilesRowFile && r.FileIndex == wantIdx {
 			m.state.FilesCursor = i
 			return
 		}

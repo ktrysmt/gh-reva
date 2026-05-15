@@ -226,15 +226,22 @@ func (m Model) collectFileMatches(q string, fold bool) []model.SearchMatch {
 	var out []model.SearchMatch
 	if m.state.FilesTreeMode {
 		for i, r := range m.filesTreeRows() {
+			if r.Kind == model.FilesRowAll {
+				// The synthetic "All (N files)" row is not a search
+				// target — its literal text never carries user content.
+				continue
+			}
 			if substr(r.Path, q, fold) {
 				out = append(out, model.SearchMatch{Index: i})
 			}
 		}
 		return out
 	}
+	// Cursor index 0 is the synthetic "All (N files)" row, so real
+	// files live at cursor idx i+1.
 	for i, f := range m.state.PR.Files {
 		if substr(f.Path, q, fold) {
-			out = append(out, model.SearchMatch{Index: i})
+			out = append(out, model.SearchMatch{Index: i + 1})
 		}
 	}
 	return out

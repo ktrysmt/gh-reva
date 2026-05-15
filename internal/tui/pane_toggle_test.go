@@ -208,26 +208,26 @@ func TestFiles_ggGCursorOnly(t *testing.T) {
 	)
 	m.state.FocusedPane = model.PaneFiles
 	m.state.SelectedFile = "src/foo.go"
-	m.state.FilesCursor = 0
+	m.state.FilesCursor = 1 // src/foo.go under the All-row shifted indexing
 
-	// G — bottom
+	// G — bottom (cursor space is [0, len(files)] now; G lands on len(files))
 	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	m = res.(Model)
-	last := len(m.state.PR.Files) - 1
+	last := len(m.state.PR.Files)
 	if m.state.FilesCursor != last {
-		t.Errorf("G must move cursor to last (%d); got %d", last, m.state.FilesCursor)
+		t.Errorf("G must move cursor to last file row (%d); got %d", last, m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != "src/foo.go" {
 		t.Errorf("G must NOT change SelectedFile; got %q", m.state.SelectedFile)
 	}
 
-	// gg — top
+	// gg — top (now the All row)
 	res, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = res.(Model)
 	res, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = res.(Model)
 	if m.state.FilesCursor != 0 {
-		t.Errorf("gg must move cursor to 0; got %d", m.state.FilesCursor)
+		t.Errorf("gg must move cursor to 0 (All row); got %d", m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != "src/foo.go" {
 		t.Errorf("gg must NOT change SelectedFile; got %q", m.state.SelectedFile)
@@ -246,7 +246,7 @@ func TestFiles_EnterShiftsFocusToDiffAndSelects(t *testing.T) {
 	)
 	m.state.FocusedPane = model.PaneFiles
 	m.state.SelectedFile = "src/foo.go"
-	m.state.FilesCursor = 1 // src/bar.go
+	m.state.FilesCursor = 2 // src/bar.go (cursor 1 is files[0] under the All-row shift)
 
 	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = res.(Model)
@@ -270,7 +270,7 @@ func TestFiles_EnterTreeDirStillFolds(t *testing.T) {
 	m.state.FocusedPane = model.PaneFiles
 	m.state.FilesTreeMode = true
 	m.state.FoldedDirs = map[string]bool{}
-	m.state.FilesCursor = 0 // dir row "src/"
+	m.state.FilesCursor = 1 // dir row "src/" (idx 0 is the synthetic All row)
 
 	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = res.(Model)

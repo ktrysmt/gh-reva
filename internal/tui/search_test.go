@@ -114,7 +114,10 @@ func TestFiles_GGotoBottom(t *testing.T) {
 	prevSelected := m.state.SelectedFile
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	m = mm.(Model)
-	last := len(m.state.PR.Files) - 1
+	// Cursor space is [0, len(files)] inclusive — cursor 0 is the All
+	// row, indices 1..N are PR.Files[i-1]. G lands on the last file
+	// row, which is cursor index len(files).
+	last := len(m.state.PR.Files)
 	if m.state.FilesCursor != last {
 		t.Fatalf("G should jump Files cursor to last (%d); got %d", last, m.state.FilesCursor)
 	}
@@ -219,13 +222,14 @@ func TestSearch_IncrementalJumpsCursor_Files(t *testing.T) {
 	m.state.FilesCursor = 0
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = mm.(Model)
-	// Type "gamma" — should jump to src/gamma_test.go (idx 2).
+	// Type "gamma" — files[2]=src/gamma_test.go lives at cursor 3
+	// under the All-row shifted indexing.
 	for _, r := range "gamma" {
 		mm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = mm.(Model)
 	}
-	if m.state.FilesCursor != 2 {
-		t.Fatalf("incremental search 'gamma' should land on file idx 2 (src/gamma_test.go); got %d", m.state.FilesCursor)
+	if m.state.FilesCursor != 3 {
+		t.Fatalf("incremental search 'gamma' should land on cursor 3 (files[2]=src/gamma_test.go); got %d", m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != "src/gamma_test.go" {
 		t.Fatalf("Files search should auto-select; SelectedFile=%q", m.state.SelectedFile)

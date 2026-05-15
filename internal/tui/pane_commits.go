@@ -99,7 +99,7 @@ func (m Model) commitsView() string {
 	for i, c := range commits {
 		cursor := m.styledCursor(model.PaneCommits, i+1, m.state.CommitsCursor)
 		annotation := "    "
-		if m.state.SelectedFile != "" {
+		if m.state.SelectedFile != "" && m.state.SelectedFile != model.AllFilesPath {
 			if k, ok := c.ChangedFiles[m.state.SelectedFile]; ok {
 				annotation = "[" + m.styledStatus(k) + "] "
 			}
@@ -117,19 +117,21 @@ func (m Model) commitsView() string {
 
 // allCommitsRow renders the synthetic row at index 0. Label form:
 //
-//	no file selected:                 "All commits (N)"
+//	no file selected / AllFilesPath:  "All commits (N)"
 //	file selected, M == N:            "All commits (N)"   // file in every commit
 //	file selected, M < N:             "All commits (M of N)"
 //
-// When a file is selected, the annotation slot mirrors the file's PR-level
-// change-kind so reviewers see the overall status without drilling in.
+// When a single file is selected, the annotation slot mirrors the file's
+// PR-level change-kind so reviewers see the overall status without
+// drilling in. AllFilesPath has no per-file status, so the annotation
+// stays blank and the count never drops below the total.
 func (m Model) allCommitsRow(visible []*model.Commit) string {
 	cursor := m.styledCursor(model.PaneCommits, 0, m.state.CommitsCursor)
 	annotation := "    "
 	totalCommits := len(m.state.PR.Commits)
 	visibleCount := len(visible)
 	label := fmt.Sprintf("All commits (%d)", totalCommits)
-	if m.state.SelectedFile != "" {
+	if m.state.SelectedFile != "" && m.state.SelectedFile != model.AllFilesPath {
 		if status, ok := m.fileStatusFor(m.state.SelectedFile); ok {
 			annotation = "[" + m.styledStatus(status) + "] "
 		}
@@ -153,15 +155,18 @@ func (m Model) fileStatusFor(path string) (model.ChangeKind, bool) {
 }
 
 // visibleCommits filters PR.Commits to those that touch the SelectedFile.
-// Without a SelectedFile (initial state before any file is loaded), all
-// commits are returned. The synthetic "All commits" row at cursor index 0
-// of the Commits pane sits ABOVE this slice — see commitsView and
-// autoSelectCommit for how the cursor maps that virtual row to RangeWholePR.
+// Without a SelectedFile (initial state before any file is loaded) OR
+// when SelectedFile is the AllFilesPath sentinel (Files pane's All row),
+// every commit is returned — the user explicitly opted out of per-file
+// scoping so the Commits pane shows the entire PR history. The synthetic
+// "All commits" row at cursor index 0 of the Commits pane sits ABOVE
+// this slice — see commitsView and autoSelectCommit for how the cursor
+// maps that virtual row to RangeWholePR.
 func (m Model) visibleCommits() []*model.Commit {
 	if m.state.PR == nil {
 		return nil
 	}
-	if m.state.SelectedFile == "" {
+	if m.state.SelectedFile == "" || m.state.SelectedFile == model.AllFilesPath {
 		return m.state.PR.Commits
 	}
 	var out []*model.Commit

@@ -171,9 +171,17 @@ func (m *Model) focusCommentsAtCursor() {
 func (m Model) diffView() string {
 	label := "Diff"
 	if m.state.SelectedFile != "" {
-		label = fmt.Sprintf("Diff: %s", m.state.SelectedFile)
+		// The synthetic All view shows a cross-file concat — render a
+		// human-readable label instead of leaking the AllFilesPath
+		// sentinel (which contains NUL bytes the terminal would strip
+		// or display as "ALL_FILES" anyway).
+		shown := m.state.SelectedFile
+		if shown == model.AllFilesPath {
+			shown = fmt.Sprintf("All files (%d)", len(m.state.PR.Files))
+		}
+		label = fmt.Sprintf("Diff: %s", shown)
 		if m.state.SelectedRange.Kind == model.RangeSingleCommit {
-			label = fmt.Sprintf("Diff: %s @ %s", m.state.SelectedFile, shortSHA(m.state.SelectedRange.SHA))
+			label = fmt.Sprintf("Diff: %s @ %s", shown, shortSHA(m.state.SelectedRange.SHA))
 		}
 	}
 	suffix := fmt.Sprintf("[%s]", m.effectiveDiffViewMode())

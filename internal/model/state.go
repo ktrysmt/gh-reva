@@ -168,6 +168,11 @@ type FilesRowKind int
 const (
 	FilesRowFile FilesRowKind = iota
 	FilesRowDir
+	// FilesRowAll is the synthetic "All (N files)" row at tree index 0
+	// (and at flat cursor 0 — but flat mode hard-codes it without going
+	// through FilesRow). Path is the AllFilesPath sentinel; FileIndex is
+	// -1; Depth is 0.
+	FilesRowAll
 )
 
 type VisualState struct {
