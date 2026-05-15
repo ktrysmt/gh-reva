@@ -317,7 +317,7 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 			}
 			gutter := "  "
 			if marker != 0 {
-				gutter = fg(string(marker)+" ", m.theme.CommentAnchor)
+				gutter = fg(string(marker)+" ", m.markerColor(marker))
 			}
 			prefix = cursor + gutter
 		} else {
@@ -411,8 +411,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 					rCursor = glyph
 				}
 			}
-			lGutter = renderGutter(leftMarker, m.theme.CommentAnchor)
-			rGutter = renderGutter(rightMarker, m.theme.CommentAnchor)
+			lGutter = renderGutter(leftMarker, m.markerColor(leftMarker))
+			rGutter = renderGutter(rightMarker, m.markerColor(rightMarker))
 			oldLn = fg(lnFmt(spec.OldLn, kindHasOld(spec.Kind)), m.theme.DiffLineNumber)
 			newLn = fg(lnFmt(spec.NewLn, kindHasNew(spec.Kind)), m.theme.DiffLineNumber)
 		} else {
@@ -426,8 +426,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 					rCursor = glyph
 				}
 			}
-			lGutter = continuationGutter(leftMarker, m.theme.CommentAnchor)
-			rGutter = continuationGutter(rightMarker, m.theme.CommentAnchor)
+			lGutter = continuationGutter(leftMarker, m.markerColor(leftMarker))
+			rGutter = continuationGutter(rightMarker, m.markerColor(rightMarker))
 			oldLn = "    "
 			newLn = "    "
 		}
@@ -448,6 +448,17 @@ func renderGutter(marker rune, color lipgloss.Color) string {
 		return "  "
 	}
 	return fg(string(marker)+" ", color)
+}
+
+// markerColor returns the gutter glyph color for a given marker rune.
+// markerResolved (✓) uses theme.CommentResolved (green semantic) so it
+// reads as "concern addressed" at a glance, distinct from the unresolved
+// markerAnchor (◆) / range markers that share theme.CommentAnchor.
+func (m Model) markerColor(marker rune) lipgloss.Color {
+	if marker == markerResolved {
+		return m.theme.CommentResolved
+	}
+	return m.theme.CommentAnchor
 }
 
 // continuationGutter mirrors renderGutter for continuation rows: only

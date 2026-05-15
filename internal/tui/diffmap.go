@@ -187,23 +187,34 @@ func commentRangeStartBufferIndex(c *model.ReviewComment, oldNums, newNums []int
 	return -1
 }
 
-// Marker glyphs drawn in the Diff gutter. Single-line / range-end use
-// markerAnchor; range start uses markerStart; intermediate buffer rows
-// use markerMiddle. `└` is intentionally absent — the anchor diamond
-// doubles as the bottom edge of the range.
+// Marker glyphs drawn in the Diff gutter. Single-line / range-end uses
+// markerAnchor (or markerResolved when the thread is resolved); range
+// start uses markerStart; intermediate buffer rows use markerMiddle.
+// `└` is intentionally absent — the anchor diamond doubles as the
+// bottom edge of the range, and the resolved checkmark mirrors that
+// role.
 const (
-	markerAnchor = '◆'
-	markerStart  = '┌'
-	markerMiddle = '│'
+	markerAnchor   = '◆'
+	markerResolved = '✓'
+	markerStart    = '┌'
+	markerMiddle   = '│'
 )
 
 // markerRank orders the glyphs by visual precedence so that overlapping
 // threads collapse to a single character per buffer row. Higher value =
 // wins. A zero / unknown rune ranks lowest so any real glyph beats "no
 // marker".
+//
+// Unresolved ◆ outranks resolved ✓: when both an unresolved and a
+// resolved thread share a buffer row, the unresolved one demands more
+// attention so the ◆ stays visible. Range markers (┌, │) rank below
+// either anchor — a single-line anchor on the same row as another
+// thread's range middle should win the gutter slot.
 func markerRank(r rune) int {
 	switch r {
 	case markerAnchor:
+		return 4
+	case markerResolved:
 		return 3
 	case markerStart:
 		return 2
@@ -387,18 +398,26 @@ func (m Model) commentLineMarkers() sideMarkers {
 		if side == "" {
 			side = "RIGHT"
 		}
+		// Anchor glyph swaps to the resolved checkmark when the thread
+		// has been marked resolved on GitHub. Start (┌) and middle (│)
+		// glyphs are unchanged — the range shape still reads as a
+		// range; only the bottom edge signals "concern addressed".
+		anchor := markerAnchor
+		if root.Resolved {
+			anchor = markerResolved
+		}
 		start := commentRangeStartBufferIndex(root, oldMap, newMap)
 		if start < 0 || start >= end {
 			// Single-line, missing start, or unresolvable / inverted
 			// range — fall back to the legacy single-anchor glyph.
-			put(side, end, markerAnchor)
+			put(side, end, anchor)
 			continue
 		}
 		put(side, start, markerStart)
 		for i := start + 1; i < end; i++ {
 			put(side, i, markerMiddle)
 		}
-		put(side, end, markerAnchor)
+		put(side, end, anchor)
 	}
 	if pi != nil {
 		pi.markers = &out

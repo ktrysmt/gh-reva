@@ -186,11 +186,15 @@ func (m Model) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.DiffCache = msg.Diffs
 		m.state.ViewerLogin = msg.ViewerLogin
 		if len(msg.PR.Files) > 0 {
-			// Cursor 1 is files[0] under the All-row shifted indexing.
-			// Lands on the first file to preserve pre-feature initial
-			// UX; users opt into the All view via `k` / `gg`.
-			m.state.SelectedFile = msg.PR.Files[0].Path
-			m.state.FilesCursor = 1
+			// Cursor 0 is the synthetic "[*] All (N files)" row. Initial
+			// landing is the All view so the splash hands off to a
+			// PR-wide overview (concat diff across every file); users
+			// drill into a single file with j / Shift+J / Enter. Keeping
+			// FilesCursor and SelectedFile in sync at boot avoids the
+			// confusing mid-state where the cursor sits on [*] while the
+			// Diff/Commits/Comments columns still reflect files[0].
+			m.state.SelectedFile = model.AllFilesPath
+			m.state.FilesCursor = 0
 		}
 		m.state.LoadStage = model.LoadStageDone
 		return m, nil

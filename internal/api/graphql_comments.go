@@ -30,6 +30,7 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
         nodes {
           id
           isOutdated
+          isResolved
           path
           line
           originalLine
@@ -111,6 +112,7 @@ type gqlReviewComment struct {
 type gqlReviewThread struct {
 	ID                string `json:"id"`
 	IsOutdated        bool   `json:"isOutdated"`
+	IsResolved        bool   `json:"isResolved"`
 	Path              string `json:"path"`
 	Line              int    `json:"line"`
 	OriginalLine      int    `json:"originalLine"`
@@ -249,6 +251,7 @@ func convertGQLComment(gc gqlReviewComment, thread gqlReviewThread) *model.Revie
 		CreatedAt:         gc.CreatedAt,
 		Body:              gc.Body,
 		Outdated:          thread.IsOutdated,
+		Resolved:          thread.IsResolved,
 		Pending:           gc.PullRequestReview.State == "PENDING",
 	}
 	if gc.ReplyTo != nil {
@@ -278,6 +281,7 @@ query($id: ID!) {
     ... on PullRequestReviewThread {
       id
       isOutdated
+      isResolved
       path
       line
       originalLine

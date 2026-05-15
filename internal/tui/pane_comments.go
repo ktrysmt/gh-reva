@@ -147,11 +147,33 @@ func (m Model) commentsView() string {
 }
 
 // renderCommentRow returns one entry rendered as multiple display rows:
-// row 0 is the header `<name>: <yyyy-mm-dd hh:mm> <hash>[ [outdated]]`,
-// rows 1..N are the wrapped body indented past the header by 2 cols
-// (so root body sits at depth+1*2 = 2 cols; reply body at 4 cols). The
-// cursor `>` glyph appears on the header row only — body rows keep the
-// 2-col cursor area blank so the indent visual stays consistent.
+// row 0 is the header `[resolved] <name>: <yyyy-mm-dd hh:mm> <hash>[ [outdated]]`
+// where the leading `[resolved]` tag is present only when the thread has
+// been resolved on GitHub. Rows 1..N are the wrapped body indented past
+// the header by 2 cols (so root body sits at depth+1*2 = 2 cols; reply
+// body at 4 cols). The cursor `>` glyph appears on the header row only —
+// body rows keep the 2-col cursor area blank so the indent visual stays
+// consistent.
+//
+// Tag layout. `[resolved]` sits at the LINE HEAD (immediately after the
+// cursor / depth indent, before the author) so it is the first content
+// the reviewer reads — resolved threads can usually be skipped, so the
+// signal earns the top-left slot. `[pending]` / `[outdated]` keep
+// the trailing position after `<sha>` they have always lived in:
+//   - pending is local-only state (no thread is resolved before its
+//     parent review is submitted), and trailing emphasis is enough.
+//   - outdated lives next to the commit hash because the hash itself
+//     hints why the anchor drifted; keeping them together preserves
+//     that adjacency.
+//
+// Compatibility note: pending and outdated are mutually exclusive
+// (pending entries are drafts and never carry GitHub flags), so the
+// trailing slot still renders at most one tag. resolved can co-exist
+// with outdated (a resolved-but-now-stale thread) — both render, one at
+// each end. resolved + pending is impossible: a draft has no thread to
+// resolve yet, so this branch is unreachable in practice; we still
+// honor `c.Resolved` if a fixture sets both, since suppressing the
+// head tag based on the trailing one would surprise.
 func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string {
 	cursor := m.styledCursor(model.PaneComments, idx, m.state.CommentsCursor)
 	headIndent := indent(depth)
@@ -163,25 +185,30 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
 	}
-	// Pending takes precedence over outdated — a pending comment by
-	// definition has not been posted yet, so the outdated bit cannot
-	// fire on it. The tag is colored independently so the user can
-	// tell at a glance which entries are local-only drafts.
-	var tag string
-	tagColor := m.theme.CommentOutdated
+	// Trailing tag (pending OR outdated) — pending wins because pending
+	// entries are drafts and cannot also be public-state outdated.
+	var trailingTag string
+	trailingColor := m.theme.CommentOutdated
 	switch {
 	case c.Pending:
-		tag = " [pending]"
-		tagColor = m.theme.CommentPending
+		trailingTag = " [pending]"
+		trailingColor = m.theme.CommentPending
 	case c.Outdated:
-		tag = " [outdated]"
+		trailingTag = " [outdated]"
 	}
-	header := fmt.Sprintf("%s%s%s: %s %s%s",
-		cursor, headIndent,
+	// Leading [resolved] tag at line head, before the author name. The
+	// trailing blank lives inside the tag string so the empty / present
+	// branches don't fight over spacing.
+	var leadingTag string
+	if c.Resolved {
+		leadingTag = fg("[resolved] ", m.theme.CommentResolved)
+	}
+	header := fmt.Sprintf("%s%s%s%s: %s %s%s",
+		cursor, headIndent, leadingTag,
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
-		fg(tag, tagColor),
+		fg(trailingTag, trailingColor),
 	)
 
 	wrapWidth := m.paneWidthComments

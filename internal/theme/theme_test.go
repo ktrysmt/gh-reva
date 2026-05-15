@@ -359,6 +359,8 @@ func checkAllHex(t *testing.T, th *theme.Theme) {
 		"CommentAuthor":      string(th.CommentAuthor),
 		"CommentDate":        string(th.CommentDate),
 		"CommentOutdated":    string(th.CommentOutdated),
+		"CommentPending":     string(th.CommentPending),
+		"CommentResolved":    string(th.CommentResolved),
 		"LoadingSpinner":     string(th.LoadingSpinner),
 		"ErrorText":          string(th.ErrorText),
 		"LogoShade1":         string(th.LogoShade1),

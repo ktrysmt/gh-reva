@@ -38,6 +38,11 @@ describe('E1+E1b+E2: Commits pane initial render (greeting.go selected)', () => 
     assert.match(commits, /\[M\]\s+bbb2222/, 'bbb2222 should annotate [M]')
     assert.doesNotMatch(commits, /\[\w\]\s+ccc3333/, 'ccc3333 should NOT annotate (greeting.go untouched)')
   })
+
+  test('E2b: All commits row carries [*] marker (always, regardless of file selection)', () => {
+    const commits = paneText(screen, 'Commits')
+    assert.match(commits, /\[\*\]\s+All commits/, 'All commits row should annotate [*]')
+  })
 })
 
 test('E3: j/k moves the Commits cursor (All commits row sits above real commits)', async () => {

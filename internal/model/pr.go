@@ -63,4 +63,13 @@ type ReviewComment struct {
 	// review's state which makes the comment public on the next
 	// ListComments refetch.
 	Pending          bool      `json:"pending,omitempty"`
+	// Resolved mirrors the GraphQL `PullRequestReviewThread.isResolved`
+	// signal — a thread the author or reviewer has explicitly marked
+	// as resolved on GitHub. The flag is thread-level on the API but
+	// gets propagated onto every comment in the thread during
+	// convertGQLComment so the renderer can decide per-row without
+	// re-walking the thread. Resolved threads get a `[resolved]`
+	// header tag in the Comments column and swap the Diff gutter
+	// glyph from ◆ to ✓.
+	Resolved         bool      `json:"resolved,omitempty"`
 }

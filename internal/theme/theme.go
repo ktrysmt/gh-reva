@@ -52,6 +52,7 @@ type Theme struct {
 	CommentDate     lipgloss.Color
 	CommentOutdated lipgloss.Color
 	CommentPending  lipgloss.Color
+	CommentResolved lipgloss.Color
 
 	LoadingSpinner lipgloss.Color
 	ErrorText      lipgloss.Color

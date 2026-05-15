@@ -37,6 +37,7 @@ func sampleFiles() []*model.FileEntry {
 
 // The Files pane prepends a synthetic "All (N files)" row at cursor
 // index 0, symmetric to the Commits pane's "All commits (N)" row.
+// The row carries the [*] marker that identifies it as virtual.
 func TestFilesView_AllRowAtIndexZero(t *testing.T) {
 	m := makeFilesModel(t, sampleFiles(), nil)
 	out := m.filesView()
@@ -47,6 +48,36 @@ func TestFilesView_AllRowAtIndexZero(t *testing.T) {
 	}
 	if !strings.Contains(lines[1], "All (3 files)") {
 		t.Fatalf("first content row must read 'All (3 files)'; got: %q", lines[1])
+	}
+	if !strings.Contains(lines[1], "[*]") {
+		t.Fatalf("All row should carry the [*] marker; got: %q", lines[1])
+	}
+}
+
+// Per-file rows render the change-kind glyph wrapped in brackets,
+// matching the Commits pane's [A]/[M]/[D]/[R] annotation style.
+func TestFilesView_FileRowsUseBracketedStatus(t *testing.T) {
+	m := makeFilesModel(t, sampleFiles(), nil)
+	out := m.filesView()
+	for _, k := range []string{"[M]", "[A]", "[D]"} {
+		if !strings.Contains(out, k) {
+			t.Fatalf("filesView must render %s for the matching status row; got:\n%s", k, out)
+		}
+	}
+}
+
+// Tree-mode file rows also carry [A]/[M]/[D]/[R] brackets.
+func TestFilesTreeRender_FileRowsUseBracketedStatus(t *testing.T) {
+	m := makeFilesModel(t, sampleFiles(), nil)
+	m.state.FilesTreeMode = true
+	out := m.filesTreeRender()
+	for _, k := range []string{"[M]", "[A]", "[D]"} {
+		if !strings.Contains(out, k) {
+			t.Fatalf("filesTreeRender must render %s for the matching status row; got:\n%s", k, out)
+		}
+	}
+	if !strings.Contains(out, "[*]") {
+		t.Fatalf("tree-mode All row should carry the [*] marker; got:\n%s", out)
 	}
 }
 

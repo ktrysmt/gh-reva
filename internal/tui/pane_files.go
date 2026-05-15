@@ -244,7 +244,7 @@ func (m Model) filesView() string {
 		if f.CommentCount > 0 {
 			count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 		}
-		status := m.styledStatus(f.Status)
+		status := "[" + m.styledStatus(f.Status) + "]"
 		path := m.searchHighlight(f.Path, model.PaneFiles)
 		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, path, count))
 	}
@@ -260,7 +260,17 @@ func (m Model) filesView() string {
 func (m Model) allFilesRow() string {
 	cursor := m.styledCursor(model.PaneFiles, 0, m.state.FilesCursor)
 	label := fmt.Sprintf("All (%d files)", len(m.state.PR.Files))
-	return cursor + "  " + fgBold(label, "")
+	return cursor + " " + m.allRowMarker() + " " + fgBold(label, "")
+}
+
+// allRowMarker returns the synthetic "[*]" annotation used by the All row
+// in the Files and Commits panes. The bracket pair mirrors the per-row
+// [A]/[M]/[D]/[R] annotation shape so column widths align, while the `*`
+// glyph identifies the row as virtual (not a real file/commit). The
+// marker carries a muted color (DiffLineNumber) so it does not compete
+// visually with the per-row status annotations.
+func (m Model) allRowMarker() string {
+	return "[" + fg("*", m.theme.DiffLineNumber) + "]"
 }
 
 func (m Model) filesTreeRender() string {
@@ -275,7 +285,7 @@ func (m Model) filesTreeRender() string {
 		switch r.Kind {
 		case model.FilesRowAll:
 			label := fmt.Sprintf("All (%d files)", len(m.state.PR.Files))
-			out = append(out, fmt.Sprintf("%s%s%s", cursor, ind, fgBold(label, "")))
+			out = append(out, fmt.Sprintf("%s%s %s %s", cursor, ind, m.allRowMarker(), fgBold(label, "")))
 		case model.FilesRowDir:
 			marker := "v "
 			if m.state.FoldedDirs[r.Path] {
@@ -289,7 +299,7 @@ func (m Model) filesTreeRender() string {
 			if f.CommentCount > 0 {
 				count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
 			}
-			status := m.styledStatus(f.Status)
+			status := "[" + m.styledStatus(f.Status) + "]"
 			// Search matches against the full path; highlight what's
 			// visible in tree mode (basename), so the user still sees
 			// the band when the query lives in the file's leaf segment.

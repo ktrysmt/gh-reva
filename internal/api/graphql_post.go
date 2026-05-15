@@ -214,6 +214,7 @@ mutation($input: AddPullRequestReviewThreadInput!) {
     thread {
       id
       isOutdated
+      isResolved
       path
       line
       originalLine

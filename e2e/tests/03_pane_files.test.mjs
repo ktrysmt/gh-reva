@@ -22,13 +22,18 @@ describe('D1+D2: Files pane initial render (flat list)', () => {
     }
   })
 
-  test('D2: each file shows status (A/M/D/R) and comment count when > 0', () => {
+  test('D2: each file shows status ([A]/[M]/[D]/[R]) and comment count when > 0', () => {
     const files = paneText(screen, 'Files')
-    assert.match(files, /M\s+src\/greeting\.go\s+\(2\)/, 'expected M + (2) for greeting.go')
-    assert.match(files, /A\s+src\/greeting_test\.go\s+\(2\)/, 'expected A + (2) for greeting_test.go')
-    assert.match(files, /M\s+src\/main\.go(?!\s*\()/, 'main.go has no comments → no count')
-    assert.match(files, /A\s+docs\/api\.md(?!\s*\()/, 'api.md has no comments → no count')
-    assert.match(files, /M\s+go\.mod(?!\s*\()/, 'go.mod has no comments → no count')
+    assert.match(files, /\[M\]\s+src\/greeting\.go\s+\(3\)/, 'expected [M] + (3) for greeting.go (carol root + alice reply + bob resolved)')
+    assert.match(files, /\[A\]\s+src\/greeting_test\.go\s+\(2\)/, 'expected [A] + (2) for greeting_test.go')
+    assert.match(files, /\[M\]\s+src\/main\.go(?!\s*\()/, 'main.go has no comments → no count')
+    assert.match(files, /\[A\]\s+docs\/api\.md(?!\s*\()/, 'api.md has no comments → no count')
+    assert.match(files, /\[M\]\s+go\.mod(?!\s*\()/, 'go.mod has no comments → no count')
+  })
+
+  test('D2b: All row carries [*] marker (symmetric to Commits)', () => {
+    const files = paneText(screen, 'Files')
+    assert.match(files, /\[\*\]\s+All \(\d+ files\)/, 'All row should annotate [*] in front of the label')
   })
 })
 
@@ -121,9 +126,9 @@ test('D5: Enter on a directory toggles expand/collapse', async () => {
   await s.type('k')
   let files = paneText(await s.text(), 'Files')
   assert.match(files, /^>\s*v\s+src\//m, 'cursor should be on the expanded src/ header')
-  // Tree-row anchor for the file: "<spaces>M greeting.go (2)" (parent indent
-  // + status + basename).
-  const fileRowRE = /^\s+M\s+greeting\.go\s+\(\d+\)/m
+  // Tree-row anchor for the file: "<spaces>[M] greeting.go (2)" (parent indent
+  // + bracketed status + basename).
+  const fileRowRE = /^\s+\[M\]\s+greeting\.go\s+\(\d+\)/m
   assert.match(files, fileRowRE, 'expanded src/ should expose greeting.go row')
   await s.press('enter')   // collapse
   files = paneText(await s.text(), 'Files')

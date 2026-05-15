@@ -82,9 +82,22 @@ export async function launchReva ({
  * The 10s default accommodates chroma's styles + lexers package init
  * (~74 styles parsed at startup, several hundred lexers registered) which
  * can add ~500ms to first-frame latency on cold caches.
+ *
+ * The loader lands on the synthetic "[*] All (N files)" row by default —
+ * SelectedFile=AllFilesPath, FilesCursor=0. Most legacy tests pre-date
+ * that and assume SelectedFile=PR.Files[0] (e.g. `src/greeting.go` in
+ * the sample fixture). To keep those tests focused on the behavior
+ * they verify rather than the boot-time landing, this helper drills
+ * into the first file by default via Shift+J (`advanceFile(forward=true)`
+ * — preserves FocusedPane=Files, sets FilesCursor=1 and selectFile
+ * (PR.Files[0])). Pass `{ allView: true }` to skip the drill when the
+ * test actually wants the All-row initial state.
  */
-export async function waitReady (session, { timeout = 10000 } = {}) {
+export async function waitReady (session, { timeout = 10000, allView = false } = {}) {
   await session.waitForText('Files', { timeout })
+  if (!allView) {
+    await session.press('J')
+  }
 }
 
 /**

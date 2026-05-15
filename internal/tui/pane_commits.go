@@ -117,41 +117,28 @@ func (m Model) commitsView() string {
 
 // allCommitsRow renders the synthetic row at index 0. Label form:
 //
-//	no file selected / AllFilesPath:  "All commits (N)"
-//	file selected, M == N:            "All commits (N)"   // file in every commit
-//	file selected, M < N:             "All commits (M of N)"
+//	no file selected / AllFilesPath:  "[*] All commits (N)"
+//	file selected, M == N:            "[*] All commits (N)"   // file in every commit
+//	file selected, M < N:             "[*] All commits (M of N)"
 //
-// When a single file is selected, the annotation slot mirrors the file's
-// PR-level change-kind so reviewers see the overall status without
-// drilling in. AllFilesPath has no per-file status, so the annotation
-// stays blank and the count never drops below the total.
+// The annotation slot is fixed to the synthetic "[*]" marker regardless
+// of file selection. Mirroring the file's [A]/[M]/[D]/[R] there made the
+// row look identical to a real commit annotation column-wise; the user
+// asked for a distinct marker that signals "virtual row" at a glance.
+// The M-of-N count remains file-aware so reviewers still see how the
+// scoped commit set narrows under file selection.
 func (m Model) allCommitsRow(visible []*model.Commit) string {
 	cursor := m.styledCursor(model.PaneCommits, 0, m.state.CommitsCursor)
-	annotation := "    "
+	annotation := m.allRowMarker() + " "
 	totalCommits := len(m.state.PR.Commits)
 	visibleCount := len(visible)
 	label := fmt.Sprintf("All commits (%d)", totalCommits)
 	if m.state.SelectedFile != "" && m.state.SelectedFile != model.AllFilesPath {
-		if status, ok := m.fileStatusFor(m.state.SelectedFile); ok {
-			annotation = "[" + m.styledStatus(status) + "] "
-		}
 		if visibleCount < totalCommits {
 			label = fmt.Sprintf("All commits (%d of %d)", visibleCount, totalCommits)
 		}
 	}
 	return cursor + annotation + fgBold(label, "")
-}
-
-func (m Model) fileStatusFor(path string) (model.ChangeKind, bool) {
-	if m.state.PR == nil {
-		return 0, false
-	}
-	for _, f := range m.state.PR.Files {
-		if f.Path == path {
-			return f.Status, true
-		}
-	}
-	return 0, false
 }
 
 // visibleCommits filters PR.Commits to those that touch the SelectedFile.

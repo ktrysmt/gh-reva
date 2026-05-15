@@ -18,14 +18,14 @@ describe('AR1: All row renders at the top of the Files pane', () => {
   let screen
   before(async () => {
     const s = await launchReva()
-    await waitReady(s)
+    await waitReady(s, { allView: true })
     screen = await s.text()
     await quit(s)
   })
 
-  test('AR1a: row label reads "All (N files)" above every file row', () => {
+  test('AR1a: row label reads "[*] All (N files)" above every file row', () => {
     const files = paneText(screen, 'Files')
-    assert.match(files, /All \(\d+ files\)/, 'Files pane must include the All row')
+    assert.match(files, /\[\*\]\s+All \(\d+ files\)/, 'Files pane must include the All row with the [*] marker')
     const lines = files.split('\n')
     const allIdx = lines.findIndex(l => /All \(\d+ files\)/.test(l))
     const firstFileIdx = lines.findIndex(l => /src\/greeting\.go/.test(l))
@@ -33,11 +33,18 @@ describe('AR1: All row renders at the top of the Files pane', () => {
       `All row must precede the first file row; allIdx=${allIdx} firstFileIdx=${firstFileIdx}`)
   })
 
-  test('AR1b: initial cursor lands on the first file, not the All row', () => {
+  test('AR1b: initial cursor lands on the [*] All row, not the first file', () => {
     const files = paneText(screen, 'Files')
     const cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
-    assert.ok(/src\/greeting\.go/.test(cursorRow),
-      `initial cursor should be on greeting.go; got "${cursorRow}"`)
+    assert.ok(/\[\*\]\s+All \(\d+ files\)/.test(cursorRow),
+      `initial cursor should be on the [*] All row; got "${cursorRow}"`)
+  })
+
+  test('AR1c: initial Diff column reflects the All view (concat)', () => {
+    // SelectedFile=AllFilesPath is set synchronously with FilesCursor=0
+    // at PRLoadedMsg, so the Diff title carries the "All files (N)"
+    // label out of the gate — no Enter required.
+    assert.match(screen, /Diff: All files \(\d+\)/, 'Diff title should reflect the All view at boot')
   })
 })
 
@@ -45,28 +52,33 @@ describe('AR2: navigating to the All row', () => {
   let s
   before(async () => {
     s = await launchReva()
-    await waitReady(s)
+    await waitReady(s, { allView: true })
   })
   after(async () => {
     await quit(s)
   })
 
-  test('AR2a: k from the first file lands on the All row', async () => {
+  test('AR2a: j from the [*] row lands on the first file; k back to [*]', async () => {
+    await s.press('j')
+    let files = paneText(await s.text(), 'Files')
+    let cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
+    assert.ok(/src\/greeting\.go/.test(cursorRow),
+      `j from cursor 0 should land on the first file; got "${cursorRow}"`)
     await s.press('k')
-    const files = paneText(await s.text(), 'Files')
-    const cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
-    assert.ok(/All \(\d+ files\)/.test(cursorRow),
-      `k from cursor 1 should land on the All row; got "${cursorRow}"`)
+    files = paneText(await s.text(), 'Files')
+    cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
+    assert.ok(/\[\*\]\s+All \(\d+ files\)/.test(cursorRow),
+      `k from first file should return to the [*] All row; got "${cursorRow}"`)
   })
 
-  test('AR2b: Enter on the All row commits the cross-file view and focuses Diff', async () => {
+  test('AR2b: Enter on the All row keeps the All view and focuses Diff', async () => {
+    // Cursor is back on the [*] row after AR2a. Enter commits the
+    // already-active All view AND shifts FocusedPane to Diff. The
+    // SelectedFile=AllFilesPath state is unchanged.
     await s.press('enter')
     const screen = await s.text()
-    // Diff title carries a human-readable label, not the sentinel.
     assert.match(screen, /Diff: All files \(\d+\)/, 'Diff title should reflect the All view')
-    // Focus indicator: only Diff carries the active glyph.
-    const diff = paneText(screen, /^▶ Diff/m.exec(screen) ? 'Diff' : 'Diff')
-    assert.ok(diff && diff.length > 0, 'Diff column should render content under the All view')
+    assert.match(screen, /▶ Diff/, 'focus should shift to Diff after Enter on [*]')
   })
 })
 
@@ -74,16 +86,9 @@ describe('AR3: All view drops the Commits per-file filter', () => {
   let s
   before(async () => {
     s = await launchReva()
-    await waitReady(s)
-    // Walk to the All row + commit it. Tab cycle from initial Files
-    // focus to Commits: Files → Commits is one Tab.
-    await s.press('k')                      // Files cursor → All row
-    await s.press('enter')                  // commit All view, focus → Diff
-    // Tab cycle is Files → Commits → Diff → Comments. From Diff, reach
-    // Commits via 3 Tabs (Tab → Comments → Files → Commits). Shift+Tab
-    // would be one step but tuistory's CSI Z emission is unreliable.
-    await s.press('tab')                    // → Comments
-    await s.press('tab')                    // → Files
+    await waitReady(s, { allView: true })
+    // Loader lands on [*] with SelectedFile=AllFilesPath already. Reach
+    // Commits via Tab (Files → Commits is one Tab).
     await s.press('tab')                    // → Commits
   })
   after(async () => {
@@ -99,7 +104,9 @@ describe('AR3: All view drops the Commits per-file filter', () => {
     // The All-commits label drops the "(M of N)" filtered form.
     assert.match(commits, /All commits \(3\)/, 'All commits label should read the unfiltered total')
     assert.doesNotMatch(commits, /All commits \(\d+ of \d+\)/, 'no M-of-N suffix in All view')
-    // Per-row [A/M/D/R] annotation is suppressed.
+    // Per-row [A/M/D/R] annotation is suppressed. The [*] marker on
+    // the All commits row is a synthetic glyph, not a file-status
+    // mirror, so it must not match this assertion.
     assert.doesNotMatch(commits, /\[(A|M|D|R)\]/, 'no per-row status annotation in All view')
   })
 
@@ -114,9 +121,9 @@ describe('AR3: All view drops the Commits per-file filter', () => {
 
 test('AR4: Comments pane explains the disabled state under the All view', async () => {
   const s = await launchReva()
-  await waitReady(s)
-  await s.press('k')              // Files cursor → All row
-  await s.press('enter')          // commit, focus Diff
+  await waitReady(s, { allView: true })
+  // Loader already sits on the [*] row with SelectedFile=AllFilesPath
+  // — Comments column shows the placeholder out of the gate.
   const screen = await s.text()
   const comments = paneText(screen, 'Comments')
   assert.match(comments, /Comments disabled in All view/,

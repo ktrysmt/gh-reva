@@ -228,6 +228,54 @@ func TestCommentLineMarkers_OverlapPrecedence(t *testing.T) {
 	}
 }
 
+// A resolved single-line thread renders as a checkmark (✓) instead of
+// the diamond (◆). The thread is still anchored — gutter is occupied —
+// but the visual signals "concern addressed".
+func TestCommentLineMarkers_ResolvedSingleLine(t *testing.T) {
+	m := markersFixture(t)
+	root := rcAt(1, 3, "RIGHT")
+	root.Resolved = true
+	m.state.PR.Comments = []*model.ReviewComment{root}
+
+	got := m.commentLineMarkers()
+	if !equalMarkers(got.Right, map[int]rune{3: '✓'}) {
+		t.Fatalf("resolved single-line Right markers: got %v want {3:✓}", got.Right)
+	}
+}
+
+// Resolved multi-line range keeps the range start (┌) and middle (│)
+// glyphs intact; only the end-anchor swaps from ◆ to ✓ so the range
+// shape stays visible alongside the resolved signal.
+func TestCommentLineMarkers_ResolvedRange(t *testing.T) {
+	m := markersFixture(t)
+	root := rcAt(1, 4, "RIGHT")
+	root.StartLine = 2
+	root.StartSide = "RIGHT"
+	root.Resolved = true
+	m.state.PR.Comments = []*model.ReviewComment{root}
+
+	got := m.commentLineMarkers()
+	want := map[int]rune{2: '┌', 3: '│', 4: '✓'}
+	if !equalMarkers(got.Right, want) {
+		t.Fatalf("resolved range Right markers: got %v want %v", got.Right, want)
+	}
+}
+
+// Overlap: an unresolved ◆ and a resolved ✓ on the same buffer row →
+// ◆ wins (unresolved concerns demand more attention).
+func TestCommentLineMarkers_UnresolvedBeatsResolved(t *testing.T) {
+	m := markersFixture(t)
+	unresolved := rcAt(1, 3, "RIGHT")
+	resolved := rcAt(2, 3, "RIGHT")
+	resolved.Resolved = true
+	m.state.PR.Comments = []*model.ReviewComment{unresolved, resolved}
+
+	got := m.commentLineMarkers()
+	if !equalMarkers(got.Right, map[int]rune{3: '◆'}) {
+		t.Fatalf("overlap (unresolved + resolved): unresolved ◆ must win; got %v", got.Right)
+	}
+}
+
 func TestCommentLineMarkers_RangeStartCollidesWithMiddle(t *testing.T) {
 	m := markersFixture(t)
 	// Thread A: range 2..4 (┌2 │3 ◆4)

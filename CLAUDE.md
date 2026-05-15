@@ -164,11 +164,11 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 9. Tab expansion: `expandTabs(line, 4)` before wrap/pad. Without it, terminal-side tab expansion shifts `│`.
 10. Gutter markers per-side. `commentLineMarkers` (`internal/tui/diffmap.go`) returns `sideMarkers{Left, Right}`; Side captured from `root.Side` at classification time so the same buffer index never collides across columns.
     - Column placement: LEFT-side → Lmarker col (cols 2–3, immediately left of `oldLn`); RIGHT-side → Rmarker col (immediately right of `│`, just before `Rcursor` / `newLn`).
-    - Glyph set: single-line root → `◆`; multi-line range → `┌` start-edge, `│` intermediate, `◆` end-edge (anchor diamond doubles as bottom edge — `└` intentionally absent because the 2-col gutter can't host both).
+    - Glyph set: single-line root → `◆` (unresolved) or `✓` (resolved, `markerResolved`); multi-line range → `┌` start-edge, `│` intermediate, end-edge `◆` (unresolved) or `✓` (resolved). Anchor glyphs (◆ / ✓) double as the bottom edge of the range — `└` intentionally absent because the 2-col gutter can't host both. Resolved threads keep `┌` / `│` unchanged so the range SHAPE stays visible; only the END swaps to `✓` colored with `theme.CommentResolved` (green semantic via `Model.markerColor`).
     - Continuation rows: `┌` / `│` lines redraw `│` in the SAME side's gutter (keeps wrapped multi-line ranges connected); `◆` continuation stays blank.
     - Mixed-side ranges (`StartSide=LEFT`, `Side=RIGHT`) follow END's column — splitting half/half would visually conflate two columns.
     - Replies ignored — only the thread root carries the range.
-    - Overlap precedence on same Side: `◆ > ┌ > │` (`markerRank`). LEFT and RIGHT at the same buffer row coexist (per-side maps).
+    - Overlap precedence on same Side: `◆ (4) > ✓ (3) > ┌ (2) > │ (1)` (`markerRank`). Unresolved beats resolved so an unresolved concern at the same buffer index never gets hidden behind a resolved ✓. LEFT and RIGHT at the same buffer row coexist (per-side maps).
     - Unified mode: `foldMarker(left, right)` collapses to one glyph by rank.
     - Range data: `model.ReviewComment.{StartLine, OriginalStartLine, StartSide}`. Populator: `internal/api/graphql_comments.go::convertGQLComment`. `OriginalStartLine` is the outdated-fallback (mirrors `OriginalLine` for `Line`).
 11. Split row distribution: header (`---`/`+++`/`@@`) and context render both sides; `-` left only; `+` right only.
@@ -206,14 +206,14 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 
 ### Commits pane
 15. `visibleCommits` auto-filtered by `SelectedFile`. Set on load (`PR.Files[0].Path`) so the filter is always engaged. AllFilesPath bypasses the filter (see #19a).
-15a. Cursor index 0 is the synthetic "All commits" row representing `RangeWholePR`. Cursor space `[0, len(visibleCommits)]`: idx 0 → `RangeWholePR`, idx 1..N → `RangeSingleCommit{commits[idx-1].SHA}`. Label: `All commits (N)` identity, `All commits (M of N)` filtered. Bold; `selectFile` resets `CommitsCursor = 0`. Visual yank skips this row. Under `SelectedFile == model.AllFilesPath` (#19a) the filter is dropped → label always `All commits (N)` and the `[<status>]` annotation slot is blank.
+15a. Cursor index 0 is the synthetic "All commits" row representing `RangeWholePR`. Cursor space `[0, len(visibleCommits)]`: idx 0 → `RangeWholePR`, idx 1..N → `RangeSingleCommit{commits[idx-1].SHA}`. Label: `All commits (N)` identity, `All commits (M of N)` filtered. Bold; `selectFile` resets `CommitsCursor = 0`. Visual yank skips this row. Annotation slot is fixed to the synthetic `[*]` marker (`m.allRowMarker()`, themed via `theme.DiffLineNumber`), regardless of file selection — mirroring file `[<status>]` there made the row look like a real-commit annotation column-wise; `[*]` keeps it visually distinct as a virtual row. Under `SelectedFile == model.AllFilesPath` (#19a) the filter is dropped → label always `All commits (N)`.
 16. `j/k` in Commits auto-selects the cursor row. Visual mode gates this so multi-row yank does not mutate `SelectedRange`.
 17. Enter on Commits is a no-op (cursor commit is already auto-selected).
 18. `[A]/[M]/[D]/[R]` annotates each commit row that touches `SelectedFile`. Suppressed when `SelectedFile == model.AllFilesPath` — the cross-file browse has no per-file status to display.
 
 ### Files pane
 19. `j/k` in Files moves `FilesCursor` only — no Diff re-render per keystroke (sluggish). Deliberate selection gestures: `Enter` (commit) or `Shift+J/K` (`advanceFile`, any pane) → `selectFile(path)`. `selectFile` resets `DiffCursor`, `DiffViewport.Top`, `CommitsCursor`, `CommentsCursor` only when path changes. Incsearch (`/`) auto-select retained — typing expects the cursor to follow.
-19a. Cursor index 0 is the synthetic "All (N files)" row, symmetric to the Commits pane's "All commits" row (#15a). Cursor space `[0, len(PR.Files)]`: idx 0 → `selectAllFiles()` (sets `SelectedFile = model.AllFilesPath`); idx 1..N → `selectFile(PR.Files[i-1].Path)`. Loader lands on cursor 1 so initial UX matches the pre-feature behaviour; users opt into the cross-file view via `k` / `gg`. Under AllFilesPath:
+19a. Cursor index 0 is the synthetic "[*] All (N files)" row, symmetric to the Commits pane's "[*] All commits" row (#15a). Cursor space `[0, len(PR.Files)]`: idx 0 → `selectAllFiles()` (sets `SelectedFile = model.AllFilesPath`); idx 1..N → `selectFile(PR.Files[i-1].Path)`. Loader lands on cursor 0 — the [*] row — and sets `SelectedFile = AllFilesPath` so the splash hands off to a PR-wide overview (concat diff across every file); users drill into a single file via `j` + `Enter` (or `Shift+J` to advance without losing focus). FilesCursor and SelectedFile are kept in sync at boot so the cursor never sits on [*] while the Diff/Commits/Comments columns reflect a single file. Under AllFilesPath:
    - `visibleCommits` returns the full commit list unfiltered (#15) so the user can walk the entire PR history.
    - `commitsView` / `allCommitsRow` drop the per-commit `[A/M/D/R]` annotation and the `(M of N)` filtered count (#15a, #18).
    - `patchInfo` reads the pre-built concatenated diff under `diffKey(sha, AllFilesPath)` — `loadPRCmd` builds these in PR.Files order alongside the per-file entries (one for `sha=""` / WholePR + one per single-commit SHA over its touched files).
@@ -222,7 +222,7 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
    - Visual entry on Files idx 0 is forbidden (`handleKey "v"` returns early with `state.Notice = "visual unavailable on the All row"`); Files yank skips idx 0 in both flat and tree modes (symmetric to the Commits-pane skip for All commits).
    - `advanceFile` (Shift+J/K) skips the All row — that gesture is "next file diff", not "browse mode entry". Reach All via Tab to Files + `k` / `gg`.
    - Diff title renders `Diff: All files (N)` (or `Diff: All files (N) @ <sha>` for a single commit) instead of leaking the AllFilesPath sentinel (which contains NUL bytes).
-20. Tree mode (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + status + comment count. Tree row 0 is the FilesRowAll entry — rendered as `All (N files)` (bold, no status/count column).
+20. Tree mode (`t` toggles): dirs render `v <name>/` (expanded) or `> <name>/` (folded); files show basename + bracketed status `[A]/[M]/[D]/[R]` + comment count. Tree row 0 is the FilesRowAll entry — rendered as `[*] All (N files)` (bold; the `[*]` slot mirrors flat mode and the Commits-pane All row).
 21. `autoSelectTree` skips `selectFile` on dir rows so a search-driven cursor jump onto a dir does not clobber Diff. `FilesRowAll` rows route to `selectAllFiles`.
 22. `remapCursorOnTreeToggle` preserves the conceptual cursor position when toggling flat ⇄ tree. The All row is shared between modes (flat idx 0 ⇄ tree idx 0).
 22b. Enter on a file row (flat or tree) — commit gesture: `selectFile(path)` + `FocusedPane = PaneDiff`. Enter on the All row (flat idx 0 / tree FilesRowAll) — `selectAllFiles()` + `FocusedPane = PaneDiff`. Tree dir rows fold / unfold, focus stays. Files zoom modal Enter = same commit gestures (All / file / dir); modal-Enter path lives in `keys.go::handleKey` because it must clear `Modal` first.
@@ -230,8 +230,9 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 ### Comments pane
 23. Diff-cursor coupling: `commentsView` shows ONLY threads anchored at the Diff cursor's buffer line AND matching `DiffCursor.Side` (`◆` rows on the active column). Off `◆` → `(no comment at cursor)`, `<space>` no-op. Visible set: `threadsForCursor` filters by buffer index (`commentBufferIndex`) then by `root.Side` (`threadOnSide`). `flatComments` scoped to `threadsForCursor` so cursor never drifts past visible content. Empty `root.Side` → RIGHT (legacy, mirroring GitHub default).
 23b. Render shape: header + indented body.
-   - Header: `<name>: <yyyy-mm-dd hh:mm> <hash>[ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`).
-   - `[pending]` (yellow) / `[outdated]` (red) mutually exclusive; pending wins.
+   - Header: `[ [resolved] ]<name>: <yyyy-mm-dd hh:mm> <hash>[ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`).
+   - `[resolved]` (green, `theme.CommentResolved`) sits at the line head (immediately after cursor / depth indent, before author) so resolved threads can be skimmed at a glance. Driven by `ReviewComment.Resolved` (mirrors GraphQL `PullRequestReviewThread.isResolved`; propagated onto every comment in the thread by `convertGQLComment`).
+   - `[pending]` (yellow) / `[outdated]` (red) mutually exclusive at the trailing slot; pending wins. `[resolved]` can co-exist with `[outdated]` (resolved-but-stale); `[resolved]` + `[pending]` is unreachable in practice (drafts have no thread to resolve yet).
    - Body indent: `2 + 2*(depth+1)`.
    - Body line-break mirrors GitHub web: every `\n` → row break; 2+ consecutive `\n`s → one extra blank row.
    - Per-source-line wrap: `paneWidthComments − bodyLeader` via `wrapText`.

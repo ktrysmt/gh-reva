@@ -107,6 +107,12 @@ func fromChroma(s *chroma.Style, canonicalName string) *Theme {
 		CommentDate:     pickBrighten(chroma.Text, -0.4, fb.CommentDate),
 		CommentOutdated: pick(chroma.GenericError, fb.CommentOutdated),
 		CommentPending:  pick(chroma.GenericSubheading, fb.CommentPending),
+		// Resolved threads read as "concern addressed" — green ✓ is the
+		// universal idiom. GenericInserted (added/insertion accent)
+		// shares the green semantic across chroma themes, with a
+		// pickAccent fallback for inverted-convention styles (gruvbox)
+		// that store the bright accent on Background.
+		CommentResolved: pickAccent(chroma.GenericInserted, fb.CommentResolved),
 
 		LoadingSpinner: pick(chroma.GenericStrong, fb.LoadingSpinner),
 		ErrorText:      pick(chroma.GenericError, fb.ErrorText),
