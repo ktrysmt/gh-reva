@@ -187,8 +187,8 @@ func TestDiffBgIsUniformDark(t *testing.T) {
 	// styles that store the bright color on Background instead of Colour
 	// (gruvbox), so we hard-code uniform values.
 	const (
-		wantPlus  = "#0d3b13"
-		wantMinus = "#3b0d0d"
+		wantPlus  = "#172319"
+		wantMinus = "#23171a"
 	)
 	for _, name := range []string{"builtin-dark", "gruvbox", "dracula", "monokai", "solarized-dark"} {
 		th, err := theme.Resolve(name)

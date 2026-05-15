@@ -99,7 +99,7 @@ func TestContextCellRoutesThroughStyledDiffCell(t *testing.T) {
 	m := NewModel(nil, nil)
 	m.state.SelectedFile = "test.go"
 	cell := " func main() { return }"
-	got := m.colorDiffCell(cell, ' ', false)
+	got := m.colorDiffCell(cell, ' ', false, false)
 	want := m.styledDiffCell(cell, "")
 	if got != want {
 		t.Errorf("context cell should be syntax-highlighted:\n got  = %q\n want = %q", got, want)

@@ -21,8 +21,8 @@ func builtinDark() *Theme {
 
 		DiffPlus:       lipgloss.Color("#3fb950"),
 		DiffMinus:      lipgloss.Color("#f85149"),
-		DiffPlusBg:     lipgloss.Color("#0d3b13"),
-		DiffMinusBg:    lipgloss.Color("#3b0d0d"),
+		DiffPlusBg:     lipgloss.Color("#172319"),
+		DiffMinusBg:    lipgloss.Color("#23171a"),
 		DiffContext:    lipgloss.Color("#c9d1d9"),
 		DiffHunkHeader: lipgloss.Color("#79c0ff"),
 		DiffFileHeader: lipgloss.Color("#d2a8ff"),
