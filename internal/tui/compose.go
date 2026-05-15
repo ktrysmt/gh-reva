@@ -125,8 +125,7 @@ func (m *Model) buildComposeInline() bool {
 		m.state.Notice = "comments unavailable in All view (select a file first)"
 		return false
 	}
-	patch := m.currentPatch()
-	if patch == "" {
+	if m.currentPatch() == "" {
 		return false
 	}
 	cs := &model.ComposeState{
@@ -140,36 +139,33 @@ func (m *Model) buildComposeInline() bool {
 		cursorSide = "RIGHT"
 	}
 	if v := m.state.Visual; v != nil && v.OriginPane == model.PaneDiff {
-		r, ok := diff.ResolveRange(patch, v.AnchorLine, m.state.DiffCursor.Line)
+		r, ok := m.resolveRangeAug(v.AnchorLine, m.state.DiffCursor.Line)
 		if !ok {
 			return false
 		}
-		// ResolveRange's per-endpoint Side comes from walkSpecs which
-		// hard-codes context to "RIGHT". Override end Side with the
-		// cursor's column when the end row is context — h/l on a
-		// context line is the user's gesture for "post on this side"
-		// and must reach the GitHub payload. `+`/`-` rows ignore the
-		// override (their Side is fixed by the line type) because
-		// auto-skip guarantees cursor.Side already matches.
+		// resolveRangeAug's per-endpoint Side defaults to RIGHT for
+		// context rows. Override end Side with the cursor's column when
+		// the end row is context — h/l on a context line is the user's
+		// gesture for "post on this side" and must reach the GitHub
+		// payload. `+`/`-` rows ignore the override (their Side is
+		// fixed by the line type) because auto-skip guarantees the
+		// cursor Side already matches.
 		side := r.Side
 		startSide := r.StartSide
-		if isContextRow(patch, m.state.DiffCursor.Line) {
+		if m.isContextRowAug(m.state.DiffCursor.Line) {
 			side = cursorSide
 		}
 		anchorBuf := m.state.DiffCursor.Line
 		if v.AnchorLine < anchorBuf {
 			anchorBuf = v.AnchorLine
 		}
-		if r.StartLine > 0 && isContextRow(patch, anchorBuf) {
+		if r.StartLine > 0 && m.isContextRowAug(anchorBuf) {
 			startSide = cursorSide
 		}
-		// When the range collapses to a single endpoint (StartLine==0)
-		// the line value comes from the END side; recompute against
-		// the overridden Side so a LEFT context anchor reports OldLine.
-		cs.Line = lineForSide(patch, m.state.DiffCursor.Line, side)
+		cs.Line = m.lineForSideAug(m.state.DiffCursor.Line, side)
 		cs.Side = side
 		if r.StartLine > 0 {
-			sl := lineForSide(patch, anchorBuf, startSide)
+			sl := m.lineForSideAug(anchorBuf, startSide)
 			cs.StartLine = &sl
 			cs.StartSide = startSide
 		}
@@ -177,15 +173,11 @@ func (m *Model) buildComposeInline() bool {
 		// visible while the confirm prompt is up. confirmComposeStart
 		// clears it the moment the user commits with `y`.
 	} else {
-		a, ok := diff.ResolveAnchor(patch, m.state.DiffCursor.Line)
+		a, ok := m.resolveAnchorAug(m.state.DiffCursor.Line)
 		if !ok {
 			return false
 		}
 		side := a.Side
-		// Context rows in walkSpecs default to Side="RIGHT". Override
-		// with the cursor's column so h/l on a context line drives the
-		// compose target. Non-context rows (`+`/`-`) keep walkSpecs'
-		// fixed Side because the line only exists on one column.
 		if a.Kind == ' ' {
 			side = cursorSide
 		}
@@ -200,23 +192,77 @@ func (m *Model) buildComposeInline() bool {
 	return true
 }
 
-// isContextRow reports whether the buffer line at `idx` in `patch` is a
-// context row (kind=' '). Headers, hunks, additions, and deletions all
-// return false. Used by buildComposeInline so the cursor.Side override
-// only applies where ambiguity exists (`+`/`-` rows have a fixed Side).
-func isContextRow(patch string, idx int) bool {
-	a, ok := diff.ResolveAnchor(patch, idx)
+// resolveAnchorAug returns the OLD/NEW line numbers and Side for the
+// buffer index in the AUGMENTED patch buffer (synthetic + expanded
+// context aware). Synthetic / file-header / hunk rows return ok=false.
+func (m Model) resolveAnchorAug(idx int) (diff.Anchor, bool) {
+	specs := m.patchSpecs()
+	if idx < 0 || idx >= len(specs) {
+		return diff.Anchor{}, false
+	}
+	s := specs[idx]
+	if s.Kind == 'h' || s.Kind == '@' || s.Kind == 's' {
+		return diff.Anchor{}, false
+	}
+	side := "RIGHT"
+	if s.Kind == '-' {
+		side = "LEFT"
+	}
+	return diff.Anchor{
+		Kind:    s.Kind,
+		OldLine: s.OldLn,
+		NewLine: s.NewLn,
+		Side:    side,
+	}, true
+}
+
+// resolveRangeAug mirrors diff.ResolveRange but walks the augmented
+// buffer's specs so synthetic rows correctly reject as endpoints and
+// expanded-context rows produce the right OLD/NEW pair.
+func (m Model) resolveRangeAug(anchor, cursor int) (diff.Range, bool) {
+	a, okA := m.resolveAnchorAug(anchor)
+	b, okB := m.resolveAnchorAug(cursor)
+	if !okA || !okB {
+		return diff.Range{}, false
+	}
+	pick := func(an diff.Anchor) int {
+		if an.Side == "LEFT" {
+			return an.OldLine
+		}
+		return an.NewLine
+	}
+	if anchor == cursor {
+		return diff.Range{Line: pick(a), Side: a.Side}, true
+	}
+	startSpec, endSpec := a, b
+	if anchor > cursor {
+		startSpec, endSpec = b, a
+	}
+	return diff.Range{
+		StartLine: pick(startSpec),
+		StartSide: startSpec.Side,
+		Line:      pick(endSpec),
+		Side:      endSpec.Side,
+	}, true
+}
+
+// isContextRowAug reports whether the row at `idx` in the augmented
+// buffer is a context row. Synthetic / header / hunk all return false
+// so the cursor.Side override in buildComposeInline only fires where
+// ambiguity exists.
+func (m Model) isContextRowAug(idx int) bool {
+	a, ok := m.resolveAnchorAug(idx)
 	if !ok {
 		return false
 	}
 	return a.Kind == ' '
 }
 
-// lineForSide returns the file-line number at buffer index `idx` on the
-// given Side. LEFT → OldLine, RIGHT → NewLine. 0 when the row has no
-// counterpart on that Side.
-func lineForSide(patch string, idx int, side string) int {
-	a, ok := diff.ResolveAnchor(patch, idx)
+// lineForSideAug returns the file-line number at the augmented buffer's
+// `idx` on the requested Side. LEFT → OldLine, RIGHT → NewLine. 0 when
+// the row has no counterpart on that Side (or is synthetic / header).
+func (m Model) lineForSideAug(idx int, side string) int {
+	a, ok := m.resolveAnchorAug(idx)
 	if !ok {
 		return 0
 	}

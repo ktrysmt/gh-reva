@@ -16,6 +16,17 @@ type Client interface {
 	ListComments(ctx context.Context, owner, repo string, n int) ([]*model.ReviewComment, error)
 	// GetFileDiff returns the unified diff for a single file. sha == "" means the PR-wide diff.
 	GetFileDiff(ctx context.Context, owner, repo string, n int, sha, path string) (string, error)
+
+	// GetFileContents returns the full NEW-side file content as a slice
+	// of lines (no trailing empty line) for the given (ref, path). Used
+	// by the Diff pane's context-expand feature to materialize hidden
+	// regions between hunks. ref is the SHA of the snapshot to fetch —
+	// PR.HeadSHA for the WholePR view, commit SHA for a single-commit
+	// drill. Returns an error when the file is not present at that ref
+	// (deleted, never existed, etc.); callers surface this as a Notice
+	// and leave the synthetic row in place.
+	GetFileContents(ctx context.Context, owner, repo string, n int, ref, path string) ([]string, error)
+
 	ResolveCurrentBranchPR(ctx context.Context) (string, string, int, error)
 
 	// CreatePendingReviewThread posts a new inline review comment as
@@ -92,6 +103,12 @@ type ghClient struct {
 	// ensurePendingReview's discovery query, which already fetches the
 	// viewer alongside the PENDING review filter).
 	viewerLogin string
+
+	// fileContents caches the GET /contents/{path}?ref= response by
+	// (ref, path). Populated lazily by GetFileContents; the Diff pane's
+	// context-expand feature pays at most one round-trip per file per
+	// session via this cache.
+	fileContents map[fileContentsCacheKey][]string
 }
 
 func NewGHClient() (Client, error) {
@@ -111,5 +128,6 @@ func NewGHClient() (Client, error) {
 		comments:        map[int][]*model.ReviewComment{},
 		prNodeID:        map[int]string{},
 		pendingReviewID: map[int]string{},
+		fileContents:    map[fileContentsCacheKey][]string{},
 	}, nil
 }

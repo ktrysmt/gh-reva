@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ktrysmt/gh-reva/internal/clipboard"
+	"github.com/ktrysmt/gh-reva/internal/diff"
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
@@ -153,11 +154,16 @@ func (m Model) yankString() string {
 		// the trailing-newline-trim convention stays in one place. An
 		// unloaded patch yields a nil slice, which collapses to an empty
 		// yank via linewiseSelectionRange — same behaviour the manual
-		// strings.Split path produced.
+		// strings.Split path produced. Synthetic `···` sentinel rows are
+		// excluded so yanking a range that straddles a synthetic doesn't
+		// leak the raw sentinel byte into the clipboard.
 		lines := m.patchLines()
 		lo, hi := m.linewiseSelectionRange(model.PaneDiff, m.state.DiffCursor.Line, len(lines))
 		var rows []string
 		for i := lo; i <= hi && i < len(lines); i++ {
+			if lines[i] == diff.SyntheticLine {
+				continue
+			}
 			rows = append(rows, lines[i])
 		}
 		return strings.Join(rows, "\n")

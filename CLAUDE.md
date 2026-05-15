@@ -75,6 +75,7 @@ gh-reva/
 │   │   ├── client.go           # Client iface (read + pending POST + submit)
 │   │   ├── pr.go               # GetPR / ListCommits / ListFiles
 │   │   ├── diff.go             # GetFileDiff (PR-wide and per-commit)
+│   │   ├── contents.go         # GetFileContents (file body for context expand)
 │   │   ├── paginate.go         # Link-header pagination (REST)
 │   │   ├── resolve.go          # ResolveCurrentBranchPR + ParseTargetArg
 │   │   ├── graphql_comments.go # ListComments + reviewThread mapping
@@ -82,8 +83,9 @@ gh-reva/
 │   │   ├── fixture.go          # testdata/*.json + WithSlowLoad + in-mem POST
 │   │   └── error_client.go     # --simulate-error
 │   ├── clipboard/
-│   ├── diff/                   # patch parsing + side resolver
-│   │   └── side.go             # ResolveAnchor / ResolveRange (Compose anchor)
+│   ├── diff/                   # patch parsing + side resolver + context expand
+│   │   ├── side.go             # ResolveAnchor / ResolveRange (raw patch)
+│   │   └── expand.go           # Expand + ParseSpecsAug (synthetic `···` rows)
 │   ├── model/                  # AppState + value types
 │   ├── theme/                  # color palette
 │   │   ├── theme.go            # Theme, Resolve, ListThemes
@@ -109,11 +111,13 @@ gh-reva/
 │       ├── textarea.go         # in-app textarea fallback + compose modal
 │       ├── refresh.go          # refreshCommentsCmd / mergeRefreshedComments
 │       ├── search.go           # `/` incsearch + handlePendingG
+│       ├── expand.go           # Context expand routing + prefetch + fileContentsLoadedMsg
 │       └── diffmap.go          # newLineNumbers / commentThreadIndexForDiffLine
 ├── testdata/
 │   ├── sample-pr.json          # default (5 files, 3 commits, 4 comments)
 │   ├── large-pr.json           # 60 commits / 120 files / 122 KB
 │   ├── wrap-pr.json            # single long-bodied comment
+│   ├── expand-pr.json          # BOF/Mid/EOF gaps + file_contents (context expand e2e)
 │   └── gen_large_fixture.go    # //go:build ignore
 └── e2e/
     ├── helpers/launch.mjs      # launchReva / paneText / countSelectedRows
@@ -170,19 +174,35 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 11. Split row distribution: header (`---`/`+++`/`@@`) and context render both sides; `-` left only; `+` right only.
 12. Wrap always on; buffer line ↔ display row is 1:N. `DiffCursor.Line` indexes raw patch buffer; `>` and `◆` appear only on the first display row. Cursor `>` follows active Side: RIGHT (default) → `Rcursor` col; LEFT → `Lcursor` col; opposite stays blank. Continuation rows: unified indents 5 cols; split blanks both cursor / line-number cols, prefixes each cell with 1 blank, redraws inter-half `│`. Per-side gutter blank on continuation EXCEPT `┌` / `│` lines on the same side (redraw `│` to keep wrapped multi-line ranges connected; see #10).
 13. `fitPaneTitle` preserves the `[mode]` suffix at narrow widths; label shrinks with `…`.
-14. Diff Enter:
-    - No comments at cursor → `startComposeInline` queues inline compose confirm. Anchor = `internal/diff.ResolveAnchor` (Path = SelectedFile, CommitSHA = `PR.HeadSHA`, Line + Side). Header / hunk rows rejected. In Diff visual mode, Enter consumes the visual range via `ResolveRange`; mixed-side ranges supported (#27d). Editor / textarea launch held until confirm (#27j).
+14. Diff Enter (in order; first match wins):
+    - Synthetic `···` row → `handleEnterOnSynthetic` expands the gap (#14d). Short-circuits compose / focus handoff.
+    - No comments at cursor → `startComposeInline` queues inline compose confirm. Anchor = `Model.resolveAnchorAug` over the augmented buffer (Path = SelectedFile, CommitSHA = `PR.HeadSHA`, Line + Side). Header / hunk / synthetic rows rejected. In Diff visual mode, Enter consumes the visual range via `resolveRangeAug`; mixed-side ranges supported (#27d). Editor / textarea launch held until confirm (#27j).
     - Comments at cursor (`threadsForCursor()` non-empty) → `focusCommentsAtCursor` shifts focus to Comments (`CommentsCursor = 0`, `Modal = nil`). Hidden Comments column (#30c) auto-reveals first. User acts via Comments keymap (Enter = edit own / `r` = reply / Space = zoom modal). Adding another thread on the same line: intentionally not exposed.
 14b. `gg` — true two-key sequence: first `g` sets `AppState.PendingPrefix = "g"`; next `g` runs gotoTop; any non-`g` key clears pending AND falls through. Slot is global — every pane calls `handlePendingG` (`search.go`). `G` is the symmetric gotoBottom. Per-pane semantics: Files moves `FilesCursor` only (#19); Commits auto-selects; Diff honors per-side filter (walks to FIRST / LAST row on `DiffCursor.Side`; LEFT skips `+`, RIGHT skips `-`; headers / hunks / context exist on both).
 
 14c. Diff per-column UX (`internal/tui/diffmap.go::lineExistsOnSide`):
    - `DiffCursor.Side` (`model.DiffSide`, "LEFT"/"RIGHT", default RIGHT) drives every Side decision: cursor visual position (#12), ◆ marker placement (#10), Comments filter (#23), Compose anchor Side (#27c).
-   - `j/k` auto-skip: RIGHT skips `-` rows, LEFT skips `+` rows. Headers / hunks / context never skipped. `nextSideLine` returns -1 when no further row exists → `j/k` no-op (cursor stays). Wheel uses the same path.
+   - `j/k` auto-skip: RIGHT skips `-` rows, LEFT skips `+` rows. Headers / hunks / context / synthetic (#14d) never skipped. `nextSideLine` returns -1 when no further row exists → `j/k` no-op (cursor stays). Wheel uses the same path.
    - `h` → LEFT, `l` → RIGHT. If cursor row absent on the new Side, `nearestSideLine` repositions the cursor (prefers upward — `h` from `+` lands on the `-` or context above, matching "the line this `+` replaced"). Idempotent when Side matches.
    - `h/l` in unified mode (`<space>` toggle): no-op + `state.Notice = "h/l: split mode only"`. Side preserved internally; split → unified → split round-trips don't reset column.
    - `h/l` during Diff visual range: no-op + `state.Notice = "side locked in visual (esc to leave)"`. Anchor + cursor share Side by construction (auto-skip never crosses); mid-range switch would strand an endpoint.
    - `selectFile` (#19), `autoSelectCommit`, `RangeWholePR` reset → `DiffCursor = model.DiffCursor{Side: DiffSideRight}` so every context switch lands on a known column. Empty-string Side would freeze j/k entirely.
    - Mouse click in Diff sets Side from inner col: `< halfW+10` → LEFT, `> halfW+10` → RIGHT (divider `│` preserves Side). After Side change, `switchSide` repositions cursor to nearest same-side row if click row is opposite-side. Wheel preserves Side.
+
+14d. Context expand (synthetic `···` rows). Implemented in `internal/diff/expand.go` + `internal/tui/expand.go`; renderer slot in `pane_diff.go::renderSynthBufferLine`.
+   - Hidden regions surface as a single full-width buffer row reading `··· N lines hidden  (enter: expand)`. Three gap kinds: `GapKindBOF` (above first hunk), `GapKindMid` (between consecutive hunks, indexed 0..N-2), `GapKindEOF` (below last hunk). EOF requires file lines (file length unknown otherwise).
+   - Emission gated on `FileLines != nil` in `diff.Expand`. Without prefetched file contents the augmented buffer equals the raw patch — preserves backward compat for tests / fixtures that don't carry `file_contents`. Production prefetches on file selection (see below) so synthetic rows surface within a frame of `PRLoadedMsg`.
+   - Synthetic line in the buffer = the literal sentinel string `diff.SyntheticLine` (`\x01SYNTH`). Real diff content never starts with `\x01`, so prefix-matching call sites (`lineExistsOnSide`, `splitDiffLine`, `diffLineKind`) detect it without colliding. `parseDiffSpecs` is replaced by `diff.ParseSpecsAug(lines, gaps)` which carries the gap-end → `OldEnd+1 / NewEnd+1` line-number jump so expanded-context rows below a synthetic report the correct OLD/NEW pair.
+   - Expanded context rows (` <file content>`) are emitted by `diff.Expand` at their canonical buffer position — between the relevant hunks (Mid), between the file headers and the first `@@` (BOF), or after the last hunk's body (EOF). They behave exactly like normal context rows for line-number bookkeeping, cursor navigation, comment anchoring (compose works on them).
+   - Enter routing (`pane_diff.go::handleKeyDiff` Enter branch, ahead of `threadsForCursor` / `startComposeInline`):
+     - Cursor on synthetic → `handleEnterOnSynthetic(idx)`. BOF / EOF grow by 20 (counter += 2 × `expandUnit`); Mid grows symmetrically (10 / 10 — `InterAbove[i]` and `InterBelow[i]` each += `expandUnit`). Counters cap inside `diff.Expand` at the gap size, so repeat presses are idempotent once the gap closes.
+     - Cursor on header / hunk / `+` / `-` / context → existing semantics (compose-confirm or focus-handoff).
+   - State: `AppState.ExpandedContext map[ExpandKey]*ExpandState` (per `(path, range.Kind, range.SHA)`). `AppState.FileContents map[FileContentsKey][]string` keyed on `(ref, path)`; ref = `PR.HeadSHA` for `RangeWholePR`, commit SHA for `RangeSingleCommit`. Both maps initialized in `NewAppState`.
+   - Prefetch: `Update`'s outer wrapper runs `maybePrefetchFileContents` after each `updateInner`. Fires when `SelectedFile` / range changed since last frame AND `FileContents[(ref, path)]` not cached. Skips `AllFilesPath` and nil client / target (tests). The `prefetchedRef` / `prefetchedPath` fields on `Model` debounce repeat fetches.
+   - Cache invalidation: `invalidatePatchInfoCache(ExpandKey)` (#39) drops the `patchLinesC` entry, resets `rowCache`, marks `threadsCache.valid = false`. Called by `handleEnterOnSynthetic` after the counter mutation and by `applyFileContentsLoaded` after `FileContents` populates (the latter goes through `invalidatePatchInfoCacheForRef` which drops both the WholePR and the single-commit slot under that ref).
+   - Compose / anchor pipeline switched from raw-patch `diff.ResolveAnchor` / `ResolveRange` to augmented-buffer `Model.resolveAnchorAug` / `Model.resolveRangeAug`. They consume `m.patchSpecs()` so synthetic rows reject (`Kind == 's'`) and expanded-context rows report the correct `OldLn`/`NewLn`. Standalone `diff.ResolveAnchor` / `ResolveRange` stay for raw-patch unit-test use.
+   - Search / yank exclude synthetic: `collectDiffMatches` skips `SyntheticLine`; visual yank for Diff also skips it. Without these, search would phantom-match the sentinel byte and yank would leak `\x01` into the clipboard.
+   - API: `Client.GetFileContents(ctx, owner, repo, n, ref, path) ([]string, error)`. ghClient hits `GET /repos/{owner}/{repo}/contents/{path}?ref={ref}` (JSON+base64) and caches by `(ref, path)`. fixtureClient reads from `fixtureData.FileContents` keyed `"<ref>::<path>"` and splits on `\n`, trimming trailing newline.
 
 ### Commits pane
 15. `visibleCommits` auto-filtered by `SelectedFile`. Set on load (`PR.Files[0].Path`) so the filter is always engaged. AllFilesPath bypasses the filter (see #19a).
@@ -312,7 +332,7 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 
 ### Color theming
 31. `internal/theme.Theme` is the single source of truth — 28 `lipgloss.Color` fields plus `SyntaxStyle *chroma.Style`. `Resolve(name)` accepts `"builtin-dark"`, any chroma registry name, or `""` (→ `defaultThemeName`). Unknown names error.
-32. Chroma adapter (chroma token → UI role) in `internal/theme/chroma.go`. Two overrides: `DiffPlusBg` / `DiffMinusBg` are hard-coded (`#0d3b13` / `#3b0d0d`); `GenericInserted` / `GenericDeleted` go through `pickAccent`, which prefers `StyleEntry.Background` when `StyleEntry.Colour` equals editor background (gruvbox-style inversion). Without these the +/- distinction collapses on inversion themes.
+32. Chroma adapter (chroma token → UI role) in `internal/theme/chroma.go`. Two overrides: `DiffPlusBg` / `DiffMinusBg` are hard-coded (`#172319` / `#23171a`, muted dark green / muted dark red); `GenericInserted` / `GenericDeleted` go through `pickAccent`, which prefers `StyleEntry.Background` when `StyleEntry.Colour` equals editor background (gruvbox-style inversion). Without these the +/- distinction collapses on inversion themes.
 33. `m.theme` is non-nil after `NewModel` (constructor seeds `defaultThemeName`). `cmd/root.go` overrides via `Model.SetTheme`.
 34. Color application via `internal/tui/colors.go` (`fg`, `fgBold`, `bgRow`); no-op on zero-value colors. Apply AFTER `padTrunc` / cell assembly so width math stays driven by visible cells.
 35. `padTrunc` is SGR-aware (`lipgloss.Width` to measure, `ansi.Truncate` over-width). Right-pads with plain spaces.
@@ -322,10 +342,12 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
 39. `Model` caches that must propagate across Bubbletea's value-copied Updates:
    - `syntaxCache` — `*syncMap` keyed on `lexer.Name + style.Name + bg + cell`. Pointer identity shared.
    - `rowCache` — `*diffRowCache` (`map[string][]string`) keyed on split `(s, lineIdx, halfW, leftMarker, rightMarker)` or unified `(u, lineIdx, 0, marker)`. cursorSide intentionally NOT keyed — affects only cursor / visual rows, both of which take the no-cache path; including it would over-invalidate non-cursor rows on every h/l. Width / patch identity changes invalidate via `m.invalidateRowCacheIfStale()`. Skips cursor + visual-range + match-bg rows.
-   - `patchLinesC` — struct value (`patchLinesCache`); `cache` is `map[string]*patchInfo` keyed on `diffKey(sha, path)`. Maps are reference types so struct-value embedding propagates — replacing with slice / scalar breaks propagation. `patchInfo` carries lazy fields: `lines`, `specs`, `newNums`, `oldNums`, plus `markers *sideMarkers` + `markersGen uint64` (commentLineMarkers cache; see #39a).
+   - `patchLinesC` — struct value (`patchLinesCache`); `cache` is `map[string]*patchInfo` keyed on `diffKey(sha, path)`. Maps are reference types so struct-value embedding propagates — replacing with slice / scalar breaks propagation. `patchInfo` carries: `lines`, `specs`, `newNums`, `oldNums` (all eager now — `lines` and `specs` come from `diff.Expand` + `diff.ParseSpecsAug` in one pass; numbers derive lazily from `specs`), plus `gaps map[int]diff.GapInfo` (#14d synthetic row metadata) and `markers *sideMarkers` + `markersGen uint64` (commentLineMarkers cache; see #39a). Invalidation: `m.invalidatePatchInfoCache(ExpandKey)` drops the slot (called by `handleEnterOnSynthetic` after Expand-state mutates); `m.invalidatePatchInfoCacheForRef(ref, path)` drops both the WholePR and single-commit slot (called by `applyFileContentsLoaded` after a prefetch lands).
    - `threadsCache` — `*threadsViewCache`: single-entry memo of `threadsForView()`. Key: `(SelectedFile, SelectedRange.Kind, SelectedRange.SHA)`. Mutation sites for `m.state.PR.Comments` MUST set `m.threadsCache.valid = false`: `applyComposeSubmitted` (`compose.go`) and `applyCommentsRefreshed` (`refresh.go`) are the only two; new sites do the same. Each successful rebuild bumps `gen` (uint64).
+   - `AppState.ExpandedContext map[ExpandKey]*ExpandState` (#14d) — per-(file, range) counters for revealed gap regions. Mutations only via `handleEnterOnSynthetic`. Reading happens inside `patchInfo()` before the `diff.Expand` call.
+   - `AppState.FileContents map[FileContentsKey][]string` (#14d) — NEW-side file body per (ref, path). Populated by `applyFileContentsLoaded` after `fetchFileContentsCmd`. Read by `patchInfo()` to drive synthetic emission in `diff.Expand`.
 
-   Hot-path rule: never call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly. Go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers() / m.commentLineMarkers() / m.threadsForView()`.
+   Hot-path rule: never call `strings.Split(patch, "\n")` or `parseDiffSpecs(patch)` directly. Go through `m.patchLines() / m.patchSpecs() / m.patchNewLineNumbers() / m.commentLineMarkers() / m.threadsForView()`. For compose anchoring on the augmented buffer use `m.resolveAnchorAug / m.resolveRangeAug` (NOT `diff.ResolveAnchor` — that walks the raw patch and would mis-index past synthetic / expanded-context rows).
 
 39a. `commentLineMarkers` caches its `sideMarkers` result on `patchInfo.markers` keyed by `markersGen == m.threadsCache.gen`. Call `m.threadsForView()` BEFORE reading the markers cache so `gen` reflects the latest invalidation — `commentLineMarkers` does this internally; new callers must keep the order if they re-implement.
 40. `waitReady` defaults to 10s in `e2e/helpers/launch.mjs` to absorb chroma init + first-frame tokenization.

@@ -78,6 +78,9 @@ func (c *timingClient) ListComments(ctx context.Context, owner, repo string, n i
 func (c *timingClient) GetFileDiff(ctx context.Context, owner, repo string, n int, sha, path string) (string, error) {
 	return c.diffs[sha+"::"+path], nil
 }
+func (c *timingClient) GetFileContents(ctx context.Context, owner, repo string, n int, ref, path string) ([]string, error) {
+	return nil, nil
+}
 func (c *timingClient) ViewerLogin(ctx context.Context) (string, error) {
 	c.sleep("ViewerLogin")
 	return c.viewer, nil

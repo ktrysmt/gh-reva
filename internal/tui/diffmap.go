@@ -4,12 +4,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ktrysmt/gh-reva/internal/diff"
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
-// newLineNumbers walks a unified diff and returns, for each rendered line,
-// the corresponding new-file line number — or 0 if that line has no new-file
-// counterpart (header, hunk marker, removed line).
+// newLineNumbers walks a (raw, non-augmented) unified diff and returns,
+// for each rendered line, the corresponding new-file line number — or 0
+// if that line has no new-file counterpart (header, hunk marker, removed
+// line). Synthetic rows are NOT handled here; augmented buffers go
+// through Model.patchNewLineNumbers, which derives the mapping from
+// pre-built (synthetic-aware) specs.
 func newLineNumbers(lines []string) []int {
 	if len(lines) == 0 {
 		return nil
@@ -212,11 +216,13 @@ func markerRank(r rune) int {
 
 // lineExistsOnSide reports whether buffer line `l` has a counterpart in
 // the given Side column. `+` rows belong only to RIGHT, `-` rows only to
-// LEFT, and everything else (context, header, hunk) is treated as
-// existing on both sides so j/k auto-skip never strands the user on a
-// row they cannot leave.
+// LEFT, and everything else (context, header, hunk, synthetic `···`) is
+// treated as existing on both sides so j/k auto-skip never strands the
+// user on a row they cannot leave.
 func lineExistsOnSide(line string, side model.DiffSide) bool {
 	switch {
+	case line == diff.SyntheticLine:
+		return true
 	case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
 		return true
 	case strings.HasPrefix(line, "+"):

@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ktrysmt/gh-reva/internal/api"
+	"github.com/ktrysmt/gh-reva/internal/diff"
 	"github.com/ktrysmt/gh-reva/internal/model"
 	"github.com/ktrysmt/gh-reva/internal/theme"
 )
@@ -28,6 +29,13 @@ type Model struct {
 	width       int
 	height      int
 	err         error
+
+	// prefetchedRef / prefetchedPath track the (ref, path) pair the
+	// last prefetch Cmd targeted. Used by the Update-tail prefetch
+	// trigger to avoid re-issuing the same fetch when the user
+	// navigates back to a file they previously visited.
+	prefetchedRef  string
+	prefetchedPath string
 
 	// Splash variants are picked once at NewModel time and held for the
 	// life of the program so the loading view does not flicker through
@@ -110,6 +118,43 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.updateInner(msg)
+	mm, _ := model.(Model)
+	if pref := mm.maybePrefetchFileContents(); pref != nil {
+		cmd = tea.Batch(cmd, pref)
+		mm.prefetchedRef = mm.currentFileRef()
+		mm.prefetchedPath = mm.state.SelectedFile
+		return mm, cmd
+	}
+	return model, cmd
+}
+
+// maybePrefetchFileContents fires a background fetch of FileContents for
+// the active (ref, path) when the user has navigated to a new file (or
+// switched commit range) and contents aren't already cached. Returns nil
+// when no fetch is needed — same-file frames, AllFilesPath, no client
+// (tests) or empty path all short-circuit.
+func (m Model) maybePrefetchFileContents() tea.Cmd {
+	if m.client == nil || m.target == nil || m.state == nil || m.state.PR == nil {
+		return nil
+	}
+	path := m.state.SelectedFile
+	if path == "" || path == model.AllFilesPath {
+		return nil
+	}
+	ref := m.currentFileRef()
+	if ref == m.prefetchedRef && path == m.prefetchedPath {
+		return nil
+	}
+	if m.state.FileContents != nil {
+		if _, cached := m.state.FileContents[model.FileContentsKey{Ref: ref, Path: path}]; cached {
+			return nil
+		}
+	}
+	return fetchFileContentsCmd(m.client, m.target, ref, path)
+}
+
+func (m Model) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Apply any new dimensions FIRST so the unconditional measureLayout
 	// below sees the latest width / height. A single call here covers
 	// every downstream branch — handleKey, handleMouse,
@@ -167,11 +212,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commentsRefreshedMsg:
 		m.applyCommentsRefreshed(msg)
 		return m, nil
+	case fileContentsLoadedMsg:
+		m.applyFileContentsLoaded(msg)
+		return m, nil
 	case ErrMsg:
 		m.err = msg.Err
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// applyFileContentsLoaded stores the fetched file body under
+// FileContents[(Ref, Path)] and invalidates any patchInfo cache slot
+// that may now have stale (FileLines = nil → no synthetic) data.
+// Errors are silent — FileContents stays unpopulated so the synthetic
+// rows simply don't appear for this file (the user retains the raw
+// diff). Surfacing every prefetch failure as a Notice would clobber
+// the status bar on fixtures / repos that don't expose file contents,
+// while user-initiated fetches (Enter on synthetic) already set a
+// transient "fetching file contents…" Notice that the user can read.
+func (m *Model) applyFileContentsLoaded(msg fileContentsLoadedMsg) {
+	if m.state.Notice == "fetching file contents…" {
+		m.state.Notice = ""
+	}
+	if msg.Err != nil {
+		return
+	}
+	if m.state.FileContents == nil {
+		m.state.FileContents = map[model.FileContentsKey][]string{}
+	}
+	m.state.FileContents[model.FileContentsKey{Ref: msg.Ref, Path: msg.Path}] = msg.Lines
+	m.invalidatePatchInfoCacheForRef(msg.Ref, msg.Path)
 }
 
 func (m Model) View() string {
@@ -674,11 +745,22 @@ func (m Model) currentPatch() string {
 // every frame. Building these is O(buffer_size), so caching them keyed on
 // (sha, path) keeps split-mode `j/k` repeat cost flat instead of redoing
 // the walk on every redraw.
+//
+// lines is the augmented patch buffer: original patch rows interleaved
+// with `···` synthetic rows and any expanded-context rows the user has
+// revealed. specs / gaps are byproducts of diff.Expand and the
+// synthetic-aware parseDiffSpecs replacement (ParseSpecsAug) — both are
+// built eagerly so consumers always see consistent shapes.
 type patchInfo struct {
 	lines   []string
-	specs   []diffLineSpec // populated lazily; only split mode reads it
-	newNums []int          // populated lazily; commentLineSet etc.
-	oldNums []int          // populated lazily; LEFT-side comment anchoring
+	specs   []diffLineSpec
+	newNums []int // populated lazily; commentLineSet etc.
+	oldNums []int // populated lazily; LEFT-side comment anchoring
+	// gaps maps each synthetic row's buffer index to its GapInfo. Used
+	// by the Enter handler to decide which gap to expand and by the
+	// renderer to render the `··· N hidden` glyph with the correct
+	// hidden count.
+	gaps map[int]diff.GapInfo
 	// markers caches commentLineMarkers' result for this patch keyed on
 	// the threadsCache generation counter. nil = uncomputed; mismatched
 	// markersGen = stale (recompute). The threads-cache gen bumps on
@@ -773,13 +855,98 @@ func (m Model) patchInfo() *patchInfo {
 	if patch == "" {
 		return nil
 	}
+
+	// Resolve the expand state for this (file, range). Missing key = no
+	// expansion — Expand still emits BOF / inter-hunk synthetics from
+	// the hunk-header arithmetic, and (if file lines are cached) the
+	// EOF synthetic too.
+	ek := model.ExpandKey{
+		Path:      m.state.SelectedFile,
+		RangeKind: m.state.SelectedRange.Kind,
+		RangeSHA:  m.state.SelectedRange.SHA,
+	}
+	var es model.ExpandState
+	if v := m.state.ExpandedContext[ek]; v != nil {
+		es = *v
+	}
+
+	// File-content ref: HEAD for the WholePR view, the commit SHA for a
+	// single-commit drill. The fetch is lazy — Diff renders without
+	// EOF synthetic until the user's first expand triggers GetFileContents.
+	ref := ""
+	if m.state.PR != nil {
+		ref = m.state.PR.HeadSHA
+	}
+	if m.state.SelectedRange.Kind == model.RangeSingleCommit {
+		ref = m.state.SelectedRange.SHA
+	}
+	var fileLines []string
+	if m.state.FileContents != nil {
+		fileLines = m.state.FileContents[model.FileContentsKey{Ref: ref, Path: m.state.SelectedFile}]
+	}
+
+	res := diff.Expand(diff.ExpandInputs{
+		Patch:     patch,
+		FileLines: fileLines,
+		Expand: diff.ExpandState{
+			BOFBelow:   es.BOFBelow,
+			EOFAbove:   es.EOFAbove,
+			InterAbove: es.InterAbove,
+			InterBelow: es.InterBelow,
+		},
+	})
 	info := &patchInfo{
-		lines: strings.Split(strings.TrimRight(patch, "\n"), "\n"),
+		lines: res.Lines,
+		specs: convertAugSpecs(diff.ParseSpecsAug(res.Lines, res.Gaps)),
+		gaps:  res.Gaps,
 	}
 	if m.patchLinesC.cache != nil {
 		m.patchLinesC.cache[key] = info
 	}
 	return info
+}
+
+// patchGaps returns the synthetic-row index → GapInfo map for the
+// currently-displayed patch. Used by the Diff Enter handler to identify
+// the gap under the cursor and by renderers that show `··· N hidden`.
+func (m Model) patchGaps() map[int]diff.GapInfo {
+	pi := m.patchInfo()
+	if pi == nil {
+		return nil
+	}
+	return pi.gaps
+}
+
+// invalidatePatchInfoCache drops the cached patchInfo for the given
+// (file, range) pair. Called after ExpandedContext mutates (Enter on a
+// synthetic row) or FileContents arrives, so the next render rebuilds
+// the augmented buffer with the new state.
+func (m Model) invalidatePatchInfoCache(ek model.ExpandKey) {
+	sha := ""
+	if ek.RangeKind == model.RangeSingleCommit {
+		sha = ek.RangeSHA
+	}
+	dk := diffKey(sha, ek.Path)
+	if m.patchLinesC.cache != nil {
+		delete(m.patchLinesC.cache, dk)
+	}
+	if m.rowCache != nil {
+		m.rowCache.reset(m.rowCache.patchKey, m.rowCache.width, m.rowCache.halfW)
+	}
+	if m.threadsCache != nil {
+		m.threadsCache.valid = false
+	}
+}
+
+// convertAugSpecs widens diff.AugSpec into the tui-level diffLineSpec
+// the renderer already understands. Synthetic rows produce Kind 's'
+// with zero line numbers.
+func convertAugSpecs(in []diff.AugSpec) []diffLineSpec {
+	out := make([]diffLineSpec, len(in))
+	for i, s := range in {
+		out[i] = diffLineSpec{Kind: s.Kind, OldLn: s.OldLn, NewLn: s.NewLn}
+	}
+	return out
 }
 
 func (m Model) patchLines() []string {
@@ -791,43 +958,51 @@ func (m Model) patchLines() []string {
 }
 
 // patchSpecs returns the cached diffLineSpec slice for the current patch.
-// First reader pays the parse; subsequent renders reuse the slice.
+// Always populated eagerly by patchInfo (the synthetic-aware walker can't
+// be reproduced from raw lines without the gaps map, so lazy-deferral
+// would just re-pass the same data).
 func (m Model) patchSpecs() []diffLineSpec {
 	pi := m.patchInfo()
 	if pi == nil {
 		return nil
 	}
-	if pi.specs == nil {
-		pi.specs = parseDiffSpecs(pi.lines)
-	}
 	return pi.specs
 }
 
 // patchNewLineNumbers returns the cached new-file line-number mapping.
-// Lazy for the same reason as patchSpecs.
+// Built lazily from specs so synthetic rows skip the counter (their
+// AugSpec.NewLn is 0) and the post-synthetic gap-end jump baked into
+// ParseSpecsAug propagates here.
 func (m Model) patchNewLineNumbers() []int {
 	pi := m.patchInfo()
 	if pi == nil {
 		return nil
 	}
 	if pi.newNums == nil {
-		pi.newNums = newLineNumbers(pi.lines)
+		pi.newNums = make([]int, len(pi.specs))
+		for i, s := range pi.specs {
+			if s.Kind == ' ' || s.Kind == '+' {
+				pi.newNums[i] = s.NewLn
+			}
+		}
 	}
 	return pi.newNums
 }
 
-// patchOldLineNumbers returns the cached old-file line-number mapping.
-// Built lazily on first read (LEFT-side comments are common but not
-// universal, so the walk only pays off when a thread anchors on a `-`
-// row). Cached on the same patchInfo as newNums so per-render lookups
-// stay flat.
+// patchOldLineNumbers mirrors patchNewLineNumbers for the OLD-side
+// counter. Synthetic and '+' rows produce 0.
 func (m Model) patchOldLineNumbers() []int {
 	pi := m.patchInfo()
 	if pi == nil {
 		return nil
 	}
 	if pi.oldNums == nil {
-		pi.oldNums = oldLineNumbers(pi.lines)
+		pi.oldNums = make([]int, len(pi.specs))
+		for i, s := range pi.specs {
+			if s.Kind == ' ' || s.Kind == '-' {
+				pi.oldNums[i] = s.OldLn
+			}
+		}
 	}
 	return pi.oldNums
 }

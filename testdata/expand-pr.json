@@ -1,0 +1,31 @@
+{
+  "pr": {
+    "owner": "octocat",
+    "repo": "expand-demo",
+    "number": 7,
+    "title": "Context expand fixture",
+    "base_sha": "base00000000",
+    "head_sha": "head00000000"
+  },
+  "commits": [
+    {
+      "sha": "head000000000000000000000000000000000000",
+      "short_sha": "head000",
+      "message": "Edit file in two places",
+      "author": "alice",
+      "date": "2026-04-10T10:00:00Z",
+      "changed_files": {"file.txt": 1}
+    }
+  ],
+  "files": [
+    {"path": "file.txt", "status": 1, "additions": 2, "deletions": 2, "comment_count": 0}
+  ],
+  "comments": [],
+  "diffs": {
+    "pr/file.txt": "--- a/file.txt\n+++ b/file.txt\n@@ -5,1 +5,1 @@\n-old5\n+new5\n@@ -18,1 +18,1 @@\n-old18\n+new18\n",
+    "head000000000000000000000000000000000000/file.txt": "--- a/file.txt\n+++ b/file.txt\n@@ -5,1 +5,1 @@\n-old5\n+new5\n@@ -18,1 +18,1 @@\n-old18\n+new18\n"
+  },
+  "file_contents": {
+    "head00000000::file.txt": "L1\nL2\nL3\nL4\nnew5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nnew18\nL19\nL20\nL21\nL22\nL23\nL24\nL25"
+  }
+}

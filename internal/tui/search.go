@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ktrysmt/gh-reva/internal/diff"
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
@@ -263,6 +264,14 @@ func (m Model) collectCommitMatches(q string, fold bool) []model.SearchMatch {
 func (m Model) collectDiffMatches(q string, fold bool) []model.SearchMatch {
 	var out []model.SearchMatch
 	for i, line := range m.patchLines() {
+		// Synthetic `···` rows carry the "N lines hidden" hint but the
+		// underlying file content isn't loaded into the buffer cell, so
+		// matching against the sentinel would produce phantom hits.
+		// Excluding them mirrors GitHub web search (you can't `/` into
+		// collapsed regions).
+		if line == diff.SyntheticLine {
+			continue
+		}
 		if substr(line, q, fold) {
 			out = append(out, model.SearchMatch{Index: i})
 		}

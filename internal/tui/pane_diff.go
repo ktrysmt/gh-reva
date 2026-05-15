@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/ktrysmt/gh-reva/internal/diff"
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
@@ -114,6 +115,15 @@ func (m Model) handleKeyDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.DiffViewMode = model.DiffViewSplit
 		}
 	case "enter":
+		// Synthetic `···` rows have their own Enter contract — expand
+		// the hidden gap by 20 lines (10/10 for inter-hunk, 20 toward
+		// the edge for BOF / EOF). Routed before compose / focus
+		// handoff so the synthetic short-circuits both. The branch is
+		// the only Enter path that mutates ExpandedContext.
+		cursor := m.state.DiffCursor.Line
+		if cursor >= 0 && cursor < len(lines) && lines[cursor] == diff.SyntheticLine {
+			return m, m.handleEnterOnSynthetic(cursor)
+		}
 		// On a row that already carries one or more anchored review
 		// threads, Enter shifts focus to the Comments pane so the user
 		// can read and act on the existing comments via the per-pane
@@ -213,10 +223,13 @@ func (m Model) diffView() string {
 	}
 	cursorLine := m.state.DiffCursor.Line
 	cursorSide := m.state.DiffCursor.Side
+	gaps := m.patchGaps()
 	var out []string
 	for i := top; i < end && len(out) < height; i++ {
 		var rows []string
-		if isSplit {
+		if lines[i] == diff.SyntheticLine {
+			rows = m.renderSynthBufferLine(i, cursorLine, gaps[i])
+		} else if isSplit {
 			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, cursorSide, markers.Left[i], markers.Right[i], matched[i])
 		} else {
 			// Unified mode collapses both columns into one cell, so the
@@ -234,6 +247,23 @@ func (m Model) diffView() string {
 		}
 	}
 	return title + "\n" + strings.Join(out, "\n")
+}
+
+// renderSynthBufferLine paints a single full-width `···` row for a
+// hidden gap. The body shows the hidden line count plus an "enter:
+// expand" hint so the keystroke is discoverable without consulting the
+// status bar. Used in both unified and split mode — the row never
+// splits into two halves because the synthetic represents a region
+// equally invisible on both sides.
+func (m Model) renderSynthBufferLine(idx, cursorLine int, gap diff.GapInfo) []string {
+	cursor := "  "
+	inVisual := m.inVisualRange(model.PaneDiff, idx)
+	if idx == cursorLine || inVisual {
+		cursor = fgBold("> ", m.theme.CursorRow)
+	}
+	label := fmt.Sprintf("··· %d lines hidden  (enter: expand)", gap.HiddenCount)
+	body := fg(label, m.theme.DiffHunkHeader)
+	return []string{padTrunc(cursor+body, m.paneWidthDiff)}
 }
 
 // renderUnifiedBufferLine returns the display rows for one buffer line in
@@ -278,7 +308,7 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 	isRight := kind == '+'
 	out := make([]string, 0, len(cells))
 	for j, cell := range cells {
-		colored := m.colorDiffCell(cell, kind, isRight)
+		colored := m.colorDiffCell(cell, kind, isRight, matched)
 		var prefix string
 		if j == 0 {
 			cursor := m.cursorMarker(model.PaneDiff, idx, cursorLine)
@@ -302,9 +332,6 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 			prefix = cursorCol + gutterCol
 		}
 		row := padTrunc(prefix+colored, m.paneWidthDiff)
-		if matched {
-			row = bgRow(row, m.theme.SearchMatchBg)
-		}
 		out = append(out, row)
 	}
 	if cacheKey != "" {
@@ -369,8 +396,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 		if j < len(rightCells) {
 			right = rightCells[j]
 		}
-		left = m.colorDiffCell(left, spec.Kind, false)
-		right = m.colorDiffCell(right, spec.Kind, true)
+		left = m.colorDiffCell(left, spec.Kind, false, matched)
+		right = m.colorDiffCell(right, spec.Kind, true, matched)
 
 		var lCursor, lGutter, rCursor, rGutter, oldLn, newLn string
 		if j == 0 {
@@ -405,9 +432,6 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 			newLn = "    "
 		}
 		row := padTrunc(lCursor+lGutter+oldLn+" "+left+" "+sep+" "+rGutter+rCursor+newLn+" "+right, m.paneWidthDiff)
-		if matched {
-			row = bgRow(row, m.theme.SearchMatchBg)
-		}
 		out = append(out, row)
 	}
 	if cacheKey != "" {
@@ -450,9 +474,12 @@ func foldMarker(left, right rune) rune {
 
 // diffLineKind classifies a unified-diff buffer line into the same byte tags
 // used by parseDiffSpecs ('h' file header, '@' hunk, '+'/'-' add/del, ' '
-// context). Order matters — `---`/`+++` must be tested before `+`/`-`.
+// context, 's' synthetic `···` row). Order matters — synthetic and
+// `---`/`+++` must be tested before `+`/`-`.
 func diffLineKind(line string) byte {
 	switch {
+	case line == diff.SyntheticLine:
+		return 's'
 	case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
 		return 'h'
 	case strings.HasPrefix(line, "@@"):
@@ -477,24 +504,53 @@ func diffLineKind(line string) byte {
 //
 // In split mode, the side opposite to a +/- change is blank and returned
 // untouched so empty cells do not pick up SGR sequences.
-func (m Model) colorDiffCell(cell string, kind byte, isRight bool) string {
+//
+// When matched=true (active search match on this buffer line), the cell's
+// bg is replaced with theme.SearchMatchBg on the side(s) that carry the
+// content for `kind`. Empty opposite-side cells stay untouched so the
+// highlight only paints where the actual matched text lives — fixing the
+// bug where the bg leaked onto the empty LEFT lane of a `+` row (and the
+// empty RIGHT lane of a `-` row). bgRow wrapping the whole row used to
+// drive the highlight, but lipgloss's outer Background() does not
+// re-apply after internal \e[0m resets, so most of the row's bg was
+// silently stripped; baking the bg into each chroma token via
+// styledDiffCell sidesteps that.
+func (m Model) colorDiffCell(cell string, kind byte, isRight, matched bool) string {
+	matchBg := lipgloss.Color("")
+	if matched {
+		matchBg = m.theme.SearchMatchBg
+	}
 	switch kind {
 	case 'h':
+		if matched {
+			return lipgloss.NewStyle().Foreground(m.theme.DiffFileHeader).Background(matchBg).Render(cell)
+		}
 		return fg(cell, m.theme.DiffFileHeader)
 	case '@':
+		if matched {
+			return lipgloss.NewStyle().Foreground(m.theme.DiffHunkHeader).Background(matchBg).Render(cell)
+		}
 		return fg(cell, m.theme.DiffHunkHeader)
 	case '+':
 		if isRight {
-			return m.styledDiffCell(cell, m.theme.DiffPlusBg)
+			bg := m.theme.DiffPlusBg
+			if matched {
+				bg = matchBg
+			}
+			return m.styledDiffCell(cell, bg)
 		}
 		return cell
 	case '-':
 		if !isRight {
-			return m.styledDiffCell(cell, m.theme.DiffMinusBg)
+			bg := m.theme.DiffMinusBg
+			if matched {
+				bg = matchBg
+			}
+			return m.styledDiffCell(cell, bg)
 		}
 		return cell
 	default:
-		return m.styledDiffCell(cell, "")
+		return m.styledDiffCell(cell, matchBg)
 	}
 }
 
@@ -551,7 +607,13 @@ func (m Model) splitLayout() (bool, int) {
 
 // splitDiffLine routes a unified-diff line to its old / new column. Headers
 // (---, +++, @@) and context lines appear identically on both sides.
+// Synthetic rows render via the special-case path in renderSplitBufferLine
+// and never reach this router, so the sentinel falls through to the
+// "both sides" default.
 func splitDiffLine(line string) (string, string) {
+	if line == diff.SyntheticLine {
+		return line, line
+	}
 	if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "@@") {
 		return line, line
 	}
@@ -815,8 +877,13 @@ func (m Model) displayRowsBetween(lo, hi int) int {
 // displayRowsForLine reports the display-row count for a single buffer
 // line under the current view mode. Pulled out so scrollDiffIntoView can
 // decrement `remaining` one line at a time without re-walking the whole
-// patch on every iteration.
+// patch on every iteration. Synthetic rows always count as a single
+// display row — they never wrap because the renderer truncates the
+// hint label to the pane width.
 func displayRowsForLine(line string, isSplit bool, halfW, contentW int) int {
+	if line == diff.SyntheticLine {
+		return 1
+	}
 	expanded := expandTabs(line, 4)
 	if isSplit {
 		oldSide, newSide := splitDiffLine(expanded)

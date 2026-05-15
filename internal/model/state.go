@@ -87,8 +87,54 @@ type AppState struct {
 	DiffCache map[string]string
 	Loading   map[string]bool
 
+	// ExpandedContext records how much the user has revealed of each
+	// (file, range) pair's hidden context regions. Keyed by ExpandKey so a
+	// drill into RangeSingleCommit preserves the WholePR expansion state
+	// separately. A missing key means "no expansion yet" — Diff renders
+	// only the patch hunks plus auto-detected synthetic `···` rows.
+	ExpandedContext map[ExpandKey]*ExpandState
+
+	// FileContents caches the full NEW-side file content fetched from
+	// `gh api repos/.../contents` (or the fixture equivalent). Keyed by
+	// FileContentsKey (ref + path) so a single ref can host multiple
+	// files without colliding. nil entries mark in-flight fetches; an
+	// empty []string means "fetch completed with empty body" (rare; new
+	// files / EOF-aligned hunks still need synthesis-friendly empty).
+	FileContents map[FileContentsKey][]string
+
 	LoadStage LoadStage
 	LoadFrame int
+}
+
+// ExpandKey identifies a (file, commit range) pair so per-file expansion
+// state survives ranges switching back and forth. Mirrors the diff cache
+// key shape so callers can reuse the same key derivation.
+type ExpandKey struct {
+	Path      string
+	RangeKind CommitRangeKind
+	RangeSHA  string
+}
+
+// ExpandState tracks how much of each hidden context region has been
+// expanded for one (file, range) pair. BOFBelow grows toward the file
+// start; EOFAbove grows toward the file end; InterAbove[i] / InterBelow[i]
+// grow downward / upward inside the i-th inter-hunk gap. All counters
+// are file-line counts, capped at the gap size by the diff.Expand pass.
+type ExpandState struct {
+	BOFBelow   int
+	EOFAbove   int
+	InterAbove map[int]int
+	InterBelow map[int]int
+}
+
+// FileContentsKey identifies one file fetched from GitHub. The ref is
+// the SHA (PR head or commit) the snapshot was taken at; the path is
+// the file path on the server. Decoupled from ExpandKey because the
+// same file may have its contents fetched once and reused across
+// ranges that share the same ref.
+type FileContentsKey struct {
+	Ref  string
+	Path string
 }
 
 // DiffSide identifies which physical column of the split-mode Diff pane
@@ -326,12 +372,14 @@ type ComposeState struct {
 
 func NewAppState() *AppState {
 	return &AppState{
-		FocusedPane:  PaneFiles,
-		DiffViewMode: DiffViewSplit,
-		DiffCursor:   DiffCursor{Side: DiffSideRight},
-		FoldedDirs:   map[string]bool{},
-		DiffCache:    map[string]string{},
-		Loading:      map[string]bool{},
+		FocusedPane:     PaneFiles,
+		DiffViewMode:    DiffViewSplit,
+		DiffCursor:      DiffCursor{Side: DiffSideRight},
+		FoldedDirs:      map[string]bool{},
+		DiffCache:       map[string]string{},
+		Loading:         map[string]bool{},
+		ExpandedContext: map[ExpandKey]*ExpandState{},
+		FileContents:    map[FileContentsKey][]string{},
 	}
 }
 

@@ -49,6 +49,10 @@ func (c *errorClient) GetFileDiff(ctx context.Context, owner, repo string, n int
 	return "", c.err
 }
 
+func (c *errorClient) GetFileContents(ctx context.Context, owner, repo string, n int, ref, path string) ([]string, error) {
+	return nil, c.err
+}
+
 func (c *errorClient) CreatePendingReviewThread(ctx context.Context, owner, repo string, n int, in CreatePendingThreadInput) (*model.ReviewComment, error) {
 	return nil, c.err
 }

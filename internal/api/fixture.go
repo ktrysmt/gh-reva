@@ -16,6 +16,12 @@ type fixtureData struct {
 	Files    []*model.FileEntry     `json:"files"`
 	Comments []*model.ReviewComment `json:"comments"`
 	Diffs    map[string]string      `json:"diffs"`
+
+	// FileContents maps "<ref>::<path>" → raw file body. The fixture
+	// serves these in lieu of GitHub's `repos/.../contents` endpoint to
+	// power the Diff pane's context-expand feature. Keys use the same
+	// shape as Diffs for consistency.
+	FileContents map[string]string `json:"file_contents"`
 }
 
 type fixtureClient struct {
@@ -105,6 +111,42 @@ func (c *fixtureClient) ListFiles(ctx context.Context, owner, repo string, n int
 func (c *fixtureClient) ListComments(ctx context.Context, owner, repo string, n int) ([]*model.ReviewComment, error) {
 	c.wait()
 	return c.d.Comments, nil
+}
+
+// GetFileContents returns the fixture's stored NEW-side body for
+// (ref, path). The fixture key shape is "<ref>::<path>"; trailing
+// newlines are trimmed so callers observe len(lines) == file line
+// count (no phantom blank tail line at EOF).
+func (c *fixtureClient) GetFileContents(ctx context.Context, owner, repo string, n int, ref, path string) ([]string, error) {
+	c.wait()
+	key := ref + "::" + path
+	body, ok := c.d.FileContents[key]
+	if !ok {
+		return nil, fmt.Errorf("fixture: no file contents for %q", key)
+	}
+	trimmed := body
+	for len(trimmed) > 0 && trimmed[len(trimmed)-1] == '\n' {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	if trimmed == "" {
+		return []string{}, nil
+	}
+	return splitLines(trimmed), nil
+}
+
+func splitLines(s string) []string {
+	out := []string{}
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	if start <= len(s) {
+		out = append(out, s[start:])
+	}
+	return out
 }
 
 func (c *fixtureClient) GetFileDiff(ctx context.Context, owner, repo string, n int, sha, path string) (string, error) {
