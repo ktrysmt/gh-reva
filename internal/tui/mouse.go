@@ -26,7 +26,7 @@ func (m *Model) measureLayout() {
 	if bodyHeight < 8 {
 		return
 	}
-	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden)
+	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden, m.commentsWidthPercent)
 	topH, bottomH := splitColumnHeights(bodyHeight)
 	m.paneWidthFiles = atLeast(leftW-2, 1)
 	m.paneHeightFiles = atLeast(topH-4, 1)
@@ -85,7 +85,7 @@ func (m Model) paneAt(x, y int) (mouseHit, bool) {
 	if x < 0 || x >= m.width {
 		return mouseHit{}, false
 	}
-	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden)
+	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden, m.commentsWidthPercent)
 	topH, _ := splitColumnHeights(bodyHeight)
 
 	var (
@@ -280,6 +280,7 @@ func (m *Model) mouseClickComments(row int) {
 		return
 	}
 	m.state.CommentsCursor = idx
+	m.scrollCommentsIntoView()
 	m.syncDiffToCursorComment()
 }
 
@@ -359,6 +360,7 @@ func (m *Model) mouseWheelComments(dir int) {
 		next = len(flat) - 1
 	}
 	m.state.CommentsCursor = next
+	m.scrollCommentsIntoView()
 	m.syncDiffToCursorComment()
 }
 
@@ -418,6 +420,12 @@ func (m Model) commentIndexAtDisplayRow(displayRow int) int {
 	if displayRow < 0 {
 		return -1
 	}
+	// displayRow is a pane-relative content row; commentsView slices its
+	// rows from CommentsTop, so the layout row the user clicked on is
+	// (displayRow + CommentsTop). Without this offset, clicks on a
+	// scrolled-down Comments column would resolve to comments above the
+	// visible window.
+	layoutRow := displayRow + m.state.CommentsTop
 	threads := m.threadsForCursor()
 	if len(threads) == 0 {
 		return -1
@@ -425,27 +433,27 @@ func (m Model) commentIndexAtDisplayRow(displayRow int) int {
 	idx, row := 0, 0
 	for ti, t := range threads {
 		if ti > 0 {
-			if displayRow == row {
+			if layoutRow == row {
 				return -1
 			}
 			row++
 		}
 		rootRows := m.renderCommentRow(t.Root, 0, idx)
 		for j := 0; j < len(rootRows); j++ {
-			if displayRow == row {
+			if layoutRow == row {
 				return idx
 			}
 			row++
 		}
 		idx++
 		for _, r := range t.Replies {
-			if displayRow == row {
+			if layoutRow == row {
 				return -1
 			}
 			row++
 			replyRows := m.renderCommentRow(r, 1, idx)
 			for j := 0; j < len(replyRows); j++ {
-				if displayRow == row {
+				if layoutRow == row {
 					return idx
 				}
 				row++

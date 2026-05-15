@@ -278,11 +278,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.state.Modal = nil
 				m.state.FocusedPane = model.PaneDiff
 				m.state.CommentsCursor = 0
+				m.state.CommentsTop = 0
 				return m, nil
 			case model.PaneCommits:
 				m.state.Modal = nil
 				m.state.FocusedPane = model.PaneDiff
 				m.state.CommentsCursor = 0
+				m.state.CommentsTop = 0
 				return m, nil
 			}
 		}

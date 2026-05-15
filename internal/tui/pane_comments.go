@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
@@ -35,6 +36,7 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if handled := m.handlePendingG(key, func() {
 		if len(flat) > 0 {
 			m.state.CommentsCursor = 0
+			m.state.CommentsTop = 0
 			m.syncDiffToCursorComment()
 		}
 	}); handled {
@@ -45,14 +47,17 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.CommentsCursor < len(flat)-1 {
 			m.state.CommentsCursor++
 		}
+		m.scrollCommentsIntoView()
 	case "k", "up":
 		if m.state.CommentsCursor > 0 {
 			m.state.CommentsCursor--
 		}
+		m.scrollCommentsIntoView()
 	case "G":
 		if n := len(flat); n > 0 {
 			m.state.CommentsCursor = n - 1
 		}
+		m.scrollCommentsIntoView()
 	case "enter":
 		// Edit the cursor comment — only the viewer's own comments are
 		// editable per GitHub's permission model. startComposeEdit
@@ -90,6 +95,44 @@ func commentAtCursor(flat []*model.ReviewComment, idx int) *model.ReviewComment 
 	return flat[idx]
 }
 
+// scrollCommentsIntoView clamps AppState.CommentsTop so the cursored
+// comment's header row stays inside the viewport window
+// [Top, Top+commentsViewportHeight). Called after every j / k / G / gg /
+// wheel that mutates CommentsCursor.
+//
+// The window is anchored on the header row (not the body) so a comment
+// taller than the viewport still surfaces "where the cursor is"; the
+// body may extend below and clip — that matches how diff scroll handles
+// wrapped lines that exceed the diff window.
+func (m *Model) scrollCommentsIntoView() {
+	_, headerAt := m.commentsLayout()
+	if len(headerAt) == 0 {
+		m.state.CommentsTop = 0
+		return
+	}
+	cursor := m.state.CommentsCursor
+	if cursor < 0 || cursor >= len(headerAt) {
+		m.state.CommentsTop = 0
+		return
+	}
+	target := headerAt[cursor]
+	height := m.commentsViewportHeight()
+	if height <= 0 {
+		m.state.CommentsTop = 0
+		return
+	}
+	top := m.state.CommentsTop
+	if target < top {
+		top = target
+	} else if target > top+height-1 {
+		top = target - height + 1
+	}
+	if top < 0 {
+		top = 0
+	}
+	m.state.CommentsTop = top
+}
+
 // syncDiffToCursorComment auto-scrolls the Diff viewport so the comment under
 // the Comments cursor is visible. Cursor in Diff is not moved.
 //
@@ -125,25 +168,64 @@ func (m Model) commentsView() string {
 		// attempted compose.
 		return title + "\n(no file selected — Comments disabled in All view)"
 	}
-	threads := m.threadsForCursor()
-	if len(threads) == 0 {
+	rows, _ := m.commentsLayout()
+	if len(rows) == 0 {
 		return title + "\n(no comment at cursor)"
 	}
-	var rows []string
+	top := m.state.CommentsTop
+	if top < 0 {
+		top = 0
+	}
+	if top >= len(rows) {
+		top = len(rows) - 1
+	}
+	return title + "\n" + strings.Join(rows[top:], "\n")
+}
+
+// commentsLayout walks the threads visible at the current Diff cursor and
+// emits the body rows commentsView() / commentIndexAtDisplayRow() /
+// scrollCommentsIntoView() all consume in lock-step. headerAt[i] is the
+// row index inside `rows` where flat comment i's header sits — used by
+// the scroll math to land the cursored header inside the viewport.
+//
+// Empty return when threadsForCursor() is empty so callers can route to
+// the "(no comment at cursor)" placeholder without re-checking.
+func (m Model) commentsLayout() (rows []string, headerAt []int) {
+	threads := m.threadsForCursor()
+	if len(threads) == 0 {
+		return nil, nil
+	}
 	idx := 0
 	for ti, t := range threads {
 		if ti > 0 {
 			rows = append(rows, "")
 		}
+		headerAt = append(headerAt, len(rows))
 		rows = append(rows, m.renderCommentRow(t.Root, 0, idx)...)
 		idx++
 		for _, r := range t.Replies {
 			rows = append(rows, "")
+			headerAt = append(headerAt, len(rows))
 			rows = append(rows, m.renderCommentRow(r, 1, idx)...)
 			idx++
 		}
 	}
-	return title + "\n" + strings.Join(rows, "\n")
+	return rows, headerAt
+}
+
+// commentsViewportHeight returns the body row budget for the Comments
+// pane — the visible window height into which commentsLayout's `rows`
+// gets sliced. Mirrors diffViewportHeight()'s fallback ladder so tests
+// that don't drive a full measureLayout still get a sensible non-zero
+// height.
+func (m Model) commentsViewportHeight() int {
+	if m.paneHeightComments > 0 {
+		return m.paneHeightComments
+	}
+	if m.height > 18 {
+		return m.height - 16
+	}
+	return 5
 }
 
 // renderCommentRow returns one entry rendered as multiple display rows:
@@ -185,6 +267,15 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
 	}
+	// Per-comment numeric ID rendered as ` #<id>` between the SHA and
+	// any trailing tag — lets reviewers copy the literal id for API /
+	// link references without leaving the TUI. Skipped when id == 0
+	// (pre-POST drafts could surface here before convertGQLComment
+	// stamps the databaseId).
+	var idTag string
+	if c.ID != 0 {
+		idTag = " " + fg(fmt.Sprintf("#%d", c.ID), m.theme.CommitSHA)
+	}
 	// Trailing tag (pending OR outdated) — pending wins because pending
 	// entries are drafts and cannot also be public-state outdated.
 	var trailingTag string
@@ -203,17 +294,34 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if c.Resolved {
 		leadingTag = fg("[resolved] ", m.theme.CommentResolved)
 	}
-	header := fmt.Sprintf("%s%s%s%s: %s %s%s",
+	header := fmt.Sprintf("%s%s%s%s: %s %s%s%s",
 		cursor, headIndent, leadingTag,
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
+		idTag,
 		fg(trailingTag, trailingColor),
 	)
 
 	wrapWidth := m.paneWidthComments
 	if wrapWidth <= 0 {
 		wrapWidth = m.width
+	}
+	// At narrow Comments widths the `#<id>` slot can push the trailing
+	// `[pending]` / `[outdated]` tag past the right edge of the column
+	// and renderPaneBox::padTrunc silently clips it — clipping the
+	// critical state tag is worse than dropping the reference id. Detect
+	// the overflow and rebuild without `idTag`. lipgloss.Width strips
+	// SGR escapes so the comparison reflects rendered cell count, not
+	// byte length.
+	if idTag != "" && wrapWidth > 0 && lipgloss.Width(header) > wrapWidth {
+		header = fmt.Sprintf("%s%s%s%s: %s %s%s",
+			cursor, headIndent, leadingTag,
+			fg(c.User, m.theme.CommentAuthor),
+			fg(date, m.theme.CommentDate),
+			fg(sha, m.theme.CommitSHA),
+			fg(trailingTag, trailingColor),
+		)
 	}
 	out := []string{header}
 	if wrapWidth <= 0 {

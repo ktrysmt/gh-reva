@@ -16,6 +16,7 @@ import (
 // gh-reva to run.
 type Config struct {
 	Syntax SyntaxConfig `toml:"syntax"`
+	Layout LayoutConfig `toml:"layout"`
 }
 
 // SyntaxConfig holds syntax-highlight-related overrides. Today only
@@ -27,6 +28,20 @@ type SyntaxConfig struct {
 	// and longest-match-first at the call site so ".html.j2" can shadow
 	// ".j2" cleanly.
 	Extensions map[string]string `toml:"extensions"`
+}
+
+// LayoutConfig holds layout / pane-sizing overrides. Fields are int
+// percentages; zero means "use the built-in default". The consumer
+// owns the valid range and falls back to the default on out-of-range
+// values — the loader stays a thin TOML→struct adapter.
+type LayoutConfig struct {
+	// CommentsWidthPercent overrides the Comments column's share of the
+	// total terminal width. Honored when in [10, 70]; out-of-range or
+	// zero falls back to the built-in default. The Comments column gets
+	// `total * pct / 100` and the Diff column absorbs whatever Files
+	// doesn't claim. Subject to the existing narrow-terminal floors so
+	// Diff and Files never collapse below readable widths.
+	CommentsWidthPercent int `toml:"comments_width_percent"`
 }
 
 // Load reads `path` and unmarshals into a Config. An empty path yields

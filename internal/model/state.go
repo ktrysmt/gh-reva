@@ -23,6 +23,16 @@ type AppState struct {
 	DiffCursor     DiffCursor
 	DiffViewport   DiffViewport
 	CommentsCursor int
+	// CommentsTop is the display-row offset of the Comments pane's
+	// viewport. Threads anchored at the current Diff cursor often span
+	// more rows than the pane height (long bodies, many replies), and
+	// renderPaneBox clips at the bottom — without an offset, j past the
+	// visible edge advances the logical cursor but doesn't transition
+	// the visible window. scrollCommentsIntoView clamps Top so the
+	// cursored comment's header row stays inside [Top, Top+H).
+	// Reset to 0 by every site that resets CommentsCursor to 0
+	// (focus handoff from Diff, file / commit selection, refresh).
+	CommentsTop    int
 
 	FilesTreeMode   bool
 	FoldedDirs      map[string]bool

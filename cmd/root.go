@@ -133,6 +133,7 @@ var rootCmd = &cobra.Command{
 		m.SetTheme(th)
 		m.SetVersion(version)
 		m.SetSyntaxExtensions(cfg.Syntax.Extensions)
+		m.SetCommentsWidthPercent(cfg.Layout.CommentsWidthPercent)
 		if diffHeight > 0 {
 			m.SetDiffHeight(diffHeight)
 		}

@@ -64,6 +64,7 @@ func (m *Model) autoSelectCommit(commits []*model.Commit) {
 		m.state.DiffCursor = model.DiffCursor{Side: model.DiffSideRight}
 		m.state.DiffViewport.Top = 0
 		m.state.CommentsCursor = 0
+		m.state.CommentsTop = 0
 		return
 	}
 	if idx < 1 || idx > len(commits) {
@@ -84,6 +85,7 @@ func (m *Model) autoSelectCommit(commits []*model.Commit) {
 	m.state.DiffCursor = model.DiffCursor{Side: model.DiffSideRight}
 	m.state.DiffViewport.Top = 0
 	m.state.CommentsCursor = 0
+	m.state.CommentsTop = 0
 }
 
 func (m Model) commitsView() string {

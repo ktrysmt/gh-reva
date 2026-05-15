@@ -61,6 +61,41 @@ func TestLoad_ValidExtensionsTable(t *testing.T) {
 	}
 }
 
+// TestLoad_LayoutCommentsWidthPercent pins the [layout] section schema.
+// An integer in [10, 70] is honored verbatim; out-of-range / unset / zero
+// surfaces as 0 so the consumer can apply the built-in default. The 10–70
+// clamp lives at the consumer (Model.SetCommentsWidthPercent), not the
+// loader — the loader stays a thin TOML→struct adapter.
+func TestLoad_LayoutCommentsWidthPercent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "reva.toml")
+	body := `[layout]
+comments_width_percent = 42
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(%s): %v", path, err)
+	}
+	if got := cfg.Layout.CommentsWidthPercent; got != 42 {
+		t.Errorf("Layout.CommentsWidthPercent = %d; want 42", got)
+	}
+}
+
+// TestLoad_EmptyConfigZeroesLayout pins the "unset means zero" contract
+// that the consumer pivots on to fall back to the built-in default.
+func TestLoad_EmptyConfigZeroesLayout(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load(\"\"): %v", err)
+	}
+	if got := cfg.Layout.CommentsWidthPercent; got != 0 {
+		t.Errorf("zero-value Layout.CommentsWidthPercent = %d; want 0", got)
+	}
+}
+
 // TestResolvePath_ExplicitWins pins that --config takes precedence over
 // XDG / HOME defaults — user intent always wins.
 func TestResolvePath_ExplicitWins(t *testing.T) {

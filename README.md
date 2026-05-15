@@ -75,7 +75,9 @@ panes follow the cursor live without an explicit drill-in step.
 - Files: file path(s), newline-separated
 - Commits: `<sha> <subject>` per row
 - Comments: `<user> @ <date>\n<body>` per row
-- Diff: raw line(s) of the patch buffer
+- Diff: patch line(s) with the leading `+` / `-` / ` ` column stripped so a
+  mixed-range paste keeps consistent indentation. File headers (`---` /
+  `+++`) and hunk headers (`@@`) are kept verbatim.
 
 ## Per-file commit history
 
@@ -94,7 +96,14 @@ to switch the filter; there is no separate pin / unpin step.
   that became outdated against HEAD), tagged with `[outdated]` when relevant.
 - Threads always render fully expanded with replies indented under the root.
   Moving the Comments cursor (`j` / `k`) auto-scrolls the Diff pane to the
-  buffer line of the cursored comment.
+  buffer line of the cursored comment. The Comments column itself also
+  scrolls when threads overflow the visible window, keeping the cursored
+  header inside view.
+- Each header carries the per-comment numeric ID as `#<id>` next to the
+  short commit SHA, so you can copy the literal id for API / link
+  references without leaving the TUI. At narrow column widths the id is
+  dropped first to keep the trailing `[pending]` / `[outdated]` state tag
+  visible.
 
 ## Configuration
 
@@ -129,6 +138,24 @@ Map a filename suffix (with leading dot) to a chroma lexer name or alias:
 - An unknown lexer name silently falls back to chroma's default
   extension matcher, so a typo in `reva.toml` doesn't strip syntax
   from every other file in the PR.
+
+### `[layout]`
+
+Tune the on-screen split. Today the only knob is the Comments column's
+share of the total terminal width:
+
+```toml
+[layout]
+comments_width_percent = 40
+```
+
+- Value is an integer percentage; honored in `[10, 70]`. Zero or
+  out-of-range falls back to the built-in default (`35`).
+- The Files column keeps its fixed width on wide terminals; the Diff
+  column absorbs the remainder, subject to a 25-column floor so it
+  never collapses below readability even under aggressive overrides.
+- `Ctrl-E` still toggles the Comments column open / closed at runtime;
+  the percent setting controls only the open-state width.
 
 ## Color theming
 

@@ -63,6 +63,12 @@ type Model struct {
 	// time so ".html.j2" can shadow ".j2". Empty / nil means
 	// "no override; use chroma's default extension matcher".
 	syntaxExtensions map[string]string
+
+	// commentsWidthPercent is the Comments column's share of total
+	// terminal width — sourced from reva.toml's
+	// [layout.comments_width_percent]. Zero / out-of-range falls back
+	// to defaultCommentsWidthPercent inside splitColumnWidths.
+	commentsWidthPercent int
 }
 
 func (m Model) Err() error { return m.err }
@@ -95,6 +101,16 @@ func (m *Model) SetVersion(v string) { m.version = v }
 // clear the overrides.
 func (m *Model) SetSyntaxExtensions(ext map[string]string) {
 	m.syntaxExtensions = ext
+}
+
+// SetCommentsWidthPercent installs the user's
+// [layout.comments_width_percent] override. Out-of-range / zero is
+// tolerated — splitColumnWidths falls back to
+// defaultCommentsWidthPercent when the value is outside
+// [commentsWidthPercentMin, commentsWidthPercentMax]. Pass 0 to leave
+// the default in effect.
+func (m *Model) SetCommentsWidthPercent(p int) {
+	m.commentsWidthPercent = p
 }
 
 func NewModel(client api.Client, target *api.Target) Model {
@@ -301,7 +317,7 @@ func (m Model) View() string {
 	// gets a fresh m each tick that doesn't carry View's measurements.
 	m.measureLayout()
 
-	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden)
+	leftW, midW, rightW := splitColumnWidths(m.width, m.state.CommentsHidden, m.commentsWidthPercent)
 	topH, bottomH := splitColumnHeights(bodyHeight)
 
 	files := m.boxFromPaneView(m.filesView(), leftW, topH, model.PaneFiles)
@@ -326,19 +342,48 @@ func (m Model) View() string {
 	return body
 }
 
+// defaultCommentsWidthPercent is the built-in share of total terminal
+// width allocated to the Comments column when the user has not set
+// `layout.comments_width_percent` in reva.toml. Picked to give the
+// Comments pane meaningful room on wide terminals without starving the
+// Diff column on narrower ones.
+const defaultCommentsWidthPercent = 35
+
+// commentsWidthPercentRange is the honored interval for user overrides.
+// Values outside this range fall back to the built-in default — the
+// loader stays a thin TOML→struct adapter, so the clamp lives here
+// alongside the consumer.
+const (
+	commentsWidthPercentMin = 10
+	commentsWidthPercentMax = 70
+)
+
 // splitColumnWidths divides total terminal width across the three columns.
-// Targets roughly 30 / 60 / remainder for left / right / middle so the
-// Comments column has room to display typical comment bodies without
-// aggressive wrap. When commentsHidden is true the right column collapses
-// to 0 and its width is added to the middle (Diff) column — Files /
-// Commits keep their familiar widths so the layout transition is local
-// to the right side of the screen.
-func splitColumnWidths(total int, commentsHidden bool) (left, mid, right int) {
+// `commentsPct` is the requested share for the Comments column (0..100);
+// the caller is expected to pass either defaultCommentsWidthPercent or a
+// validated user override. Out-of-range / zero values fall back to the
+// default so callers don't need to pre-clamp.
+//
+// Files keeps its familiar fixed width on wide terminals (≥ 130) and
+// scales proportionally below; the Diff column absorbs whatever's left
+// after Files and Comments claim their share. Diff's mid-25 floor (the
+// readable-Diff minimum that already lived in the 80 ≤ total < 130
+// branch) is preserved even under aggressive percentage overrides on
+// narrow terminals — the override is best-effort, not a guarantee.
+//
+// When commentsHidden is true the right column collapses to 0 and its
+// width is added to the middle (Diff) column — Files / Commits keep
+// their familiar widths so the layout transition is local to the right
+// side of the screen.
+func splitColumnWidths(total int, commentsHidden bool, commentsPct int) (left, mid, right int) {
+	if commentsPct < commentsWidthPercentMin || commentsPct > commentsWidthPercentMax {
+		commentsPct = defaultCommentsWidthPercent
+	}
 	if commentsHidden {
 		// Reuse the visible-Comments left budget so Files / Commits don't
 		// reflow when the toggle fires; the Diff pane absorbs everything
 		// to the right of the left column.
-		left, _, _ = splitColumnWidths(total, false)
+		left, _, _ = splitColumnWidths(total, false, commentsPct)
 		mid = total - left
 		if mid < 1 {
 			mid = 1
@@ -346,11 +391,25 @@ func splitColumnWidths(total int, commentsHidden bool) (left, mid, right int) {
 		return
 	}
 	if total >= 130 {
-		// Border consumes 2 cols per pane; bump outer widths so inner widths
-		// (used for content) match the pre-border targets.
 		left = 42
-		right = 57
+		right = total * commentsPct / 100
+		// Floor right so a low override doesn't squeeze Comments below
+		// a readable width; the original 80–130 branch used 28 as its
+		// floor and we mirror it here.
+		if right < 28 {
+			right = 28
+		}
 		mid = total - left - right
+		if mid < 25 {
+			// Diff floor (mirror of the narrow-terminal branch). Steal
+			// from right rather than from left so the user-facing
+			// Comments share is the elastic one.
+			mid = 25
+			right = total - left - mid
+			if right < 1 {
+				right = 1
+			}
+		}
 		return
 	}
 	if total >= 80 {
@@ -361,7 +420,7 @@ func splitColumnWidths(total int, commentsHidden bool) (left, mid, right int) {
 		if left > 38 {
 			left = 38
 		}
-		right = total * 2 / 5
+		right = total * commentsPct / 100
 		if right < 28 {
 			right = 28
 		}

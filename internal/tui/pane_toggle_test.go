@@ -142,7 +142,7 @@ func TestTab_SkipsCommentsWhenHidden(t *testing.T) {
 func TestSplitColumnWidths_HiddenCommentsExpandsDiff(t *testing.T) {
 	cases := []struct{ total int }{{130}, {160}, {200}, {100}, {85}}
 	for _, c := range cases {
-		l, mid, r := splitColumnWidths(c.total, true /* commentsHidden */)
+		l, mid, r := splitColumnWidths(c.total, true /* commentsHidden */, defaultCommentsWidthPercent)
 		if r != 0 {
 			t.Errorf("total=%d hidden: right must be 0, got %d", c.total, r)
 		}
@@ -153,7 +153,7 @@ func TestSplitColumnWidths_HiddenCommentsExpandsDiff(t *testing.T) {
 			t.Errorf("total=%d hidden: left+mid must equal total; got %d", c.total, l+mid)
 		}
 		// Sanity: the expanded mid is wider than the visible-Comments mid.
-		_, vmid, _ := splitColumnWidths(c.total, false /* commentsHidden */)
+		_, vmid, _ := splitColumnWidths(c.total, false /* commentsHidden */, defaultCommentsWidthPercent)
 		if mid <= vmid {
 			t.Errorf("total=%d hidden mid=%d must exceed visible mid=%d", c.total, mid, vmid)
 		}

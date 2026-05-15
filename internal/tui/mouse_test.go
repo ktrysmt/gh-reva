@@ -36,6 +36,14 @@ func mouseModelFixture(t *testing.T) Model {
 	}
 	m.width = 140
 	m.height = 40
+	// Pin the Comments share to ~41% so the resulting layout matches what
+	// the old fixed-`right = 57` branch produced at width=140 (right=57,
+	// mid=41). Every test below baked specific (x, y) coordinates and
+	// wrap-math against that frame; touching either would cascade through
+	// 30+ mouse tests. Defaultcommentswidth-percent (35) drops right to 49
+	// here and shifts the Diff/Comments boundary by 8 cells, breaking
+	// `DiffCursor.Line == 4` assertions etc.
+	m.commentsWidthPercent = 41
 	m.measureLayout()
 	return m
 }

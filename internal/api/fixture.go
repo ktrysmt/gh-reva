@@ -5,10 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
+
+// nextFixtureCommentID returns a monotonically increasing comment ID
+// shaped like a real GitHub review-comment id (~10-digit int64) so the
+// Comments-pane `#<id>` slot stays within the typical column width.
+// The previous `time.Now().UnixNano()` generator produced 19-digit ids
+// which pushed the trailing `[pending]` / `[outdated]` state tag past
+// the right edge of the column for narrow Comments widths.
+var fixtureCommentIDCounter int64 = 2_000_000_000
+
+func nextFixtureCommentID() int64 {
+	return atomic.AddInt64(&fixtureCommentIDCounter, 1)
+}
 
 type fixtureData struct {
 	PR       *model.PR              `json:"pr"`
@@ -167,12 +180,12 @@ func (c *fixtureClient) ResolveCurrentBranchPR(ctx context.Context) (string, str
 // CreatePendingReviewThread appends a synthetic ReviewComment
 // (Pending=true) to the in-memory fixture as if it were posted under
 // a pending review on GitHub. ID / NodeID / ThreadID are derived from
-// time.Now().UnixNano() so they are unique within a session yet stay
-// distinct from real GitHub IDs.
+// nextFixtureCommentID so they are session-unique and stay realistic-
+// sized (~10 digits, matching live GitHub review-comment ids).
 func (c *fixtureClient) CreatePendingReviewThread(ctx context.Context, owner, repo string, n int, in CreatePendingThreadInput) (*model.ReviewComment, error) {
 	c.wait()
 	now := time.Now()
-	id := now.UnixNano()
+	id := nextFixtureCommentID()
 	rc := &model.ReviewComment{
 		ID:        id,
 		NodeID:    fmt.Sprintf("PRRC_pending_%d", id),
@@ -207,7 +220,7 @@ func (c *fixtureClient) CreatePendingReviewThreadReply(ctx context.Context, owne
 		return nil, fmt.Errorf("fixture: thread %q not found", parentThreadID)
 	}
 	now := time.Now()
-	id := now.UnixNano()
+	id := nextFixtureCommentID()
 	rc := &model.ReviewComment{
 		ID:        id,
 		NodeID:    fmt.Sprintf("PRRC_pending_%d", id),

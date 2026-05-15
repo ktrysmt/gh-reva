@@ -39,7 +39,10 @@ go run testdata/gen_large_fixture.go testdata/large-pr.json
 - `--theme <name>` — default `gruvbox`. Any chroma styles registry name (74) plus `builtin-dark`. `GH_REVA_THEME` env fallback. Empty → `defaultThemeName` in `internal/theme/theme.go`.
 - `--no-color` — honors `NO_COLOR` / `CLICOLOR` (`termenv.EnvNoColor`).
 - `--list-themes` — print accepted names and exit 0.
-- `--config <path>` — load `reva.toml`. Defaults: `$XDG_CONFIG_HOME/reva.toml` → `$HOME/.config/reva.toml`. Schema: `[syntax.extensions]` mapping filename suffix (e.g. `.j2`) → chroma lexer name. Explicit `--config` missing target = hard error; implicit search tolerates absence. Authoritative: `internal/config/config.go` + `internal/tui/syntax.go::lexerFromOverride` (longest-suffix-match wins; unknown lexer names fall back to chroma's default extension matcher).
+- `--config <path>` — load `reva.toml`. Defaults: `$XDG_CONFIG_HOME/reva.toml` → `$HOME/.config/reva.toml`. Schemas:
+  - `[syntax.extensions]` — filename suffix (e.g. `.j2`) → chroma lexer name. Authoritative: `internal/config/config.go` + `internal/tui/syntax.go::lexerFromOverride` (longest-suffix-match wins; unknown lexer names fall back to chroma's default extension matcher).
+  - `[layout].comments_width_percent` — integer percentage of total terminal width allocated to the Comments column. Honored in `[commentsWidthPercentMin, commentsWidthPercentMax]` = `[10, 70]`; zero / out-of-range falls back to `defaultCommentsWidthPercent = 35`. Files keeps its fixed 42-col width on wide terminals; the Diff column absorbs the remainder. Subject to a `mid ≥ 25` floor (mirrors the 80–130 branch) so Diff cannot collapse below readability even under aggressive overrides. Authoritative: `internal/config/config.go::LayoutConfig` + `internal/tui/app.go::splitColumnWidths` + `internal/tui/app.go::Model.SetCommentsWidthPercent` (called from `cmd/root.go`).
+  Explicit `--config` missing target = hard error; implicit search tolerates absence.
 
 ---
 
@@ -144,10 +147,11 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 ### Layout
 1. 3-column bordered layout: Files+Commits stacked left; Diff middle; Comments right. Each pane is its own `┌─┐ │ ├─┤ │ └─┘` box with a divider under the title.
 2. Pane box: 4 + N rows (top / title / divider / N content / bottom). Inner width = outer − 2; inner height = outer − 4.
-3. `splitColumnWidths` branches by terminal width:
-   - total ≥ 130: `left = 42`, `right = 57`, `mid = total − 99`. Canonical layout that all e2e tests assume.
-   - 80 ≤ total < 130: proportional with `mid ≥ 25` floor (Diff steals from `right`).
+3. `splitColumnWidths(total, commentsHidden, commentsPct)` branches by terminal width. `commentsPct` is the requested Comments share (0..100) and falls back to `defaultCommentsWidthPercent = 35` when 0 or outside `[10, 70]`. Honored overrides come from `Model.commentsWidthPercent`, set by `Model.SetCommentsWidthPercent` from `cfg.Layout.CommentsWidthPercent` (reva.toml `[layout]`).
+   - total ≥ 130: `left = 42`, `right = total * commentsPct / 100` (floored at 28 to keep Comments readable), `mid = total − left − right` (floored at 25; overflow stolen from right). At default 35%: 130 → right=45 mid=43; 160 → right=56 mid=62; 200 → right=70 mid=88.
+   - 80 ≤ total < 130: proportional with `mid ≥ 25` floor (Diff steals from `right`); also honors `commentsPct` for the right slot before the floor.
    - total < 80: degenerate; tests do not pin.
+   The e2e default `cols=160` still works for every assertion, but the Comments header's `#<id>` slot (#23b) is dropped at render time when it would push the trailing `[pending]` / `[outdated]` tag past the column edge — keeping the critical state tag visible takes priority over the reference id. `internal/tui/mouse_test.go::mouseModelFixture` pins `m.commentsWidthPercent = 41` to preserve the legacy `right=57 mid=41` frame the 30+ mouse tests baked specific (x, y) coords against; changing the default doesn't cascade through them.
 4. Active pane: `▶ ` prefix on its title row. Exactly one.
 5. Cursor row: `> ` prefix in Files / Commits / Diff / Comments. Visual-range rows also `> `.
 6. Status bar (`internal/tui/statusbar.go`): 2-row borderless block — content + blank, `statusBarRows = 2`, `bodyHeight = m.height - statusBarRows`. Suppressed when `m.width <= 0`, `m.height <= statusBarRows`, or during loading splash. URL from `api.Target.PRShortForms` (4-step ladder). Per-pane context: mode-selected (normal / compose / help / modal / visual); suffix `tab/shift+tab:pane J/K:file ctrl+e:comments ?:help q:quit` joined only in normal. Diff context built by `(Model).diffHint`: `[A]` (RIGHT) or `[B]` (LEFT) prepended to `hintDiffKeys`. `AppState.Notice` replaces context for one keystroke. Pane bottom borders sit above the bar's content row — visual separator.
@@ -230,14 +234,14 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
 ### Comments pane
 23. Diff-cursor coupling: `commentsView` shows ONLY threads anchored at the Diff cursor's buffer line AND matching `DiffCursor.Side` (`◆` rows on the active column). Off `◆` → `(no comment at cursor)`, `<space>` no-op. Visible set: `threadsForCursor` filters by buffer index (`commentBufferIndex`) then by `root.Side` (`threadOnSide`). `flatComments` scoped to `threadsForCursor` so cursor never drifts past visible content. Empty `root.Side` → RIGHT (legacy, mirroring GitHub default).
 23b. Render shape: header + indented body.
-   - Header: `[ [resolved] ]<name>: <yyyy-mm-dd hh:mm> <hash>[ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`).
+   - Header: `[ [resolved] ]<name>: <yyyy-mm-dd hh:mm> <hash>[ #<id>][ [pending]| [outdated]]` (`CreatedAt.Local()`, `<hash>` = `shortSHA(CommitID)`, `#<id>` = `ReviewComment.ID` = REST `databaseId`). The `#<id>` slot is omitted when `ID == 0` (pre-POST drafts before `convertGQLComment` stamps the id) AND when the rendered header width (via `lipgloss.Width`) would exceed `paneWidthComments` — at narrow columns the id is reference info but `[pending]`/`[outdated]` is critical state, so the id yields. Lets reviewers copy the literal id for API / link references without leaving the TUI; sits between the SHA and any trailing tag so resolved + outdated stay flanking.
    - `[resolved]` (green, `theme.CommentResolved`) sits at the line head (immediately after cursor / depth indent, before author) so resolved threads can be skimmed at a glance. Driven by `ReviewComment.Resolved` (mirrors GraphQL `PullRequestReviewThread.isResolved`; propagated onto every comment in the thread by `convertGQLComment`).
    - `[pending]` (yellow) / `[outdated]` (red) mutually exclusive at the trailing slot; pending wins. `[resolved]` can co-exist with `[outdated]` (resolved-but-stale); `[resolved]` + `[pending]` is unreachable in practice (drafts have no thread to resolve yet).
    - Body indent: `2 + 2*(depth+1)`.
    - Body line-break mirrors GitHub web: every `\n` → row break; 2+ consecutive `\n`s → one extra blank row.
    - Per-source-line wrap: `paneWidthComments − bodyLeader` via `wrapText`.
 23c. Word-boundary rule: `wrapText` → `splitWrapWords` (`styles.go`) splits on whitespace ONLY when both adjacent runes are ASCII word runes. CJK / emoji on either side keeps whitespace inside the running word; `hardBreak` then splits mid-CJK.
-24. Cursor movement (`j/k`) auto-scrolls Diff to the cursored comment via `syncDiffToCursorComment`. `h/l` and `backspace` are unbound.
+24. Cursor movement (`j/k`) auto-scrolls Diff to the cursored comment via `syncDiffToCursorComment`. `h/l` and `backspace` are unbound. `j/k/G/gg` ALSO clamp `AppState.CommentsTop` via `scrollCommentsIntoView` so the cursored header stays inside the pane's viewport — without this, long threads (many replies or wrapped bodies) overflow the box and renderPaneBox silently clips the bottom rows; `j` past the visible edge would advance the logical cursor while the rendered window stayed frozen. The viewport window is anchored on the header row, not the body — a comment taller than the pane still surfaces "where the cursor is" and the body clips below (mirrors how Diff handles a wrapped line taller than its window). `CommentsTop` resets to 0 alongside every `CommentsCursor = 0` site (Diff Enter handoff `focusCommentsAtCursor`, file selection `selectFile` / `selectAllFiles`, commit selection `autoSelectCommit`, Files-modal-Enter, Commits-modal-Enter, Comments `gg`). Mouse wheel and click in Comments call `scrollCommentsIntoView` after mutating the cursor; `commentIndexAtDisplayRow` adds `CommentsTop` to the pane-relative row before walking the layout so clicks on a scrolled-down column resolve to the correct comment. Shared layout helper: `commentsLayout()` returns `(rows, headerAt)` and is consumed by `commentsView` (slice from `CommentsTop`), `scrollCommentsIntoView` (clamp around `headerAt[CommentsCursor]`), and indirectly by the hit-test walker; keeping a single source of truth prevents the scroll math and the render from drifting. Viewport height fallback ladder mirrors `diffViewportHeight()`: `paneHeightComments → height-16 → 5`.
 24b. Comments Enter / `r` split:
     - Enter → `startComposeEdit` opens an in-place body edit on the cursor comment when `User == AppState.ViewerLogin`. Body preloaded; saved body POSTs via `updatePullRequestReviewComment`. Foreign user → `state.Notice = "cannot edit comments by other users (press r to reply)"`.
     - `r` → `startComposeReply` replies to the thread under the cursor via `addPullRequestReviewThreadReply`. No-op when cursor is not on a `◆` row.
@@ -252,7 +256,7 @@ Load-bearing — breaking any of them breaks at least one e2e test. Keep numberi
     - Files: path (or paths joined by `\n` for visual range)
     - Commits: `<short_sha> <subject>`
     - Comments: `<user> @ <date>\n<body>`
-    - Diff: line content (visual range = lines joined by `\n`)
+    - Diff: line content with the leading column (`+`/`-`/` `) stripped on add/del/context rows so a mixed-range paste keeps consistent indentation; headers (`---`/`+++`) and hunks (`@@`) verbatim; synthetic `···` rows skipped. Visual range = rows joined by `\n`. Helper: `internal/tui/visual.go::stripDiffPrefix`.
 
 ### Compose (pending PR comment input)
 The compose flow POSTs into the user's pending (draft) review. Submission to public is intentionally NOT exposed; users finalize via web UI or `gh api graphql`.
@@ -317,7 +321,7 @@ The compose flow POSTs into the user's pending (draft) review. Submission to pub
     While `state.Compose != nil`, `handleKey` absorbs every keystroke.
 30. Shift+J / Shift+K advance to next/prev file from any pane via `advanceFile(forward bool)`. Focus preserved.
 30b. `gg` / `G` work in every pane (#14b). `/` opens search scoped to the focused pane (#27k–n). `n` / `N` cycle while Search is Active.
-30c. `Ctrl+E` toggles `AppState.CommentsHidden`. Hidden: right column width 0, saved width added to Diff via `splitColumnWidths(total, hidden)`. Stacked-fallback (`m.width<=0` or `bodyHeight<8`) drops Comments from the join. Hide while `FocusedPane == PaneComments` → focus → Diff. Tab / Shift+Tab skip Comments while hidden. `focusCommentsAtCursor` (Diff Enter handoff #14) auto-reveals first.
+30c. `Ctrl+E` toggles `AppState.CommentsHidden`. Hidden: right column width 0, saved width added to Diff via `splitColumnWidths(total, hidden, commentsPct)`. Stacked-fallback (`m.width<=0` or `bodyHeight<8`) drops Comments from the join. Hide while `FocusedPane == PaneComments` → focus → Diff. Tab / Shift+Tab skip Comments while hidden. `focusCommentsAtCursor` (Diff Enter handoff #14) auto-reveals first.
 
 ### Mouse
 30d. Mouse capture: `tea.WithMouseCellMotion()` in `cmd/root.go`. Cell motion sufficient (no in-app drag selection). Standard terminals honor `Shift`-held drag as terminal-side text selection while tracking is active → copy/paste works without `--no-mouse`. `Update` routes `tea.MouseMsg` through `(Model).handleMouse`; only `MouseActionPress` dispatches.

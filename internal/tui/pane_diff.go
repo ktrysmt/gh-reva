@@ -176,6 +176,7 @@ func (m *Model) focusCommentsAtCursor() {
 	m.state.CommentsHidden = false
 	m.state.FocusedPane = model.PaneComments
 	m.state.CommentsCursor = 0
+	m.state.CommentsTop = 0
 }
 
 func (m Model) diffView() string {

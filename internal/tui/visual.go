@@ -156,7 +156,11 @@ func (m Model) yankString() string {
 		// yank via linewiseSelectionRange — same behaviour the manual
 		// strings.Split path produced. Synthetic `···` sentinel rows are
 		// excluded so yanking a range that straddles a synthetic doesn't
-		// leak the raw sentinel byte into the clipboard.
+		// leak the raw sentinel byte into the clipboard. The leading
+		// diff column ('+'/'-'/' ') is dropped on add/del/context rows
+		// so a mixed-range paste keeps consistent indentation; headers
+		// (`---`/`+++`) and hunks (`@@`) are metadata, not source, and
+		// stay verbatim.
 		lines := m.patchLines()
 		lo, hi := m.linewiseSelectionRange(model.PaneDiff, m.state.DiffCursor.Line, len(lines))
 		var rows []string
@@ -164,11 +168,29 @@ func (m Model) yankString() string {
 			if lines[i] == diff.SyntheticLine {
 				continue
 			}
-			rows = append(rows, lines[i])
+			rows = append(rows, stripDiffPrefix(lines[i]))
 		}
 		return strings.Join(rows, "\n")
 	}
 	return ""
+}
+
+// stripDiffPrefix drops the single leading column from add / del / context
+// rows so a mixed-range yank pastes with consistent indentation. Header
+// (`---`/`+++`) and hunk (`@@`) rows are returned verbatim — they are diff
+// metadata, not source code, and dropping `@` would corrupt the hunk
+// header users may legitimately want to copy. diffLineKind handles the
+// ordering invariant (synthetic / headers / hunk before `+`/`-`).
+func stripDiffPrefix(line string) string {
+	if len(line) == 0 {
+		return line
+	}
+	switch diffLineKind(line) {
+	case '+', '-', ' ':
+		return line[1:]
+	default:
+		return line
+	}
 }
 
 // linewiseSelectionRange returns the inclusive [lo, hi] line range that should

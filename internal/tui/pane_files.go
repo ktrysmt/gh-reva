@@ -135,6 +135,7 @@ func (m *Model) selectFile(path string) {
 		m.state.DiffViewport.Top = 0
 		m.state.CommitsCursor = 0
 		m.state.CommentsCursor = 0
+		m.state.CommentsTop = 0
 	}
 }
 
@@ -151,6 +152,7 @@ func (m *Model) selectAllFiles() {
 		m.state.DiffViewport.Top = 0
 		m.state.CommitsCursor = 0
 		m.state.CommentsCursor = 0
+		m.state.CommentsTop = 0
 	}
 }
 
