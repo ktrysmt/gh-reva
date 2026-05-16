@@ -309,14 +309,17 @@ func TestFiles_EnterTreeDirStillFolds(t *testing.T) {
 }
 
 // TestComments_SpaceNoopWhenNoThread pins that pressing <space> in the
-// Comments pane is a no-op when the Diff cursor is not on a ◆ row
-// (placeholder "(no comment at cursor)"). Opening a zoom modal that
-// just wraps the same placeholder text is noise; reserve the gesture
-// for when there's actual content to zoom.
+// Comments pane is a no-op when the Diff cursor sits on a body row with
+// no anchored thread (placeholder "(no comment at cursor)"). Opening a
+// zoom modal that just wraps the same placeholder text is noise;
+// reserve the gesture for when there's actual content to zoom.
+// Meta rows (`---` / `+++` / `@@`) are explicitly excluded from this
+// case because they trigger the file-overview short-circuit and DO
+// have content to show.
 func TestComments_SpaceNoopWhenNoThread(t *testing.T) {
 	m := commentsModelFixture(t)
 	m.state.FocusedPane = model.PaneComments
-	m.state.DiffCursor.Line = 0 // header row → no thread anchored
+	m.state.DiffCursor.Line = 1 // context body row, no thread anchored
 
 	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	m = res.(Model)

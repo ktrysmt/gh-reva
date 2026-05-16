@@ -220,12 +220,13 @@ func TestCommentLineMarkersIncludesLeftAndRightAnchors(t *testing.T) {
 	}
 }
 
-// TestCommentsViewEmptyWhenCursorNotOnAnchor pins the new contract: if the
-// Diff cursor row is NOT a ◆ row, the Comments column shows a placeholder
-// instead of the previous "all anchored threads" listing.
+// TestCommentsViewEmptyWhenCursorNotOnAnchor pins the contract that an
+// off-anchor row inside the file body (context / + / -) shows the
+// placeholder instead of the previous "all anchored threads" listing.
+// Buffer idx 1 is ` line1` (context row, no thread anchored).
 func TestCommentsViewEmptyWhenCursorNotOnAnchor(t *testing.T) {
 	m := commentsModelFixture(t)
-	m.state.DiffCursor.Line = 0 // header row, no anchor
+	m.state.DiffCursor.Line = 1 // context row inside body, no anchor
 
 	got := m.commentsView()
 	if !strings.Contains(got, "(no comment at cursor)") {
@@ -233,6 +234,80 @@ func TestCommentsViewEmptyWhenCursorNotOnAnchor(t *testing.T) {
 	}
 	if strings.Contains(got, "carol") || strings.Contains(got, "dave") {
 		t.Errorf("comments must not leak when cursor is off-anchor:\n%s", got)
+	}
+}
+
+// TestCommentsView_MetaRow_ShowsAllFileThreads pins the file-overview
+// exception: a Diff cursor parked on a metadata row (`---`, `+++`, `@@`)
+// has no real line number, so the per-cursor + per-Side filter is
+// bypassed and the Comments column lists every thread for the file.
+// commentsModelFixture has its `@@` hunk header at buffer idx 0 with
+// two threads (carol+alice on RIGHT, dave on RIGHT). Both must surface
+// regardless of cursor.Side.
+func TestCommentsView_MetaRow_ShowsAllFileThreads(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 0 // `@@ -1,3 +1,5 @@` hunk header
+
+	for _, side := range []model.DiffSide{model.DiffSideRight, model.DiffSideLeft} {
+		m.state.DiffCursor.Side = side
+		got := m.commentsView()
+		if !strings.Contains(got, "carol") {
+			t.Errorf("Side=%s: carol thread must appear on hunk-header overview:\n%s", side, got)
+		}
+		if !strings.Contains(got, "dave") {
+			t.Errorf("Side=%s: dave thread must appear on hunk-header overview:\n%s", side, got)
+		}
+	}
+}
+
+// TestCommentsView_MetaRow_BothSidesInOverview pins that the meta-row
+// overview ignores the per-Side filter — LEFT-side and RIGHT-side
+// threads both appear when the cursor sits on a header/hunk row.
+func TestCommentsView_MetaRow_BothSidesInOverview(t *testing.T) {
+	m := commentsLeftSideFixture(t)
+	m.state.DiffCursor.Line = 0 // `@@ -1,3 +1,3 @@` hunk header
+	m.state.DiffCursor.Side = model.DiffSideRight
+	m.paneWidthComments = 50
+
+	got := m.commentsView()
+	if !strings.Contains(got, "carol") {
+		t.Errorf("LEFT-side thread (carol) must appear on the hunk-header overview:\n%s", got)
+	}
+	if !strings.Contains(got, "dave") {
+		t.Errorf("RIGHT-side thread (dave) must appear on the hunk-header overview:\n%s", got)
+	}
+}
+
+// TestThreadsForCursor_FileHeaderRow_ReturnsAll pins that the same
+// short-circuit applies to `---` / `+++` file-header rows, not just
+// `@@` hunks.
+func TestThreadsForCursor_FileHeaderRow_ReturnsAll(t *testing.T) {
+	m := commentsModelFixture(t)
+	// Replace the fixture patch with one that opens with `---` / `+++`
+	// so idx 0 / 1 are file headers (kind 'h') and idx 2 is the `@@`.
+	m.state.DiffCache[diffKey("", "src/foo.go")] = strings.Join([]string{
+		"--- a/src/foo.go",
+		"+++ b/src/foo.go",
+		"@@ -1,3 +1,5 @@",
+		" line1",
+		"+addedLine2",
+		"+addedLine3",
+		" line4",
+		" line5",
+	}, "\n")
+	// Comments' Line=2/4 still point at NEW lines 2/4; that's buffer
+	// idx 4 / 6 in this patch, but threadsForView (not cursor-bound)
+	// returns them regardless. The buffer line numbers below only
+	// matter for the meta-row short-circuit assertion.
+	m.invalidatePatchInfoCache(model.ExpandKey{Path: "src/foo.go", RangeKind: model.RangeWholePR})
+	m.threadsCache = &threadsViewCache{}
+
+	for _, idx := range []int{0, 1, 2} { // ---, +++, @@
+		m.state.DiffCursor.Line = idx
+		threads := m.threadsForCursor()
+		if len(threads) == 0 {
+			t.Errorf("cursor at meta-row idx %d must return all file threads, got 0", idx)
+		}
 	}
 }
 

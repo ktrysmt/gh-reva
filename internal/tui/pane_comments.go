@@ -448,7 +448,16 @@ func renderCommentBody(body, bodyLeader string, bodyWidth int) []string {
 // anchors at the cursor's buffer index on the current Side. Ordering
 // matches threadsForView (chronological by root time).
 //
-// Side-aware in two senses:
+// File-overview exception: when the cursor sits on a file-metadata row
+// (`---` / `+++` file header or `@@` hunk header) the per-cursor + per-
+// Side filter is bypassed and the full `threadsForView()` list is
+// returned. Those rows carry no real file line number, so the "thread
+// at this exact anchor" contract has nothing to filter against; falling
+// back to a file-wide overview lets the user skim every comment from
+// the headers without hunting for an anchored row first. Synthetic
+// `···` rows and body rows (+/-/ context) keep the strict filter.
+//
+// Side-aware in two senses (only when NOT on a meta row):
 //
 //  1. Each thread's anchor buffer index is computed via
 //     commentBufferIndex (LEFT comments → oldLineNumbers; others →
@@ -467,13 +476,16 @@ func (m Model) threadsForCursor() []*commentThread {
 	if len(all) == 0 {
 		return nil
 	}
+	cursor := m.state.DiffCursor.Line
+	if cursor < 0 {
+		return nil
+	}
+	if m.cursorOnFileMetaRow(cursor) {
+		return all
+	}
 	newMap := m.patchNewLineNumbers()
 	oldMap := m.patchOldLineNumbers()
 	if len(newMap) == 0 && len(oldMap) == 0 {
-		return nil
-	}
-	cursor := m.state.DiffCursor.Line
-	if cursor < 0 {
 		return nil
 	}
 	side := m.state.DiffCursor.Side
@@ -490,6 +502,22 @@ func (m Model) threadsForCursor() []*commentThread {
 		}
 	}
 	return out
+}
+
+// cursorOnFileMetaRow reports whether the buffer row at idx is a file-
+// metadata row (kind 'h' for `---` / `+++`, kind '@' for `@@`). These
+// rows have no underlying file line, so threadsForCursor uses them as
+// the trigger for the file-overview short-circuit. Synthetic rows
+// (kind 's') are intentionally excluded — Enter on them expands the
+// gap, and showing every thread there would conflict with the
+// keystroke's primary purpose.
+func (m Model) cursorOnFileMetaRow(idx int) bool {
+	lines := m.patchLines()
+	if idx < 0 || idx >= len(lines) {
+		return false
+	}
+	kind := diffLineKind(lines[idx])
+	return kind == 'h' || kind == '@'
 }
 
 // threadOnSide reports whether a thread belongs to the given column.

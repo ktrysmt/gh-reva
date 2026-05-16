@@ -146,10 +146,17 @@ test('F-modal-5b: Space in Comments is a no-op when the cursor row has no thread
   // modal that just wraps the placeholder text is noise. Verified
   // directly by the unit test TestComments_SpaceNoopWhenNoThread; this
   // e2e covers the user-facing screen so the contract is observable.
+  // Selects src/main.go (a file with zero comments in sample-pr.json)
+  // so the placeholder shows regardless of which Diff row the cursor
+  // lands on — the file-overview short-circuit on meta rows returns
+  // an empty thread list when the file has no comments.
   const s = await launchReva()
   await waitReady(s)
-  await s.press('tab'); await s.press('tab') // → Diff (cursor on header row)
-  await s.press('tab')                       // → Comments
+  // Files focus, cursor drilled to greeting.go (idx 1). j j → main.go
+  // (idx 3); enter → commit selection + focus Diff. tab → Comments.
+  await s.press('j'); await s.press('j')
+  await s.press('enter')
+  await s.press('tab')
   let screen = await s.text()
   assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')
   assert.ok(/\(no comment at cursor\)/.test(screen),

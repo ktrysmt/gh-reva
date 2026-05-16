@@ -79,9 +79,16 @@ describe('G1+G2+G3+G4: Comments pane renders the cursor-anchor thread', () => {
 })
 
 test('G0: with the Diff cursor off any ◆ row, Comments shows the placeholder', async () => {
+  // Select src/main.go (zero comments in sample-pr.json) so the Comments
+  // pane shows the placeholder regardless of which Diff row the cursor
+  // lands on. The meta-row file-overview short-circuit (#23) returns an
+  // empty list when the file has no comments → "(no comment at cursor)".
   const s = await launchReva()
   await waitReady(s)
-  // Initial Diff cursor is at buffer line 0 (file header), which has no anchor.
+  // Files focus, cursor on greeting.go (waitReady drilled). j j → main.go;
+  // enter → commit + focus Diff.
+  await s.press('j'); await s.press('j')
+  await s.press('enter')
   const cms = paneText(await s.text(), 'Comments')
   assert.ok(cms.includes('(no comment at cursor)'), `placeholder expected; got:\n${cms}`)
   assert.ok(!cms.includes('carol:'), 'no thread should leak when cursor is off-anchor')
@@ -164,12 +171,17 @@ test('G9: r on Comments opens the reply compose modal (after y confirm)', async 
 })
 
 test('G9b: Enter on Comments without a thread is a no-op (no notice either)', async () => {
-  // Buffer 0 (file header) has no anchored thread → buildComposeEdit
+  // Selecting src/main.go (zero comments) puts Comments in the empty
+  // placeholder state regardless of cursor row. buildComposeEdit
   // refuses without setting Notice (the foreign-author message would
   // mislead when the cursor is off-thread entirely).
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
-  await s.press('tab'); await s.press('tab'); await s.press('tab')    // focus Comments
+  // Files focus, cursor drilled to greeting.go (idx 1). j j → main.go
+  // (idx 3); enter → commit + focus Diff. tab → Comments.
+  await s.press('j'); await s.press('j')
+  await s.press('enter')
+  await s.press('tab')
   await s.press('enter')
   const after = await s.text()
   assert.ok(!/New comment|Reply|Edit comment/.test(after),

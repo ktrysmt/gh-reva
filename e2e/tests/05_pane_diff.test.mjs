@@ -229,18 +229,39 @@ test('F7: Enter on a commented diff line shifts focus to the Comments pane', asy
   await quit(s)
 })
 
-test('F8: Enter on a header / hunk row is still a no-op', async () => {
-  // Buffer 0 is `--- a/src/greeting.go` (file header). buildComposeInline
-  // rejects header / hunk rows, so Enter cannot open compose there.
+test('F8: Enter on a header / hunk row is a no-op when the file has no comments', async () => {
+  // Buffer 0 of src/main.go is `--- a/src/main.go` (file header).
+  // buildComposeInline rejects header / hunk rows, and the file has
+  // zero comments so the meta-row file-overview short-circuit (#23) has
+  // nothing to surface either → Diff Enter is a true no-op.
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
-  await s.press('tab'); await s.press('tab')
+  // Files focus, cursor on greeting.go (drilled). j j → main.go (no comments);
+  // enter → commit + focus Diff. Now buffer 0 is main.go's `--- a/...` header.
+  await s.press('j'); await s.press('j')
+  await s.press('enter')
   const before = await s.text()
   await s.press('enter')
   const after = await s.text()
-  assert.equal(before, after, 'Enter on a header line must be a no-op')
-  // Modal must NOT have appeared.
+  assert.equal(before, after, 'Enter on a header line of a comment-free file must be a no-op')
   assert.ok(!/New comment/.test(after), 'header row Enter must not open compose')
+  await quit(s)
+})
+
+test('F8b: Enter on a header / hunk row of a file WITH comments focuses Comments', async () => {
+  // File-overview short-circuit (#23): on a meta row (`---`/`+++`/`@@`)
+  // threadsForCursor returns every thread for the file, so Diff Enter
+  // routes through the focus-handoff branch and shifts focus to
+  // Comments — letting users skim every comment without first finding
+  // a ◆ row. Initial cursor lands on `---` of src/greeting.go after
+  // waitReady drills.
+  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
+  await waitReady(s)
+  await s.press('tab'); await s.press('tab') // → Diff (cursor on idx 0, file header)
+  await s.press('enter')
+  const after = await s.text()
+  assert.match(after, /▶ Comments/, 'meta-row Enter must shift focus to Comments')
+  assert.ok(/carol:/.test(after), 'Comments overview must list the greeting.go threads')
   await quit(s)
 })
 
