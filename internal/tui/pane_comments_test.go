@@ -742,6 +742,78 @@ func TestCommentsBodyKeepsParagraphBreak(t *testing.T) {
 	}
 }
 
+// Range tag (`R<start>-<end>` for same-side, `L<start>-R<end>` for
+// mixed) sits in the Comments column header between the commit hash
+// and the trailing `#<id>` / `[pending]` / `[outdated]` slots. Multi-
+// line range comments used to be conveyed by ┌ / │ glyphs running down
+// the diff gutter; those collided with neighbouring ◆ anchors and the
+// markerRank precedence forced the diamond to win the slot, hiding the
+// range shape. The text tag carries the same information without
+// fighting for gutter columns.
+func TestCommentsHeaderShowsSameSideRange(t *testing.T) {
+	m := commentsModelFixture(t)
+	// Promote dave (T2, single-line at newLine 4) into a same-side range
+	// RIGHT 2 → 4. Cursor on the end-anchor buffer index (4).
+	root := m.state.PR.Comments[2]
+	root.Side = "RIGHT"
+	root.StartLine = 2
+	root.StartSide = "RIGHT"
+	m.state.DiffCursor.Line = 4
+	m.state.DiffCursor.Side = model.DiffSideRight
+
+	got := m.commentsView()
+	if !strings.Contains(got, "R2-R4") {
+		t.Errorf("expected header to carry range tag R2-R4; got:\n%s", got)
+	}
+}
+
+func TestCommentsHeaderShowsMixedSideRange(t *testing.T) {
+	m := commentsLeftSideFixture(t)
+	// Promote the RIGHT comment (id=11) into a mixed-side range:
+	// LEFT oldLine 2 → RIGHT newLine 2. End is RIGHT → anchor lives on
+	// buffer 3 (the `+added_line2` row).
+	rc := m.state.PR.Comments[1]
+	rc.StartLine = 2
+	rc.StartSide = "LEFT"
+	m.state.DiffCursor.Line = 3
+	m.state.DiffCursor.Side = model.DiffSideRight
+
+	got := m.commentsView()
+	if !strings.Contains(got, "L2-R2") {
+		t.Errorf("expected mixed-side range tag L2-R2; got:\n%s", got)
+	}
+}
+
+func TestCommentsHeaderOmitsRangeForSingleLine(t *testing.T) {
+	m := commentsModelFixture(t)
+	m.state.DiffCursor.Line = 4 // dave (T2) is single-line — no StartLine
+	m.state.DiffCursor.Side = model.DiffSideRight
+
+	got := m.commentsView()
+	if strings.Contains(got, "R4-") || strings.Contains(got, "-R4") {
+		t.Errorf("single-line comment must NOT carry a range tag; got:\n%s", got)
+	}
+}
+
+func TestCommentsHeaderUsesOriginalStartLineFallback(t *testing.T) {
+	m := commentsModelFixture(t)
+	root := m.state.PR.Comments[2]
+	root.Side = "RIGHT"
+	// Outdated comment shape: live StartLine zeroed, historical start
+	// preserved in OriginalStartLine — the renderer should fall back to
+	// the original the same way `Line` falls back to `OriginalLine`.
+	root.StartLine = 0
+	root.OriginalStartLine = 2
+	root.StartSide = "RIGHT"
+	m.state.DiffCursor.Line = 4
+	m.state.DiffCursor.Side = model.DiffSideRight
+
+	got := m.commentsView()
+	if !strings.Contains(got, "R2-R4") {
+		t.Errorf("range tag must fall back to OriginalStartLine; got:\n%s", got)
+	}
+}
+
 // TestCommentsReplyDeeperIndent pins that the reply header is indented
 // further than the root header, matching the user's format example.
 func TestCommentsReplyDeeperIndent(t *testing.T) {

@@ -881,7 +881,7 @@ func (c *diffRowCache) reset(patchKey string, width, halfW int) {
 
 // rowCacheKey composes the cache key for a Diff buffer line. The key
 // only carries the bits the renderer actually branches on — line index,
-// gutter glyph (markerAnchor / markerStart / markerMiddle / 0), plus a
+// gutter glyph (markerAnchor / markerResolved / 0), plus a
 // mode tag (`s` split, `u` unified). The width dimensions are validated
 // by the cache itself in invalidateRowCacheIfStale.
 func (m Model) rowCacheKey(mode string, idx, halfW int, marker rune) string {

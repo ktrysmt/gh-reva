@@ -85,6 +85,47 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// formatRangeTag returns the Comments-header range label for a
+// multi-line range comment, or "" for single-line comments and
+// replies. Both endpoints carry their Side prefix so the reader can
+// tell same-side (`R2-R4`) and mixed-side (`L5-R10`) ranges apart at
+// a glance without consulting the underlying comment. Falls back from
+// StartLine to OriginalStartLine and from Line to OriginalLine the
+// same way the gutter-anchor lookup does, so outdated range comments
+// still surface their historical span.
+func formatRangeTag(c *model.ReviewComment) string {
+	start := c.StartLine
+	if start <= 0 {
+		start = c.OriginalStartLine
+	}
+	if start <= 0 {
+		return ""
+	}
+	end := c.Line
+	if end <= 0 {
+		end = c.OriginalLine
+	}
+	if end <= 0 {
+		return ""
+	}
+	side := c.Side
+	if side == "" {
+		side = "RIGHT"
+	}
+	startSide := c.StartSide
+	if startSide == "" {
+		startSide = side
+	}
+	return fmt.Sprintf("%s%d-%s%d", sideAbbrev(startSide), start, sideAbbrev(side), end)
+}
+
+func sideAbbrev(side string) string {
+	if side == "LEFT" {
+		return "L"
+	}
+	return "R"
+}
+
 // commentAtCursor returns the flat-list entry at idx, or nil when the
 // index is out of range. Helper for handleKeyComments' notice gate so
 // the bounds check stays out of the dispatch switch.
@@ -267,10 +308,18 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if sha == "" {
 		sha = shortSHA(c.OriginalCommitID)
 	}
-	// Per-comment numeric ID rendered as ` #<id>` between the SHA and
-	// any trailing tag — lets reviewers copy the literal id for API /
-	// link references without leaving the TUI. Skipped when id == 0
-	// (pre-POST drafts could surface here before convertGQLComment
+	// Multi-line range tag rendered as ` <range>` between the SHA and
+	// `#<id>`. Replaces the previous in-gutter ┌/│ visual: ranges still
+	// surface their upper edge here, without colliding with neighbouring
+	// ◆ anchors. Empty string for single-line comments and replies.
+	var rangeTag string
+	if r := formatRangeTag(c); r != "" {
+		rangeTag = " " + fg(r, m.theme.DiffLineNumber)
+	}
+	// Per-comment numeric ID rendered as ` #<id>` between the range tag
+	// and any trailing state tag — lets reviewers copy the literal id
+	// for API / link references without leaving the TUI. Skipped when
+	// id == 0 (pre-POST drafts could surface here before convertGQLComment
 	// stamps the databaseId).
 	var idTag string
 	if c.ID != 0 {
@@ -294,11 +343,12 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if c.Resolved {
 		leadingTag = fg("[resolved] ", m.theme.CommentResolved)
 	}
-	header := fmt.Sprintf("%s%s%s%s: %s %s%s%s",
+	header := fmt.Sprintf("%s%s%s%s: %s %s%s%s%s",
 		cursor, headIndent, leadingTag,
 		fg(c.User, m.theme.CommentAuthor),
 		fg(date, m.theme.CommentDate),
 		fg(sha, m.theme.CommitSHA),
+		rangeTag,
 		idTag,
 		fg(trailingTag, trailingColor),
 	)
@@ -307,21 +357,40 @@ func (m Model) renderCommentRow(c *model.ReviewComment, depth, idx int) []string
 	if wrapWidth <= 0 {
 		wrapWidth = m.width
 	}
-	// At narrow Comments widths the `#<id>` slot can push the trailing
-	// `[pending]` / `[outdated]` tag past the right edge of the column
-	// and renderPaneBox::padTrunc silently clips it — clipping the
-	// critical state tag is worse than dropping the reference id. Detect
-	// the overflow and rebuild without `idTag`. lipgloss.Width strips
-	// SGR escapes so the comparison reflects rendered cell count, not
-	// byte length.
-	if idTag != "" && wrapWidth > 0 && lipgloss.Width(header) > wrapWidth {
-		header = fmt.Sprintf("%s%s%s%s: %s %s%s",
+	// At narrow Comments widths the optional `<range>` / `#<id>` slots
+	// push the trailing `[pending]` / `[outdated]` tag past the right
+	// edge of the column and renderPaneBox::padTrunc silently clips it
+	// — clipping the critical state tag is worse than dropping the
+	// reference id or the range tag. Degrade in two steps: drop `#<id>`
+	// first (it's the most easily re-derivable), then drop the range
+	// tag too if the header still overflows. lipgloss.Width strips SGR
+	// escapes so the comparison reflects rendered cell count.
+	rebuild := func(includeRange, includeID bool) string {
+		rt := rangeTag
+		if !includeRange {
+			rt = ""
+		}
+		it := idTag
+		if !includeID {
+			it = ""
+		}
+		return fmt.Sprintf("%s%s%s%s: %s %s%s%s%s",
 			cursor, headIndent, leadingTag,
 			fg(c.User, m.theme.CommentAuthor),
 			fg(date, m.theme.CommentDate),
 			fg(sha, m.theme.CommitSHA),
+			rt,
+			it,
 			fg(trailingTag, trailingColor),
 		)
+	}
+	if wrapWidth > 0 && lipgloss.Width(header) > wrapWidth {
+		if idTag != "" {
+			header = rebuild(true, false)
+		}
+		if rangeTag != "" && lipgloss.Width(header) > wrapWidth {
+			header = rebuild(false, false)
+		}
 	}
 	out := []string{header}
 	if wrapWidth <= 0 {

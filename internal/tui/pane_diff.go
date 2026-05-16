@@ -273,13 +273,10 @@ func (m Model) renderSynthBufferLine(idx, cursorLine int, gap diff.GapInfo) []st
 // where the tail's leading blank aligns past the diff marker (`+`/`-`/space)
 // — so total continuation indent is 5 cols (cursor 2 + marker 2 + 1).
 //
-// `marker` is the gutter glyph for this buffer line (markerAnchor /
-// markerStart / markerMiddle, see commentLineMarkers). Zero value = no
-// glyph (blank gutter). When the buffer line wraps and `marker` is
-// markerStart or markerMiddle, continuation rows redraw `│` in the
-// gutter so the multi-line range visual stays connected on narrow panes.
-// markerAnchor stops at the first row — the diamond doubles as the
-// bottom edge of the range.
+// `marker` is the gutter glyph for this buffer line (markerAnchor or
+// markerResolved, see commentLineMarkers). Zero value = no glyph
+// (blank gutter). The glyph appears on the FIRST display row only;
+// continuation rows always blank the gutter.
 func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker rune, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
@@ -326,11 +323,7 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 			if inVisual {
 				cursorCol = fgBold("> ", m.theme.CursorRow)
 			}
-			gutterCol := "  "
-			if marker == markerStart || marker == markerMiddle {
-				gutterCol = fg(string(markerMiddle)+" ", m.theme.CommentAnchor)
-			}
-			prefix = cursorCol + gutterCol
+			prefix = cursorCol + "  "
 		}
 		row := padTrunc(prefix+colored, m.paneWidthDiff)
 		out = append(out, row)
@@ -356,8 +349,8 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 //
 // `cursorSide` decides which physical column carries the `> ` glyph
 // (Lcursor when LEFT, Rcursor when RIGHT). `leftMarker` / `rightMarker`
-// are the per-side gutter glyphs (markerAnchor / markerStart /
-// markerMiddle); 0 leaves the corresponding gutter blank.
+// are the per-side gutter glyphs (markerAnchor or markerResolved); 0
+// leaves the corresponding gutter blank.
 func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx, cursorLine int, cursorSide model.DiffSide, leftMarker, rightMarker rune, matched bool) []string {
 	isCursor := idx == cursorLine
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
@@ -427,8 +420,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 					rCursor = glyph
 				}
 			}
-			lGutter = continuationGutter(leftMarker, m.markerColor(leftMarker))
-			rGutter = continuationGutter(rightMarker, m.markerColor(rightMarker))
+			lGutter = "  "
+			rGutter = "  "
 			oldLn = "    "
 			newLn = "    "
 		}
@@ -460,17 +453,6 @@ func (m Model) markerColor(marker rune) lipgloss.Color {
 		return m.theme.CommentResolved
 	}
 	return m.theme.CommentAnchor
-}
-
-// continuationGutter mirrors renderGutter for continuation rows: only
-// markerStart / markerMiddle redraw │ (so the multi-row range visual
-// stays connected when wrap splits a buffer line); markerAnchor and 0
-// leave the gutter blank — the diamond doubles as the bottom edge.
-func continuationGutter(marker rune, color lipgloss.Color) string {
-	if marker == markerStart || marker == markerMiddle {
-		return fg(string(markerMiddle)+" ", color)
-	}
-	return "  "
 }
 
 // foldMarker collapses a (Left, Right) marker pair into a single glyph

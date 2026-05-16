@@ -3,9 +3,9 @@
 // A resolved thread (PullRequestReviewThread.isResolved on GitHub) is
 // surfaced in two places:
 //
-//   1. Diff gutter: the anchor glyph swaps from ◆ to ✓. Range markers
-//      (┌ start, │ middle) stay unchanged so the range shape stays
-//      visible; only the end-anchor flips.
+//   1. Diff gutter: the anchor glyph swaps from ◆ to ✓ at the end row.
+//      Multi-line ranges carry no in-gutter shape — the range span is
+//      conveyed by the Comments header's `R<start>-<end>` tag instead.
 //   2. Comments column: the header carries a leading `[resolved]` tag
 //      (line-head position) so the reviewer reads "resolved" before the
 //      author name and can skip stale threads at a glance.

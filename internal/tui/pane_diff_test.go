@@ -10,13 +10,11 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
-// Range gutter rendering must keep the visual line `│` continuous across
-// continuation rows of wrapped buffer lines. Without this, narrow terminals
-// that wrap a `┌` / `│` row visibly drop the gutter line on subsequent
-// display rows — the range looks fragmented.
-//
-// Anchor (`◆`) lines intentionally stop at the first display row: the
-// diamond doubles as the bottom edge of the range (see CLAUDE.md §4 #10).
+// Anchor (`◆`) lines never extend onto continuation rows: the gutter
+// glyph belongs to the first display row of the buffer line only. The
+// previous range-line continuation (┌/│ redrawn as │ on wrapped rows)
+// is gone — multi-line range comments now communicate the upper edge
+// through the Comments column header tag, not through a vertical line.
 
 func newRenderTestModel(t *testing.T, paneWidth int) Model {
 	t.Helper()
@@ -33,42 +31,6 @@ func newRenderTestModel(t *testing.T, paneWidth int) Model {
 // longContextLine is a context line wide enough to wrap at narrow paneWidthDiff.
 const longContextLine = " package src with a very long trailing comment that must wrap on a narrow pane"
 
-func TestRenderUnifiedBufferLine_RangeStartContinuesGutter(t *testing.T) {
-	m := newRenderTestModel(t, 30)
-	m.state.DiffViewMode = model.DiffViewUnified
-
-	rows := m.renderUnifiedBufferLine(longContextLine, 0, -1, markerStart, false)
-	if len(rows) < 2 {
-		t.Fatalf("expected wrap; rows=%d (want >=2)", len(rows))
-	}
-	first := stripSGR(rows[0])
-	cont := stripSGR(rows[1])
-	if !strings.Contains(first, string(markerStart)) {
-		t.Errorf("first row must show ┌ in gutter; got %q", first)
-	}
-	if !strings.Contains(cont, string(markerMiddle)) {
-		t.Errorf("range start: continuation row must extend gutter with │; got %q", cont)
-	}
-}
-
-func TestRenderUnifiedBufferLine_RangeMiddleContinuesGutter(t *testing.T) {
-	m := newRenderTestModel(t, 30)
-	m.state.DiffViewMode = model.DiffViewUnified
-
-	rows := m.renderUnifiedBufferLine(longContextLine, 0, -1, markerMiddle, false)
-	if len(rows) < 2 {
-		t.Fatalf("expected wrap; rows=%d", len(rows))
-	}
-	first := stripSGR(rows[0])
-	cont := stripSGR(rows[1])
-	if !strings.Contains(first, string(markerMiddle)) {
-		t.Errorf("first row must show │; got %q", first)
-	}
-	if !strings.Contains(cont, string(markerMiddle)) {
-		t.Errorf("range middle: continuation row must keep │; got %q", cont)
-	}
-}
-
 func TestRenderUnifiedBufferLine_AnchorDoesNotContinueGutter(t *testing.T) {
 	m := newRenderTestModel(t, 30)
 	m.state.DiffViewMode = model.DiffViewUnified
@@ -82,8 +44,8 @@ func TestRenderUnifiedBufferLine_AnchorDoesNotContinueGutter(t *testing.T) {
 	if !strings.Contains(first, string(markerAnchor)) {
 		t.Errorf("first row must show ◆; got %q", first)
 	}
-	if strings.Contains(cont, string(markerMiddle)) || strings.Contains(cont, string(markerAnchor)) {
-		t.Errorf("anchor: continuation must not draw │ or ◆ (anchor doubles as bottom edge); got %q", cont)
+	if strings.Contains(cont, string(markerAnchor)) {
+		t.Errorf("anchor: continuation must not redraw ◆; got %q", cont)
 	}
 }
 
@@ -96,34 +58,8 @@ func TestRenderUnifiedBufferLine_NoMarkerStaysBlank(t *testing.T) {
 		t.Fatalf("expected wrap; rows=%d", len(rows))
 	}
 	cont := stripSGR(rows[1])
-	if strings.Contains(cont, string(markerMiddle)) {
-		t.Errorf("no marker: continuation must not draw │; got %q", cont)
-	}
-}
-
-func TestRenderSplitBufferLine_RangeStartContinuesGutter(t *testing.T) {
-	m := newRenderTestModel(t, 40)
-	m.state.DiffViewMode = model.DiffViewSplit
-	m.width = 200 // force split via effectiveDiffViewMode
-
-	isSplit, halfW := m.splitLayout()
-	if !isSplit {
-		t.Fatalf("split layout not active; halfW=%d", halfW)
-	}
-	spec := diffLineSpec{Kind: ' ', OldLn: 1, NewLn: 1}
-	rows := m.renderSplitBufferLine(longContextLine, spec, halfW, 0, -1, model.DiffSideRight, markerStart, 0, false)
-	if len(rows) < 2 {
-		t.Fatalf("expected wrap; rows=%d", len(rows))
-	}
-	first := stripSGR(rows[0])
-	cont := stripSGR(rows[1])
-	gutterFirst := gutterRune(first)
-	gutterCont := gutterRune(cont)
-	if gutterFirst != markerStart {
-		t.Errorf("split first row Left gutter must show ┌; got %q (full=%q)", gutterFirst, first)
-	}
-	if gutterCont != markerMiddle {
-		t.Errorf("split range start: Left continuation gutter must show │; got %q (full=%q)", gutterCont, cont)
+	if strings.Contains(cont, string(markerAnchor)) {
+		t.Errorf("no marker: continuation must not draw ◆; got %q", cont)
 	}
 }
 
@@ -143,7 +79,7 @@ func TestRenderSplitBufferLine_AnchorDoesNotContinueGutter(t *testing.T) {
 	}
 	cont := stripSGR(rows[1])
 	gutterCont := gutterRune(cont)
-	if gutterCont == markerMiddle || gutterCont == markerAnchor {
+	if gutterCont == markerAnchor {
 		t.Errorf("split anchor: Left continuation gutter must be blank; got %q (full=%q)", gutterCont, cont)
 	}
 }

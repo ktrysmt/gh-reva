@@ -131,55 +131,42 @@ func TestCommentLineMarkers_BothSidesAtDifferentRows(t *testing.T) {
 	}
 }
 
+// Range comments anchor a single ◆ at the end row; the upper edge of
+// the range is conveyed by the `R<start>-<end>` text in the Comments
+// column header, not by gutter glyphs. ┌/│ used to occupy the middle
+// rows but were dropped — they could not coexist cleanly with anchors
+// from neighbouring threads (markerRank forced ◆ to win the slot,
+// hiding the range shape).
 func TestCommentLineMarkers_SameSideRange(t *testing.T) {
 	m := markersFixture(t)
-	// Range RIGHT 2 → 4 maps to buffer indices 2,3,4.
 	root := rcAt(1, 4, "RIGHT")
 	root.StartLine = 2
 	root.StartSide = "RIGHT"
 	m.state.PR.Comments = []*model.ReviewComment{root}
 
 	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '│', 4: '◆'}
+	want := map[int]rune{4: '◆'}
 	if !equalMarkers(got.Right, want) {
-		t.Fatalf("same-side range Right markers: got %v want %v", got.Right, want)
+		t.Fatalf("same-side range must only mark the end anchor: got %v want %v", got.Right, want)
 	}
 	if len(got.Left) != 0 {
 		t.Fatalf("Left map must stay empty for RIGHT-only range: got %v", got.Left)
 	}
 }
 
-func TestCommentLineMarkers_TwoRowRange(t *testing.T) {
-	m := markersFixture(t)
-	// Range RIGHT 2 → 3 maps to buffer indices 2,3 — no middle row.
-	root := rcAt(1, 3, "RIGHT")
-	root.StartLine = 2
-	root.StartSide = "RIGHT"
-	m.state.PR.Comments = []*model.ReviewComment{root}
-
-	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '◆'}
-	if !equalMarkers(got.Right, want) {
-		t.Fatalf("two-row range Right markers: got %v want %v", got.Right, want)
-	}
-}
-
 func TestCommentLineMarkers_MixedSideRange(t *testing.T) {
 	m := markersMixedSideFixture(t)
-	// Range LEFT(oldLine 2) → RIGHT(newLine 2) — buffer indices 2,3.
-	// The end's Side decides which column carries the visible run; the
-	// start glyph rides the SAME column so the rendered range stays in
-	// one column instead of being split across both. Painting across
-	// both sides would visually conflate two unrelated review lanes.
+	// Range LEFT(oldLine 2) → RIGHT(newLine 2). End is RIGHT → ◆ lives in
+	// the Right map at the `+` buffer row; no start glyph anywhere.
 	root := rcAt(1, 2, "RIGHT")
 	root.StartLine = 2
 	root.StartSide = "LEFT"
 	m.state.PR.Comments = []*model.ReviewComment{root}
 
 	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '◆'}
+	want := map[int]rune{3: '◆'}
 	if !equalMarkers(got.Right, want) {
-		t.Fatalf("mixed-side range follows end Side (RIGHT): got Right=%v want %v", got.Right, want)
+		t.Fatalf("mixed-side range must only mark end anchor on RIGHT: got Right=%v want %v", got.Right, want)
 	}
 	if len(got.Left) != 0 {
 		t.Fatalf("Left map must stay empty when range end is RIGHT: got %v", got.Left)
@@ -193,38 +180,36 @@ func TestCommentLineMarkers_RepliesIgnored(t *testing.T) {
 	root.StartSide = "RIGHT"
 	reply := rcAt(2, 4, "RIGHT")
 	reply.InReplyTo = 1
-	// Reply with bogus StartLine must NOT widen the marker span.
+	// Reply with bogus StartLine must NOT add a stray anchor on a
+	// different buffer index.
 	reply.StartLine = 1
 	reply.StartSide = "RIGHT"
 	m.state.PR.Comments = []*model.ReviewComment{root, reply}
 
 	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '│', 4: '◆'}
+	want := map[int]rune{4: '◆'}
 	if !equalMarkers(got.Right, want) {
-		t.Fatalf("replies should not extend range Right: got %v want %v", got.Right, want)
+		t.Fatalf("replies must not produce extra markers: got %v want %v", got.Right, want)
 	}
 }
 
-func TestCommentLineMarkers_OverlapPrecedence(t *testing.T) {
+// Two ranges whose anchors land on different buffer rows leave both ◆
+// glyphs intact — no inter-thread interference now that range bodies
+// no longer occupy intermediate rows.
+func TestCommentLineMarkers_TwoRangesDifferentAnchors(t *testing.T) {
 	m := markersFixture(t)
-	// Thread A: range 2..4 → ┌ at 2, │ at 3, ◆ at 4.
 	a := rcAt(1, 4, "RIGHT")
 	a.StartLine = 2
 	a.StartSide = "RIGHT"
-	// Thread B: range 4..5 → ┌ at 4, ◆ at 5.
-	// Buffer 4: A says ◆, B says ┌. Expected: ◆ wins.
 	b := rcAt(2, 5, "RIGHT")
-	b.StartLine = 4
+	b.StartLine = 3
 	b.StartSide = "RIGHT"
-	// Thread C: single-line on buffer 3 → ◆.
-	// Buffer 3: A says │, C says ◆. Expected: ◆ wins.
-	c := rcAt(3, 3, "RIGHT")
-	m.state.PR.Comments = []*model.ReviewComment{a, b, c}
+	m.state.PR.Comments = []*model.ReviewComment{a, b}
 
 	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '◆', 4: '◆', 5: '◆'}
+	want := map[int]rune{4: '◆', 5: '◆'}
 	if !equalMarkers(got.Right, want) {
-		t.Fatalf("overlap precedence Right: got %v want %v", got.Right, want)
+		t.Fatalf("two ranges with distinct anchors Right: got %v want %v", got.Right, want)
 	}
 }
 
@@ -243,9 +228,8 @@ func TestCommentLineMarkers_ResolvedSingleLine(t *testing.T) {
 	}
 }
 
-// Resolved multi-line range keeps the range start (┌) and middle (│)
-// glyphs intact; only the end-anchor swaps from ◆ to ✓ so the range
-// shape stays visible alongside the resolved signal.
+// Resolved multi-line range marks only the end-anchor with ✓; the
+// upper edge of the range is conveyed via the Comments header tag.
 func TestCommentLineMarkers_ResolvedRange(t *testing.T) {
 	m := markersFixture(t)
 	root := rcAt(1, 4, "RIGHT")
@@ -255,7 +239,7 @@ func TestCommentLineMarkers_ResolvedRange(t *testing.T) {
 	m.state.PR.Comments = []*model.ReviewComment{root}
 
 	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '│', 4: '✓'}
+	want := map[int]rune{4: '✓'}
 	if !equalMarkers(got.Right, want) {
 		t.Fatalf("resolved range Right markers: got %v want %v", got.Right, want)
 	}
@@ -273,27 +257,6 @@ func TestCommentLineMarkers_UnresolvedBeatsResolved(t *testing.T) {
 	got := m.commentLineMarkers()
 	if !equalMarkers(got.Right, map[int]rune{3: '◆'}) {
 		t.Fatalf("overlap (unresolved + resolved): unresolved ◆ must win; got %v", got.Right)
-	}
-}
-
-func TestCommentLineMarkers_RangeStartCollidesWithMiddle(t *testing.T) {
-	m := markersFixture(t)
-	// Thread A: range 2..4 (┌2 │3 ◆4)
-	// Thread B: range 3..5 (┌3 │4 ◆5)
-	// Buffer 3: A=│ vs B=┌ → ┌ wins (border > middle).
-	// Buffer 4: A=◆ vs B=│ → ◆ wins.
-	a := rcAt(1, 4, "RIGHT")
-	a.StartLine = 2
-	a.StartSide = "RIGHT"
-	b := rcAt(2, 5, "RIGHT")
-	b.StartLine = 3
-	b.StartSide = "RIGHT"
-	m.state.PR.Comments = []*model.ReviewComment{a, b}
-
-	got := m.commentLineMarkers()
-	want := map[int]rune{2: '┌', 3: '┌', 4: '◆', 5: '◆'}
-	if !equalMarkers(got.Right, want) {
-		t.Fatalf("border-vs-middle precedence Right: got %v want %v", got.Right, want)
 	}
 }
 

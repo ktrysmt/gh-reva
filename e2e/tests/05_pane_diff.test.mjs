@@ -403,7 +403,13 @@ test('F17: unified mode wraps long lines and indents continuation by 5 cols', as
   await quit(s)
 })
 
-test('F18: multi-line range comment renders ┌/│/◆ gutter on greeting_test.go', async () => {
+test('F18: multi-line range comment surfaces ◆ only at end anchor + R5-R10 in Comments header', async () => {
+  // Range comment 1005 on greeting_test.go is RIGHT start_line=5 → line=10.
+  // Under the gutter-less range visual, lines 5..9 carry no glyph and the
+  // end-anchor at file line 10 (the closing `+\t}`) is the lone ◆. The
+  // span is conveyed by the `R5-R10` tag in the Comments header — the
+  // previous ┌/│ run that ran down the diff gutter is gone (it collided
+  // with neighbouring ◆ anchors and was hard to read under overlap).
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
@@ -411,69 +417,44 @@ test('F18: multi-line range comment renders ┌/│/◆ gutter on greeting_test.
   await s.press('space')                       // unified mode for tight gutter
   const diff = paneText(await s.text(), 'Diff')
   const lines = diff.split('\n')
-  // Range comment 1005 (start_line=5, line=10, RIGHT) on greeting_test.go.
-  // file lines 5..10 inside the diff buffer:
-  //   5: +func TestHello(t *testing.T) {  ← ┌
-  //   6: +\tgot := Hello("world")          ← │
-  //   7: +\twant := "Hello, world"         ← │
-  //   8: +\tif got != want {               ← │
-  //   9: +\t\tt.Errorf(...)                ← │
-  //  10: +\t}                              ← ◆
-  // Single-line comment 1004 still anchors at file line 11 (closing `}`).
-  const rowFunc   = lines.find(l => l.includes('func TestHello'))
-  const rowGot    = lines.find(l => l.includes('got := Hello'))
-  const rowWant   = lines.find(l => l.includes('want := '))
-  const rowIf     = lines.find(l => l.includes('if got != want'))
-  const rowErrorf = lines.find(l => l.includes('t.Errorf'))
-  assert.ok(rowFunc,   `expected diff row containing "func TestHello"; Diff:\n${diff}`)
-  assert.ok(rowGot,    `expected diff row containing "got := Hello"`)
-  assert.ok(rowWant,   `expected diff row containing "want :="`)
-  assert.ok(rowIf,     `expected diff row containing "if got != want"`)
-  assert.ok(rowErrorf, `expected diff row containing "t.Errorf"`)
-  assert.ok(rowFunc.includes('┌'),  `range start row must show ┌; got "${rowFunc}"`)
-  assert.ok(rowGot.includes('│'),    `range middle row must show │; got "${rowGot}"`)
-  assert.ok(rowWant.includes('│'),   `range middle row must show │; got "${rowWant}"`)
-  assert.ok(rowIf.includes('│'),     `range middle row must show │; got "${rowIf}"`)
-  assert.ok(rowErrorf.includes('│'), `range middle row must show │; got "${rowErrorf}"`)
-  // Range end (file line 10, "+\t}") collides with single-line cmt 1004 (line 11).
-  // We assert that the closer of the two `}` lines (file line 10) carries ◆.
-  // Both `+}` style rows exist (10 and 11); the count of ◆ rows must be ≥ 2.
+
+  // No ┌ anywhere — the range start glyph was retired.
+  assert.ok(!diff.includes('┌'), `diff must not carry ┌; range tag now lives in Comments header. Diff:\n${diff}`)
+
+  // Range-internal rows (lines 6..9) must NOT carry │ or ◆.
+  const internal = [
+    ['got',    lines.find(l => l.includes('got := Hello'))],
+    ['want',   lines.find(l => l.includes('want :='))],
+    ['if',     lines.find(l => l.includes('if got != want'))],
+    ['errorf', lines.find(l => l.includes('t.Errorf'))],
+  ]
+  for (const [name, row] of internal) {
+    assert.ok(row, `expected diff row for ${name}; Diff:\n${diff}`)
+    assert.ok(!row.includes('│'), `${name} row must NOT carry range │; got "${row}"`)
+    assert.ok(!row.includes('◆'), `${name} row must NOT carry ◆ (only end anchor at line 10 should); got "${row}"`)
+  }
+
+  // Range-start row (file line 5, `+func TestHello`) must NOT carry ◆ either.
+  const rowFunc = lines.find(l => l.includes('func TestHello'))
+  assert.ok(rowFunc, `expected row for "func TestHello"; Diff:\n${diff}`)
+  assert.ok(!rowFunc.includes('◆'), `range start row must NOT carry ◆; got "${rowFunc}"`)
+
+  // Two ◆ rows expected: range end at file line 10 + single-line cmt 1004 at line 11.
   const diamondRows = lines.filter(l => l.includes('◆'))
   assert.ok(
     diamondRows.length >= 2,
-    `expected at least 2 ◆ rows (range end + single-line); got ${diamondRows.length}; Diff:\n${diff}`,
+    `expected ≥2 ◆ rows (range end at line 10 + single-line at line 11); got ${diamondRows.length}; Diff:\n${diff}`,
   )
-  // No ◆ on the range start row (must be ┌).
-  assert.ok(!rowFunc.includes('◆'), `range start row must NOT carry ◆; got "${rowFunc}"`)
-  await quit(s)
-})
 
-test('F18b: narrow pane keeps │ on continuation rows of wrapped range lines', async () => {
-  // Reproduces the bug where a multi-line range comment's gutter line
-  // visibly broke when a `┌` / `│` buffer line wrapped to multiple
-  // display rows: the wrapped continuation rows had blank gutters,
-  // fragmenting the range visual on narrow terminals.
-  const s = await launchReva({ cols: 80 })   // forces unified (F3) + wraps
-  await waitReady(s)
-  await s.press('tab'); await s.press('tab')   // focus Diff
-  await s.type('J')                            // advance to greeting_test.go
-  const diff = paneText(await s.text(), 'Diff')
-  const lines = diff.split('\n')
-  // Range comment 1005 (start_line=5, line=10, RIGHT). At cols=80 the
-  // unified content area is narrow enough to wrap the `t.Errorf(...)`
-  // row (file line 9, a markerMiddle row) to at least 2 display rows.
-  const errIdx = lines.findIndex(l => l.includes('t.Errorf'))
-  assert.ok(errIdx >= 0, `expected diff row containing "t.Errorf"; Diff:\n${diff}`)
-  assert.ok(lines[errIdx].includes('│'), `range middle row must show │; got "${lines[errIdx]}"`)
-  const cont = lines[errIdx + 1]
-  assert.ok(cont !== undefined, `expected at least one continuation row; Diff:\n${diff}`)
-  // Continuation row of a markerMiddle row must redraw │ in the gutter so
-  // the multi-line range visual stays connected. Without the fix this row
-  // was a 5-space indent — the gutter line broke here.
-  assert.ok(
-    cont.includes('│'),
-    `continuation of wrapped range row must keep │; got "${cont}" (prev="${lines[errIdx]}")`,
-  )
+  // Walk to file line 10's buffer row so the Comments column surfaces
+  // the range comment. The patch starts with three non-content rows
+  // (`--- /dev/null`, `+++ b/<path>`, `@@ -0,0 +1,50 @@`) before file
+  // line 1 lands at buffer 3, so file line 10 sits at buffer 12. j/k
+  // never auto-skip header / hunk rows (see CLAUDE.md §4 #14c).
+  for (let i = 0; i < 12; i++) await s.press('j')
+  const cms = paneText(await s.text(), 'Comments')
+  assert.match(cms, /dave:/, `dave header should appear at range end anchor; Comments:\n${cms}`)
+  assert.match(cms, /R5-R10/, `range tag R5-R10 must appear in dave's header; Comments:\n${cms}`)
   await quit(s)
 })
 

@@ -162,42 +162,18 @@ func commentBufferIndex(c *model.ReviewComment, oldNums, newNums []int) int {
 	return -1
 }
 
-// commentRangeStartBufferIndex returns the patch-buffer index where the
-// upper edge of a multi-line range comment lives. Falls back to
-// OriginalStartLine when StartLine is 0 (mirrors commentNewLine /
-// commentBufferIndex semantics for outdated anchors). Returns -1 when
-// the row has no range or the start anchor cannot be resolved.
-func commentRangeStartBufferIndex(c *model.ReviewComment, oldNums, newNums []int) int {
-	startLine := c.StartLine
-	if startLine <= 0 {
-		startLine = c.OriginalStartLine
-	}
-	if startLine <= 0 {
-		return -1
-	}
-	target := newNums
-	if c.StartSide == "LEFT" {
-		target = oldNums
-	}
-	for i, n := range target {
-		if n == startLine {
-			return i
-		}
-	}
-	return -1
-}
-
-// Marker glyphs drawn in the Diff gutter. Single-line / range-end uses
-// markerAnchor (or markerResolved when the thread is resolved); range
-// start uses markerStart; intermediate buffer rows use markerMiddle.
-// `└` is intentionally absent — the anchor diamond doubles as the
-// bottom edge of the range, and the resolved checkmark mirrors that
-// role.
+// Marker glyphs drawn in the Diff gutter. Single-line and range-end
+// alike use markerAnchor (or markerResolved when the thread is
+// resolved). Multi-line ranges no longer paint intermediate rows in
+// the gutter — the upper edge of a range is conveyed by the
+// `R<start>-<end>` (or `L<start>-R<end>`) tag in the Comments column
+// header instead. Trying to draw the range shape in the 2-col gutter
+// always collapsed under markerRank precedence whenever a neighbouring
+// thread's ◆ landed on a middle row, so the previous ┌/│ glyphs were
+// dropped together with the range-line continuation logic.
 const (
 	markerAnchor   = '◆'
 	markerResolved = '✓'
-	markerStart    = '┌'
-	markerMiddle   = '│'
 )
 
 // markerRank orders the glyphs by visual precedence so that overlapping
@@ -207,18 +183,12 @@ const (
 //
 // Unresolved ◆ outranks resolved ✓: when both an unresolved and a
 // resolved thread share a buffer row, the unresolved one demands more
-// attention so the ◆ stays visible. Range markers (┌, │) rank below
-// either anchor — a single-line anchor on the same row as another
-// thread's range middle should win the gutter slot.
+// attention so the ◆ stays visible.
 func markerRank(r rune) int {
 	switch r {
 	case markerAnchor:
-		return 4
-	case markerResolved:
-		return 3
-	case markerStart:
 		return 2
-	case markerMiddle:
+	case markerResolved:
 		return 1
 	default:
 		return 0
@@ -325,24 +295,18 @@ type sideMarkers struct {
 }
 
 // commentLineMarkers returns the per-column gutter glyphs for the
-// current Diff view. The ◆ / ┌ / │ run for each thread is painted
-// entirely on the column the thread's anchor lives on:
-//
-//   - Single-line root → markerAnchor on the anchor Side at the root's
-//     buffer index.
-//   - Multi-line root → markerStart at the start-edge, markerAnchor at
-//     the end-edge, markerMiddle on every buffer index in between, all
-//     on the END's Side. Mixed-side ranges follow the END's column so
-//     the run stays contiguous in one lane (painting half of a range
-//     in LEFT and half in RIGHT would visually conflate two different
-//     review columns).
+// current Diff view. Every thread paints exactly one glyph — the end
+// anchor (markerAnchor, or markerResolved when the thread is resolved
+// on GitHub) at the root's buffer index on the root's Side. Multi-line
+// ranges no longer paint intermediate rows (see the constants block);
+// the upper edge is conveyed by the Comments header's range tag.
 //
 // Replies are ignored — replies inherit the thread's anchor on GitHub
-// and never widen the visible span.
+// and never produce extra markers.
 //
-// Overlap precedence (markerAnchor > markerStart > markerMiddle, see
-// markerRank) is computed per side, so a LEFT ◆ and a RIGHT ◆ at the
-// same buffer index coexist without colliding.
+// Overlap precedence (markerAnchor > markerResolved, see markerRank) is
+// computed per side, so a LEFT ◆ and a RIGHT ◆ at the same buffer
+// index coexist without colliding.
 func (m Model) commentLineMarkers() sideMarkers {
 	// Force threadsForView to refresh `gen` first, then read the cache
 	// hit on patchInfo. Without the threads call here, the gen counter
@@ -399,23 +363,10 @@ func (m Model) commentLineMarkers() sideMarkers {
 			side = "RIGHT"
 		}
 		// Anchor glyph swaps to the resolved checkmark when the thread
-		// has been marked resolved on GitHub. Start (┌) and middle (│)
-		// glyphs are unchanged — the range shape still reads as a
-		// range; only the bottom edge signals "concern addressed".
+		// has been marked resolved on GitHub.
 		anchor := markerAnchor
 		if root.Resolved {
 			anchor = markerResolved
-		}
-		start := commentRangeStartBufferIndex(root, oldMap, newMap)
-		if start < 0 || start >= end {
-			// Single-line, missing start, or unresolvable / inverted
-			// range — fall back to the legacy single-anchor glyph.
-			put(side, end, anchor)
-			continue
-		}
-		put(side, start, markerStart)
-		for i := start + 1; i < end; i++ {
-			put(side, i, markerMiddle)
 		}
 		put(side, end, anchor)
 	}
