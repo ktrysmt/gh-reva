@@ -347,3 +347,113 @@ func fmtInt(n int) string {
 	}
 	return out
 }
+
+// findSynthIdx returns the first synthetic buffer index in m. Helper for
+// tests that don't care which gap kind they pick.
+func findSynthIdx(t *testing.T, m *Model) int {
+	t.Helper()
+	gaps := m.patchGaps()
+	for idx := range gaps {
+		return idx
+	}
+	t.Fatalf("no synthetic row in expand model")
+	return -1
+}
+
+// Synthetic rows in split mode paint the `···` body on BOTH halves with
+// the `│` divider intact, mirroring the regular split row geometry. A
+// single full-width body strands the cursor on the left column and reads
+// as "cursor jumped" when DiffCursor.Side=RIGHT.
+func TestRenderSynthRow_SplitMode_BodyOnBothHalves(t *testing.T) {
+	m := newExpandModel(t)
+	m.paneWidthDiff = 80
+	m.paneHeightDiff = 20
+	m.state.DiffViewMode = model.DiffViewSplit
+	m.width = 200
+	isSplit, halfW := m.splitLayout()
+	if !isSplit {
+		t.Fatalf("split layout not engaged; halfW=%d", halfW)
+	}
+	idx := findSynthIdx(t, m)
+	rows := m.renderSynthBufferLine(idx, -1, m.patchGaps()[idx])
+	if len(rows) == 0 {
+		t.Fatalf("no rows emitted")
+	}
+	row := stripSGR(rows[0])
+	if got := strings.Count(row, "···"); got != 2 {
+		t.Errorf("split synth row must contain `···` twice (left + right cell); got %d in %q", got, row)
+	}
+	sepCol := halfW + 10
+	if r := runeAtCol(row, sepCol); r != '│' {
+		t.Errorf("split synth separator at col %d = %q, want │; row=%q", sepCol, r, row)
+	}
+}
+
+func TestRenderSynthRow_SplitMode_CursorOnRightSide(t *testing.T) {
+	m := newExpandModel(t)
+	m.paneWidthDiff = 80
+	m.paneHeightDiff = 20
+	m.state.DiffViewMode = model.DiffViewSplit
+	m.width = 200
+	idx := findSynthIdx(t, m)
+	m.state.DiffCursor.Line = idx
+	m.state.DiffCursor.Side = model.DiffSideRight
+	isSplit, halfW := m.splitLayout()
+	if !isSplit {
+		t.Fatalf("split layout not engaged; halfW=%d", halfW)
+	}
+	rows := m.renderSynthBufferLine(idx, idx, m.patchGaps()[idx])
+	row := stripSGR(rows[0])
+	if r := runeAtCol(row, 0); r == '>' {
+		t.Errorf("Lcursor must NOT show '>' when Side=RIGHT on synth row; got %q", row)
+	}
+	rcursorCol := 14 + halfW
+	if r := runeAtCol(row, rcursorCol); r != '>' {
+		t.Errorf("Rcursor at col %d must show '>' when Side=RIGHT on synth row; got %q in %q", rcursorCol, r, row)
+	}
+}
+
+func TestRenderSynthRow_SplitMode_CursorOnLeftSide(t *testing.T) {
+	m := newExpandModel(t)
+	m.paneWidthDiff = 80
+	m.paneHeightDiff = 20
+	m.state.DiffViewMode = model.DiffViewSplit
+	m.width = 200
+	idx := findSynthIdx(t, m)
+	m.state.DiffCursor.Line = idx
+	m.state.DiffCursor.Side = model.DiffSideLeft
+	isSplit, halfW := m.splitLayout()
+	if !isSplit {
+		t.Fatalf("split layout not engaged; halfW=%d", halfW)
+	}
+	rows := m.renderSynthBufferLine(idx, idx, m.patchGaps()[idx])
+	row := stripSGR(rows[0])
+	if r := runeAtCol(row, 0); r != '>' {
+		t.Errorf("Lcursor must show '>' at col 0 when Side=LEFT on synth row; got %q", row)
+	}
+	rcursorCol := 14 + halfW
+	if r := runeAtCol(row, rcursorCol); r == '>' {
+		t.Errorf("Rcursor at col %d must NOT show '>' when Side=LEFT on synth row; got %q in %q", rcursorCol, r, row)
+	}
+}
+
+// Unified mode keeps the single full-width row (only one `···` per
+// display row) since there's no second column to mirror.
+func TestRenderSynthRow_UnifiedMode_SingleFullWidthRow(t *testing.T) {
+	m := newExpandModel(t)
+	m.paneWidthDiff = 80
+	m.paneHeightDiff = 20
+	m.state.DiffViewMode = model.DiffViewUnified
+	idx := findSynthIdx(t, m)
+	rows := m.renderSynthBufferLine(idx, -1, m.patchGaps()[idx])
+	if len(rows) == 0 {
+		t.Fatalf("no rows emitted")
+	}
+	row := stripSGR(rows[0])
+	if got := strings.Count(row, "···"); got != 1 {
+		t.Errorf("unified synth row must contain `···` exactly once; got %d in %q", got, row)
+	}
+	if strings.Contains(row, "│") {
+		t.Errorf("unified synth row must not draw `│` divider; got %q", row)
+	}
+}

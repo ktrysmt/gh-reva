@@ -250,21 +250,70 @@ func (m Model) diffView() string {
 	return title + "\n" + strings.Join(out, "\n")
 }
 
-// renderSynthBufferLine paints a single full-width `···` row for a
-// hidden gap. The body shows the hidden line count plus an "enter:
-// expand" hint so the keystroke is discoverable without consulting the
-// status bar. Used in both unified and split mode — the row never
-// splits into two halves because the synthetic represents a region
-// equally invisible on both sides.
+// renderSynthBufferLine paints the `··· N lines hidden  (enter: expand)`
+// hint for a hidden gap.
+//
+// Unified mode: a single full-width row with `> ` at col 0 (cursor /
+// visual rows) and the body filling the remainder.
+//
+// Split mode: mirror the standard split geometry (#8 / #14d) — the body
+// is painted on BOTH the left and right cells, `│` divides them, and
+// `> ` follows DiffCursor.Side so the cursor visually stays on the same
+// column as adjacent diff rows. Per-side line-number and marker columns
+// are blank (synthetic rows aren't comment-anchorable; see #10). The
+// shared label degrades through 5 width tiers so narrow halves still
+// surface the hidden count.
 func (m Model) renderSynthBufferLine(idx, cursorLine int, gap diff.GapInfo) []string {
-	cursor := "  "
 	inVisual := m.inVisualRange(model.PaneDiff, idx)
-	if idx == cursorLine || inVisual {
-		cursor = fgBold("> ", m.theme.CursorRow)
+	cursorActive := idx == cursorLine || inVisual
+	isSplit, halfW := m.splitLayout()
+	if !isSplit {
+		cursor := "  "
+		if cursorActive {
+			cursor = fgBold("> ", m.theme.CursorRow)
+		}
+		label := fmt.Sprintf("··· %d lines hidden  (enter: expand)", gap.HiddenCount)
+		body := fg(label, m.theme.DiffHunkHeader)
+		return []string{padTrunc(cursor+body, m.paneWidthDiff)}
 	}
-	label := fmt.Sprintf("··· %d lines hidden  (enter: expand)", gap.HiddenCount)
+
+	label := synthLabel(gap.HiddenCount, halfW)
 	body := fg(label, m.theme.DiffHunkHeader)
-	return []string{padTrunc(cursor+body, m.paneWidthDiff)}
+	leftCell := padTrunc(body, halfW)
+	rightCell := padTrunc(body, halfW)
+
+	lCursor, rCursor := "  ", "  "
+	if cursorActive {
+		glyph := fgBold("> ", m.theme.CursorRow)
+		if m.state.DiffCursor.Side == model.DiffSideLeft {
+			lCursor = glyph
+		} else {
+			rCursor = glyph
+		}
+	}
+	sep := fg("│", m.theme.DiffSeparator)
+	row := padTrunc(lCursor+"  "+"    "+" "+leftCell+" "+sep+" "+"  "+rCursor+"    "+" "+rightCell, m.paneWidthDiff)
+	return []string{row}
+}
+
+// synthLabel returns the longest `··· N …` variant that fits cellW
+// display columns. The five tiers degrade gracefully: full hint → short
+// hint → no hint → minimal → just `···` so even halfW=8 (the split
+// engage threshold) shows the marker.
+func synthLabel(hidden, cellW int) string {
+	candidates := []string{
+		fmt.Sprintf("··· %d lines hidden  (enter: expand)", hidden),
+		fmt.Sprintf("··· %d lines hidden (enter)", hidden),
+		fmt.Sprintf("··· %d lines hidden", hidden),
+		fmt.Sprintf("··· %d hidden", hidden),
+		"···",
+	}
+	for _, s := range candidates {
+		if lipgloss.Width(s) <= cellW {
+			return s
+		}
+	}
+	return "···"
 }
 
 // renderUnifiedBufferLine returns the display rows for one buffer line in
