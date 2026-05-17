@@ -13,13 +13,13 @@
 //
 // Layout under default cols=160, rows=50, statusBarRows=2 (bodyHeight=48):
 //
-//   splitColumnWidths(160): left=42, right=57, mid=61
+//   splitColumnWidths(160): left=42, right=40, mid=78  (Comments default 25%)
 //   splitColumnHeights(48): top=24, bottom=24
 //
 //   Files     outer x=[0,42)   y=[0,24)   content y=[3,23)
 //   Commits   outer x=[0,42)   y=[24,48)  content y=[27,47)
-//   Diff      outer x=[42,103) y=[0,48)   content y=[3,47)
-//   Comments  outer x=[103,160) y=[0,48)  content y=[3,47)
+//   Diff      outer x=[42,120) y=[0,48)   content y=[3,47)
+//   Comments  outer x=[120,160) y=[0,48)  content y=[3,47)
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -80,8 +80,9 @@ test('M4: wheel-down on Diff advances the cursor without changing focus', async 
 test('M5: clicking the Comments title row focuses Comments', async () => {
   const s = await launchReva()
   await waitReady(s)
-  // Comments title row at y=1, x in [104..158].
-  await s.clickAt(120, 1)
+  // Comments title row at y=1, x in [121..158] (outer x=[120,160); col 120
+  // is the left border `│` which paneAt rejects).
+  await s.clickAt(140, 1)
   assert.equal(await activePaneLabel(s), 'Comments',
     'click on Comments title must focus Comments')
   await quit(s)

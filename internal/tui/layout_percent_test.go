@@ -2,8 +2,8 @@ package tui
 
 import "testing"
 
-// TestSplitColumnWidths_DefaultPercent pins the new built-in default of
-// 35% for the Comments column. Replaces the previous fixed `right = 57`
+// TestSplitColumnWidths_DefaultPercent pins the built-in default of
+// 25% for the Comments column. Replaces the previous fixed `right = 57`
 // at total ≥ 130 with a percentage that scales with the terminal width.
 func TestSplitColumnWidths_DefaultPercent(t *testing.T) {
 	cases := []struct {
@@ -12,9 +12,9 @@ func TestSplitColumnWidths_DefaultPercent(t *testing.T) {
 		wantRight        int
 		wantMidAtLeast   int
 	}{
-		{130, 42, 45, 25},
-		{160, 42, 56, 25},
-		{200, 42, 70, 25},
+		{130, 42, 32, 25},
+		{160, 42, 40, 25},
+		{200, 42, 50, 25},
 	}
 	for _, c := range cases {
 		l, mid, r := splitColumnWidths(c.total, false, defaultCommentsWidthPercent)

@@ -431,7 +431,10 @@ test('F18: multi-line range comment surfaces ◆ only at end anchor + R5-R10 in 
   // span is conveyed by the `R5-R10` tag in the Comments header — the
   // previous ┌/│ run that ran down the diff gutter is gone (it collided
   // with neighbouring ◆ anchors and was hard to read under overlap).
-  const s = await launchReva()
+  // cols=200 so the Comments column is wide enough to hold the full
+  // header `> dave: <date> ccc3333 R5-R10 #<id> [pending]` without the
+  // narrow-width degradation dropping the range tag (see CLAUDE.md §4 #23b).
+  const s = await launchReva({ cols: 200 })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   await s.type('J')                            // advance to greeting_test.go

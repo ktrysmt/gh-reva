@@ -96,7 +96,10 @@ test('G0: with the Diff cursor off any ◆ row, Comments shows the placeholder',
 })
 
 test('G5: single-commit view exposes comments anchored to that commit', async () => {
-  const s = await launchReva()
+  // cols=200 widens the Comments column past the narrow-width-degradation
+  // threshold so the `[outdated]` tag (which the test asserts on) survives
+  // alongside the date+sha header (see CLAUDE.md §4 #23b).
+  const s = await launchReva({ cols: 200 })
   await waitReady(s)
   // Drill into aaa1111 explicitly: tab + j×2 + k primes auto-select on aaa1111
   // (Tab lands on the All commits virtual row; j/k drives commit-pick from

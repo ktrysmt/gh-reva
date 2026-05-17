@@ -207,7 +207,7 @@ func (m Model) commentsView() string {
 		// no sensible content to show. Diff Enter / `r` are blocked
 		// upstream by buildComposeInline so the user gets a Notice on
 		// attempted compose.
-		return title + "\n(no file selected — Comments disabled in All view)"
+		return title + "\n(no file selected)\nComments disabled in All view"
 	}
 	rows, _ := m.commentsLayout()
 	if len(rows) == 0 {

@@ -55,7 +55,11 @@ test('C1: Diff Enter then y saves the editor body as a pending comment', async (
   // Buffer 6 = "+func Hello(...)" on greeting.go (newLine 4) — no existing
   // comment in the fixture, so the appended pending body is uniquely visible.
   const editor = await makeStubEditor('c1.sh', 'inline-pending-from-gh-reva')
-  const s = await launchReva({ env: { EDITOR: editor, VISUAL: '' } })
+  // cols=200 widens Comments past the narrow-width degradation threshold so
+  // the `[pending]` state tag survives in the rendered header (see CLAUDE.md
+  // §4 #23b — at the 25% default on the 160-col baseline the header would
+  // overflow and padTrunc would clip the trailing tag).
+  const s = await launchReva({ cols: 200, env: { EDITOR: editor, VISUAL: '' } })
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')
@@ -77,7 +81,9 @@ test('C2: Comments r then y saves a pending reply under the cursor thread', asyn
   // reply gesture moved from Enter to `r` when Enter was repurposed
   // for in-place edit on the viewer's own comments.
   const editor = await makeStubEditor('c2.sh', 'pending-reply-from-gh-reva')
-  const s = await launchReva({ env: { EDITOR: editor, VISUAL: '' } })
+  // cols=200: same rationale as C1 — preserve the `[pending]` header tag
+  // at the 25% default Comments width.
+  const s = await launchReva({ cols: 200, env: { EDITOR: editor, VISUAL: '' } })
   await waitReady(s)
   await navigateToDiffLine(s, 5)
   await s.press('tab') // Diff → Comments
@@ -136,7 +142,9 @@ test('C3: empty body from $EDITOR cancels — no pending comment is added', asyn
 test('C5: textarea fallback when $EDITOR is unset saves pending on Ctrl+S', async () => {
   // EDITOR + VISUAL both empty → UseTextarea = true. Overlay shows
   // "New comment"; typing builds Body, Ctrl+S saves as pending.
-  const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
+  // cols=200: same rationale as C1 — preserve the `[pending]` header tag
+  // at the 25% default Comments width.
+  const s = await launchReva({ cols: 200, env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await navigateToDiffLine(s, 6)
   await s.press('enter')

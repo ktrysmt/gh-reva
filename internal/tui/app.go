@@ -364,7 +364,7 @@ func (m Model) View() string {
 // `layout.comments_width_percent` in reva.toml. Picked to give the
 // Comments pane meaningful room on wide terminals without starving the
 // Diff column on narrower ones.
-const defaultCommentsWidthPercent = 35
+const defaultCommentsWidthPercent = 25
 
 // commentsWidthPercentRange is the honored interval for user overrides.
 // Values outside this range fall back to the built-in default — the

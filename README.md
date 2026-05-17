@@ -155,11 +155,11 @@ default — copy it into your `reva.toml` and tweak the number:
 
 ```toml
 [layout]
-comments_width_percent = 35
+comments_width_percent = 25
 ```
 
 - Value is an integer percentage; honored in `[10, 70]`. Zero or
-  out-of-range falls back to the built-in default (`35`).
+  out-of-range falls back to the built-in default (`25`).
 - The Files column keeps its fixed width on wide terminals; the Diff
   column absorbs the remainder, subject to a 25-column floor so it
   never collapses below readability even under aggressive overrides.
