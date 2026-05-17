@@ -42,10 +42,44 @@ describe('C1+C4+C5+C7: Files-stable navigation sequences (shared launch)', () =>
     await session.press('tab'); assert.equal(await activePaneLabel(session), 'Files')
   })
 
-  test('C7: numeric keys (1-4) do not jump panes', async () => {
-    for (const key of ['1', '2', '3', '4']) await session.type(key)
-    assert.equal(await activePaneLabel(session), 'Files', 'focus should remain Files after typing 1-4')
+  test('C7: numeric keys 1/2/3/4 jump directly to Files/Commits/Diff/Comments', async () => {
+    // Start state: Files focused (restored at the end of each preceding
+    // case). 1/2/3/4 jump unconditionally regardless of current focus.
+    await session.type('2'); assert.equal(await activePaneLabel(session), 'Commits')
+    await session.type('4'); assert.equal(await activePaneLabel(session), 'Comments')
+    await session.type('3'); assert.equal(await activePaneLabel(session), 'Diff')
+    await session.type('1'); assert.equal(await activePaneLabel(session), 'Files')
   })
+})
+
+test('C9: 4 reveals the Comments pane when hidden and focuses it', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  // Hide Comments first.
+  await s.press(['ctrl', 'e'])
+  let screen = await s.text()
+  assert.ok(!/ Comments\b/.test(screen), 'pre-condition: Comments pane is hidden')
+  // 4 must reveal AND focus the Comments column.
+  await s.type('4')
+  screen = await s.text()
+  assert.ok(/ Comments\b/.test(screen), '4 must reveal the Comments column when hidden')
+  assert.equal(await activePaneLabel(s), 'Comments', '4 must focus Comments after reveal')
+  await quit(s)
+})
+
+test('C10: 1/2/3/4 cancel Visual mode and jump', async () => {
+  const s = await launchReva()
+  await waitReady(s)
+  // Enter Visual on Files (FilesCursor is on a real row after Shift+J in waitReady).
+  await s.type('v')
+  let screen = await s.text()
+  assert.match(screen, /-- VISUAL --/, 'pre-condition: visual mode active on Files')
+  // 3 must cancel visual AND land on Diff.
+  await s.type('3')
+  screen = await s.text()
+  assert.ok(!/-- VISUAL --/.test(screen), '1-4 must cancel visual mode')
+  assert.equal(await activePaneLabel(s), 'Diff', '3 must focus Diff')
+  await quit(s)
 })
 
 test('C2: shift-tab cycles Files → Comments → Diff → Commits → Files', { skip: 'tuistory cannot reliably emit CSI Z (back-tab): the ["shift","tab"] chord is a no-op and `s.type("\\x1b[Z")` arrives as 3 separate key events (ESC, [, Z) due to typing-simulation pacing. The bubbletea handler (`case "shift+tab"` in keys.go) is verified correct by inspection and works against a real terminal.' }, async () => {

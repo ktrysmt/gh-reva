@@ -66,7 +66,7 @@ const (
 	// remain discoverable via convention while a missing URL would
 	// silently strand the user without a way to copy/share the PR
 	// reference.
-	statusCommonSuffix = "tab/shift+tab:pane J/K:file ctrl+e:comments ?:help q:quit"
+	statusCommonSuffix = "tab/shift+tab:pane 1-4:jump J/K:file ctrl+e:comments ?:help q:quit"
 )
 
 // statusBar returns the 2-row borderless status block (keymap / URL

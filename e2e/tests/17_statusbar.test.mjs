@@ -48,6 +48,7 @@ test('S1: Files (flat) status bar shows context + common suffix + PR URL', async
   assert.match(row, /t:tree/)
   // Common suffix
   assert.match(row, /tab\/shift\+tab:pane/)
+  assert.match(row, /1-4:jump/)
   assert.match(row, /\?:help/)
   assert.match(row, /q:quit/)
   // R:submit was retired with the submit-review feature; ensure the

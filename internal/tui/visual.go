@@ -52,6 +52,14 @@ func (m Model) handleKeyVisual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Visual on a non-Diff pane has no Side concept — fall
 		// through to the per-pane handler so j/k-style behavior is
 		// unaffected.
+	case "1":
+		return m.jumpToPane(model.PaneFiles)
+	case "2":
+		return m.jumpToPane(model.PaneCommits)
+	case "3":
+		return m.jumpToPane(model.PaneDiff)
+	case "4":
+		return m.jumpToPane(model.PaneComments)
 	case "tab", "shift+tab", "backspace", "v", " ", "q", "?":
 		// State-mutating / mode keys are inert in visual mode:
 		//   Tab / Shift-Tab — would move focus mid-selection.

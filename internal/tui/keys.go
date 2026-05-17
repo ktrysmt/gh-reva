@@ -199,6 +199,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state.FocusedPane = model.PaneDiff
 		}
 		return m, tea.ClearScreen
+	case "1":
+		return m.jumpToPane(model.PaneFiles)
+	case "2":
+		return m.jumpToPane(model.PaneCommits)
+	case "3":
+		return m.jumpToPane(model.PaneDiff)
+	case "4":
+		return m.jumpToPane(model.PaneComments)
 	case "v":
 		m.state.PendingPrefix = ""
 		// Forbid entering visual on the synthetic Files All row — there
@@ -345,6 +353,41 @@ func (m Model) handleKeyHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// jumpToPane is the direct-jump gesture invoked by the 1/2/3/4 number
+// keys. It mirrors Tab's transient-state cleanup contract:
+//
+//   - PendingPrefix is cleared so a stale `g` prefix can't react to the
+//     post-jump pane.
+//   - An Active search session is dropped so n/N stop intercepting; the
+//     saved-cursor restore path is intentionally NOT used (jump is a
+//     positive navigation gesture, not a cancel).
+//   - A zoom modal is closed first so post-jump focus reflects the user's
+//     destination rather than the modal's opener pane.
+//   - Visual selection is cancelled so the new focus doesn't strand an
+//     anchor on a pane the user just left.
+//
+// Jumping to Comments while it is hidden auto-reveals the column (mirrors
+// the Diff Enter handoff in focusCommentsAtCursor #14) and returns
+// tea.ClearScreen for the same reason Ctrl+E does — layout-shifting
+// toggles can leave stale cells under the new column on some terminals.
+func (m Model) jumpToPane(target model.PaneID) (tea.Model, tea.Cmd) {
+	m.state.PendingPrefix = ""
+	if m.state.Search != nil && m.state.Search.Status == model.SearchActive {
+		m.state.Search = nil
+	}
+	if m.state.Modal != nil {
+		m.closeModal()
+	}
+	m.state.Visual = nil
+	var cmd tea.Cmd
+	if target == model.PaneComments && m.state.CommentsHidden {
+		m.state.CommentsHidden = false
+		cmd = tea.ClearScreen
+	}
+	m.state.FocusedPane = target
+	return m, cmd
 }
 
 func nextPane(p model.PaneID) model.PaneID {
