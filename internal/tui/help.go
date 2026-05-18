@@ -67,7 +67,8 @@ var helpSections = []helpSection{
 	{
 		title: "Comments",
 		entries: []helpEntry{
-			{"j / k", "Move cursor (auto-scrolls Diff)"},
+			{"j / k", "Scroll one row (current = top-of-view)"},
+			{"gg / G", "Scroll to first / last row"},
 			{"Space", "Toggle zoom modal"},
 		},
 	},

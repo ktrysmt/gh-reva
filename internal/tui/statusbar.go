@@ -31,7 +31,7 @@ const (
 	// on?" the most-asked question, so the bar surfaces it ahead of
 	// any keymap. See diffHint() for the dynamic composition.
 	hintDiffKeys      = "h/l:side j/k:move H/M/L:viewport gg/G:top/bottom /:search space:split enter:comment"
-	hintComments      = "j/k:move space:zoom enter:edit r:reply"
+	hintComments      = "j/k:scroll space:zoom enter:edit r:reply"
 	hintVisual        = "-- VISUAL --  y:yank esc/ctrl+c:cancel"
 	hintModal         = "space/esc/q/ctrl+c:close"
 	hintModalComments = "enter:edit r:reply space/esc/q/ctrl+c:close"

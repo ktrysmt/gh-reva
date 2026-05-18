@@ -279,9 +279,27 @@ func (m *Model) mouseClickComments(row int) {
 	if idx < 0 {
 		return
 	}
-	m.state.CommentsCursor = idx
-	m.scrollCommentsIntoView()
-	m.syncDiffToCursorComment()
+	// Click is a deliberate "make this comment current" gesture. Park
+	// CommentsTop on the clicked comment's header row so the new current
+	// (= viewport-top) comment is exactly the one the user pointed at;
+	// clamp to maxTop so a click near the end doesn't strand the
+	// viewport past the last row. The derived cursor then matches idx
+	// (or the nearest comment if the clamp ate the requested top).
+	rows, headerAt := m.commentsLayout()
+	if idx >= len(headerAt) {
+		return
+	}
+	maxTop := commentsMaxTopFor(len(rows), m.commentsViewportHeight())
+	top := headerAt[idx]
+	if top > maxTop {
+		top = maxTop
+	}
+	m.state.CommentsTop = top
+	prev := m.state.CommentsCursor
+	m.state.CommentsCursor = m.commentsCursorFromTop(top)
+	if m.state.CommentsCursor != prev {
+		m.syncDiffToCursorComment()
+	}
 }
 
 // handleMouseWheel scrolls the pane under the cursor. Wheel does NOT
@@ -348,20 +366,7 @@ func (m *Model) mouseWheelDiff(dir int) {
 }
 
 func (m *Model) mouseWheelComments(dir int) {
-	flat := m.flatComments()
-	if len(flat) == 0 {
-		return
-	}
-	next := m.state.CommentsCursor + dir
-	if next < 0 {
-		next = 0
-	}
-	if next >= len(flat) {
-		next = len(flat) - 1
-	}
-	m.state.CommentsCursor = next
-	m.scrollCommentsIntoView()
-	m.syncDiffToCursorComment()
+	m.scrollCommentsBy(dir)
 }
 
 // bufferLineAtDiffDisplayRow maps a Diff content row (0-indexed from the

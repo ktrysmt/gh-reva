@@ -102,7 +102,10 @@ test('S5: Comments pane shows enter:edit and r:reply (split keymap)', async () =
   await s.press('tab')
   await s.press('tab')
   const row = statusBarRow(await s.text())
-  assert.match(row, /j\/k:move/)
+  // j/k in Comments is row-based scroll, not comment-unit jump — surfacing
+  // the verb "scroll" in the hint differentiates it from the Files /
+  // Commits panes whose j/k still says "move".
+  assert.match(row, /j\/k:scroll/)
   assert.match(row, /space:zoom/)
   // Enter is now in-place edit (own comments only); r is the new reply
   // gesture. Both hints must appear in normal Comments-pane mode.

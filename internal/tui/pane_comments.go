@@ -44,20 +44,11 @@ func (m Model) handleKeyComments(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch key {
 	case "j", "down":
-		if m.state.CommentsCursor < len(flat)-1 {
-			m.state.CommentsCursor++
-		}
-		m.scrollCommentsIntoView()
+		m.scrollCommentsBy(1)
 	case "k", "up":
-		if m.state.CommentsCursor > 0 {
-			m.state.CommentsCursor--
-		}
-		m.scrollCommentsIntoView()
+		m.scrollCommentsBy(-1)
 	case "G":
-		if n := len(flat); n > 0 {
-			m.state.CommentsCursor = n - 1
-		}
-		m.scrollCommentsIntoView()
+		m.scrollCommentsToBottom()
 	case "enter":
 		// Edit the cursor comment — only the viewer's own comments are
 		// editable per GitHub's permission model. startComposeEdit
@@ -136,42 +127,91 @@ func commentAtCursor(flat []*model.ReviewComment, idx int) *model.ReviewComment 
 	return flat[idx]
 }
 
-// scrollCommentsIntoView clamps AppState.CommentsTop so the cursored
-// comment's header row stays inside the viewport window
-// [Top, Top+commentsViewportHeight). Called after every j / k / G / gg /
-// wheel that mutates CommentsCursor.
-//
-// The window is anchored on the header row (not the body) so a comment
-// taller than the viewport still surfaces "where the cursor is"; the
-// body may extend below and clip — that matches how diff scroll handles
-// wrapped lines that exceed the diff window.
-func (m *Model) scrollCommentsIntoView() {
+// commentsMaxTopFor returns the largest valid CommentsTop given the
+// total rendered row count and the viewport's row budget. Anything
+// beyond this would strand the viewport past the last row.
+func commentsMaxTopFor(rowsLen, viewportHeight int) int {
+	if rowsLen <= viewportHeight || viewportHeight <= 0 {
+		return 0
+	}
+	return rowsLen - viewportHeight
+}
+
+// commentsCursorFromTop derives the "current comment" — the index of
+// the comment that owns the viewport-top row — from CommentsTop. The
+// owner is the comment whose header is the most recent at or before
+// `top`; rows between headerAt[i] and headerAt[i+1]-1 all belong to
+// comment i (including the inter-thread separator blank line, which
+// trails the preceding thread visually). Falls back to 0 when no
+// headers exist so the cursor never points past the visible content.
+func (m Model) commentsCursorFromTop(top int) int {
 	_, headerAt := m.commentsLayout()
 	if len(headerAt) == 0 {
-		m.state.CommentsTop = 0
+		return 0
+	}
+	cursor := 0
+	for i, h := range headerAt {
+		if h <= top {
+			cursor = i
+			continue
+		}
+		break
+	}
+	return cursor
+}
+
+// scrollCommentsBy nudges CommentsTop by `delta` display rows (positive
+// = down, negative = up), clamped to [0, maxTop]. Re-derives
+// CommentsCursor from the new viewport top; when the derived cursor
+// crosses a comment boundary, the Diff pane syncs to the new current
+// comment so the reviewer's anchor row stays in step with what they're
+// reading.
+//
+// j/k drive this with delta=±1 to surface long-body middles a row at a
+// time — the previous comment-unit jump skipped over them entirely.
+func (m *Model) scrollCommentsBy(delta int) {
+	rows, _ := m.commentsLayout()
+	if len(rows) == 0 {
 		return
 	}
-	cursor := m.state.CommentsCursor
-	if cursor < 0 || cursor >= len(headerAt) {
-		m.state.CommentsTop = 0
+	maxTop := commentsMaxTopFor(len(rows), m.commentsViewportHeight())
+	next := m.state.CommentsTop + delta
+	if next < 0 {
+		next = 0
+	}
+	if next > maxTop {
+		next = maxTop
+	}
+	if next == m.state.CommentsTop {
 		return
 	}
-	target := headerAt[cursor]
-	height := m.commentsViewportHeight()
-	if height <= 0 {
-		m.state.CommentsTop = 0
+	m.state.CommentsTop = next
+	prev := m.state.CommentsCursor
+	m.state.CommentsCursor = m.commentsCursorFromTop(next)
+	if m.state.CommentsCursor != prev {
+		m.syncDiffToCursorComment()
+	}
+}
+
+// scrollCommentsToBottom is G's implementation — jump the viewport to
+// the last scrollable position so the final comment is visible. The
+// derived current-comment becomes whichever comment owns that bottom-
+// most viewport-top row (typically the last thread).
+func (m *Model) scrollCommentsToBottom() {
+	rows, _ := m.commentsLayout()
+	if len(rows) == 0 {
 		return
 	}
-	top := m.state.CommentsTop
-	if target < top {
-		top = target
-	} else if target > top+height-1 {
-		top = target - height + 1
+	maxTop := commentsMaxTopFor(len(rows), m.commentsViewportHeight())
+	if maxTop == m.state.CommentsTop {
+		return
 	}
-	if top < 0 {
-		top = 0
+	m.state.CommentsTop = maxTop
+	prev := m.state.CommentsCursor
+	m.state.CommentsCursor = m.commentsCursorFromTop(maxTop)
+	if m.state.CommentsCursor != prev {
+		m.syncDiffToCursorComment()
 	}
-	m.state.CommentsTop = top
 }
 
 // syncDiffToCursorComment auto-scrolls the Diff viewport so the comment under

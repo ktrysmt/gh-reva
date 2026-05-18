@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
 	"github.com/ktrysmt/gh-reva/internal/model"
@@ -15,8 +15,22 @@ import (
 
 // commentsManyFixture builds a Model whose Diff cursor sits on a single
 // `+` buffer row anchoring a long thread (one root + N replies). The pane
-// height is pinned small so the rendered comments overflow the viewport
-// — the scenario the user reported: "jk doesn't transition the screen".
+// height is pinned small so the rendered comments overflow the viewport.
+// At paneWidthComments=50 each fixture body fits on one row, so the
+// commentsLayout output is deterministic:
+//
+//	row 0: carol header
+//	row 1: "root body"
+//	row 2: ""           (separator before reply 0)
+//	row 3: alice0 header
+//	row 4: "reply 0 body"
+//	row 5: ""           (separator before reply 1)
+//	row 6: alice1 header
+//	...
+//	row 3*N:   aliceN-1 body (reply at index N-1; last row = 3+3*(N-1)+1 = 3N+1)
+//
+// headerAt[i] is therefore 0 for the root and 3*i for reply i-1; total
+// rows = 2 + 3*replyCount.
 func commentsManyFixture(t *testing.T, replyCount int) Model {
 	t.Helper()
 	prev := lipgloss.ColorProfile()
@@ -78,73 +92,166 @@ func pressCommentsKey(t *testing.T, m Model, key string) Model {
 	return out.(Model)
 }
 
-// When the cursor moves past the bottom of the viewport, the rendered
-// pane body must slide down so the cursor row stays inside the visible
-// window. Before the fix, j was a no-op visually because commentsView
-// emitted the full row set and renderPaneBox just clipped at the bottom.
-func TestComments_JKScrollsViewportWhenCursorOverflowsBottom(t *testing.T) {
+// TestComments_J_AdvancesViewportByOneRow pins the core invariant: j is
+// a row-level scroll, not a comment-level jump. After a single j the
+// viewport-top advances by exactly one display row so a long comment's
+// middle body becomes readable.
+func TestComments_J_AdvancesViewportByOneRow(t *testing.T) {
 	m := commentsManyFixture(t, 20)
-	// Walk down past the visible window. With paneHeightComments=6 the
-	// initial render covers ~6 rows; sending 10 j keys is enough to push
-	// the cursor several rows below the initial bottom.
-	for i := 0; i < 10; i++ {
-		m = pressCommentsKey(t, m, "j")
+	if m.state.CommentsTop != 0 {
+		t.Fatalf("setup precondition: CommentsTop must start at 0; got %d", m.state.CommentsTop)
 	}
-	got := m.commentsView()
-	// The header row of comment at flat-index 0 (carol) must be off-screen
-	// once the viewport has scrolled; alice0 (reply 0) must also be off
-	// because the cursor has moved past several replies.
-	if strings.Contains(got, "carol:") {
-		t.Errorf("after 10×j the viewport must have scrolled off the root header; commentsView still contains 'carol:':\n%s", got)
+	m = pressCommentsKey(t, m, "j")
+	if m.state.CommentsTop != 1 {
+		t.Errorf("after 1×j CommentsTop must advance by exactly 1 row; got %d", m.state.CommentsTop)
 	}
-	// The cursored comment (alice9 at flat-index 10 — root=0 + 10 replies)
-	// must be visible in the rendered output.
-	if !strings.Contains(got, "alice9:") {
-		t.Errorf("after 10×j the cursored comment alice9 must be visible in commentsView; got:\n%s", got)
+	m = pressCommentsKey(t, m, "j")
+	if m.state.CommentsTop != 2 {
+		t.Errorf("after 2×j CommentsTop must advance by exactly 1 each step; got %d", m.state.CommentsTop)
 	}
 }
 
-// k from the middle of the list scrolls the viewport up so a previously
-// off-screen earlier comment becomes visible again. Symmetric to the j
-// case so we can pin both directions.
-func TestComments_KScrollsViewportWhenCursorOverflowsTop(t *testing.T) {
+// TestComments_J_KeepsCurrentCommentWhileBodyVisible pins the "current
+// comment" derivation. When a single j leaves the cursor inside the
+// current comment's body (row 1 is carol's body), CommentsCursor stays
+// at 0 — Diff auto-scroll must NOT fire because the focused comment
+// hasn't changed.
+func TestComments_J_KeepsCurrentCommentWhileBodyVisible(t *testing.T) {
 	m := commentsManyFixture(t, 20)
-	// First push cursor down so the viewport scrolls past the root.
-	for i := 0; i < 10; i++ {
+	m = pressCommentsKey(t, m, "j")
+	if m.state.CommentsCursor != 0 {
+		t.Errorf("after 1×j (row 1 = carol's body) the current comment must remain carol (cursor 0); got %d",
+			m.state.CommentsCursor)
+	}
+}
+
+// TestComments_J_AdvancesCurrentCommentAtHeaderBoundary pins that the
+// derived current-comment advances when the viewport-top row crosses a
+// header boundary. After 3×j the top row is alice0's header (row 3 =
+// headerAt[1]); the current comment must become reply 0.
+func TestComments_J_AdvancesCurrentCommentAtHeaderBoundary(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	for i := 0; i < 3; i++ {
 		m = pressCommentsKey(t, m, "j")
 	}
-	// Now walk back up. By the time we reach idx 0 the root must reappear.
-	for i := 0; i < 10; i++ {
-		m = pressCommentsKey(t, m, "k")
+	if m.state.CommentsCursor != 1 {
+		t.Errorf("after 3×j CommentsTop=3 sits on alice0's header; current comment must be 1; got %d",
+			m.state.CommentsCursor)
+	}
+}
+
+// TestComments_K_ScrollsViewportUp pins the symmetric inverse: k rewinds
+// the viewport one row, exposing earlier content.
+func TestComments_K_ScrollsViewportUp(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	for i := 0; i < 5; i++ {
+		m = pressCommentsKey(t, m, "j")
+	}
+	if m.state.CommentsTop != 5 {
+		t.Fatalf("setup: after 5×j CommentsTop=5 expected; got %d", m.state.CommentsTop)
+	}
+	m = pressCommentsKey(t, m, "k")
+	if m.state.CommentsTop != 4 {
+		t.Errorf("after 1×k CommentsTop must rewind by 1 row; got %d", m.state.CommentsTop)
+	}
+}
+
+// TestComments_K_ClampsAtZero pins the lower bound — k at row 0 is a
+// no-op, never producing a negative CommentsTop.
+func TestComments_K_ClampsAtZero(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	m = pressCommentsKey(t, m, "k")
+	if m.state.CommentsTop != 0 {
+		t.Errorf("k at CommentsTop=0 must clamp; got %d", m.state.CommentsTop)
+	}
+}
+
+// TestComments_J_ClampsAtMaxTop pins the upper bound — j past the last
+// scrollable row is a no-op so the viewport never strands past the end
+// of content.
+func TestComments_J_ClampsAtMaxTop(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	rows, _ := m.commentsLayout()
+	maxTop := len(rows) - m.commentsViewportHeight()
+	for i := 0; i < maxTop+10; i++ {
+		m = pressCommentsKey(t, m, "j")
+	}
+	if m.state.CommentsTop != maxTop {
+		t.Errorf("j past maxTop must clamp; got CommentsTop=%d want %d", m.state.CommentsTop, maxTop)
+	}
+}
+
+// TestComments_J_RendersScrolledBody pins that a single j actually
+// brings the body row into the top slot — the user-facing payoff is
+// that long-comment bodies become readable mid-scroll.
+func TestComments_J_RendersScrolledBody(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	m = pressCommentsKey(t, m, "j")
+	got := m.commentsView()
+	lines := strings.Split(got, "\n")
+	// title (line 0) + carol-body row should be the first content line at
+	// CommentsTop=1; carol's header (row 0) is now off-screen.
+	if len(lines) < 2 || !strings.Contains(lines[1], "root body") {
+		t.Errorf("after 1×j the first content row must be the body 'root body'; got:\n%s", got)
+	}
+	// carol's header (carol:) must no longer be in the visible output.
+	for _, l := range lines[1:] {
+		if strings.Contains(l, "carol:") {
+			t.Errorf("after 1×j carol's header must be off-screen; rendered:\n%s", got)
+			break
+		}
+	}
+}
+
+// TestComments_G_ScrollsToBottom pins that G scrolls the viewport so the
+// last rendered row is visible (CommentsTop == maxTop). The last reply's
+// body must appear in the rendered output.
+func TestComments_G_ScrollsToBottom(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	m = pressCommentsKey(t, m, "G")
+	rows, _ := m.commentsLayout()
+	maxTop := len(rows) - m.commentsViewportHeight()
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if m.state.CommentsTop != maxTop {
+		t.Errorf("G must scroll to maxTop=%d; got CommentsTop=%d", maxTop, m.state.CommentsTop)
+	}
+	got := m.commentsView()
+	if !strings.Contains(got, "alice19:") {
+		t.Errorf("after G the last reply (alice19) must be visible:\n%s", got)
+	}
+}
+
+// TestComments_Gg_ScrollsToTop pins that gg resets the viewport AND the
+// current-comment cursor to the first comment, mirroring vim's top-of-
+// buffer gesture.
+func TestComments_Gg_ScrollsToTop(t *testing.T) {
+	m := commentsManyFixture(t, 20)
+	m = pressCommentsKey(t, m, "G")
+	if m.state.CommentsTop == 0 {
+		t.Fatalf("setup: G must have moved CommentsTop > 0")
+	}
+	m = pressCommentsKey(t, m, "g")
+	m = pressCommentsKey(t, m, "g")
+	if m.state.CommentsTop != 0 {
+		t.Errorf("gg must reset CommentsTop to 0; got %d", m.state.CommentsTop)
+	}
+	if m.state.CommentsCursor != 0 {
+		t.Errorf("gg must reset CommentsCursor to 0; got %d", m.state.CommentsCursor)
 	}
 	got := m.commentsView()
 	if !strings.Contains(got, "carol:") {
-		t.Errorf("after k-walking back to idx 0 the root header (carol) must be visible:\n%s", got)
+		t.Errorf("after gg the root header (carol) must be visible:\n%s", got)
 	}
 }
 
-// G jumps the cursor to the last comment and the viewport must follow so
-// the last comment is rendered. gg returns to the top with the root
-// visible.
-func TestComments_GAndGgScrollViewport(t *testing.T) {
-	m := commentsManyFixture(t, 20)
-	m = pressCommentsKey(t, m, "G")
-	gotG := m.commentsView()
-	if !strings.Contains(gotG, "alice19:") {
-		t.Errorf("G must scroll the viewport to the last comment (alice19):\n%s", gotG)
-	}
-	m = pressCommentsKey(t, m, "g")
-	m = pressCommentsKey(t, m, "g")
-	gotGg := m.commentsView()
-	if !strings.Contains(gotGg, "carol:") {
-		t.Errorf("gg must scroll the viewport back to the first comment (carol):\n%s", gotGg)
-	}
-}
-
-// Switching the Diff cursor to a different anchor row (which resets
-// CommentsCursor to 0 via focusCommentsAtCursor / autoSelectCommit) also
-// resets the Comments viewport so the user lands at the top of the new
-// thread list.
+// TestComments_TopResetsOnAnchorChange pins that the explicit reset
+// pathways (Diff Enter handoff via focusCommentsAtCursor, file selection
+// via selectFile, commit selection via autoSelectCommit) drop the user
+// back at the top of the new thread list — both CommentsCursor AND
+// CommentsTop must reset to 0 so the viewport doesn't strand on the
+// previous thread's scroll offset.
 func TestComments_TopResetsOnAnchorChange(t *testing.T) {
 	m := commentsManyFixture(t, 20)
 	for i := 0; i < 10; i++ {
@@ -153,11 +260,13 @@ func TestComments_TopResetsOnAnchorChange(t *testing.T) {
 	if m.state.CommentsTop == 0 {
 		t.Fatalf("setup precondition: after 10×j CommentsTop should be > 0; got 0")
 	}
-	// Simulate the Diff Enter handoff path: cursor moves + CommentsCursor
-	// gets reset to 0. The viewport offset must also reset.
-	m.state.CommentsCursor = 0
-	m.scrollCommentsIntoView()
+	// focusCommentsAtCursor is the Diff Enter handoff path; it must reset
+	// both cursor and viewport in lockstep.
+	m.focusCommentsAtCursor()
 	if m.state.CommentsTop != 0 {
-		t.Errorf("CommentsTop must reset to 0 when cursor is reset to 0; got %d", m.state.CommentsTop)
+		t.Errorf("focusCommentsAtCursor must reset CommentsTop to 0; got %d", m.state.CommentsTop)
+	}
+	if m.state.CommentsCursor != 0 {
+		t.Errorf("focusCommentsAtCursor must reset CommentsCursor to 0; got %d", m.state.CommentsCursor)
 	}
 }

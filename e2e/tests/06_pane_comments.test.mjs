@@ -118,7 +118,14 @@ test('G5: single-commit view exposes comments anchored to that commit', async ()
   await quit(s)
 })
 
-test('G6: j/k inside a thread walks root → reply', async () => {
+test('G6: j in Comments is row-based scroll (does NOT leap between comments)', async () => {
+  // j/k in Comments are display-row scroll, not comment-unit jump. The
+  // user-facing payoff is that long-body comments stay readable mid-
+  // scroll; the contract this test pins is the necessary precondition —
+  // a single j on a short thread must NOT teleport `>` from carol's
+  // header onto alice's header (the previous comment-unit behaviour).
+  // When the whole thread already fits in the viewport (sample-pr.json
+  // at default cols=160) j is a no-op, and the cursor stays on carol.
   const s = await launchReva()
   await waitReady(s)
   await focusDiffOnCarolAnchor(s)
@@ -127,7 +134,7 @@ test('G6: j/k inside a thread walks root → reply', async () => {
   assert.match(cms, /^>[^\n]*carol:/m, `cursor should start on the carol header; slice:\n${cms}`)
   await s.type('j')
   cms = paneText(await s.text(), 'Comments')
-  assert.match(cms, /^>[^\n]*alice:/m, `after j → cursor should move to the alice reply header; slice:\n${cms}`)
+  assert.doesNotMatch(cms, /^>[^\n]*alice:/m, `j must not jump the cursor from carol to alice — j is row-based scroll, not comment-unit jump; slice:\n${cms}`)
   await quit(s)
 })
 
