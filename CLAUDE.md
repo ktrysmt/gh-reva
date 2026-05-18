@@ -121,7 +121,9 @@ gh-reva/
 │   ├── sample-pr.json          # default (5 files, 3 commits, 4 comments)
 │   ├── large-pr.json           # 60 commits / 120 files / 122 KB
 │   ├── wrap-pr.json            # single long-bodied comment
+│   ├── wrap-pr-cjk.json        # ASCII↔CJK wrap-boundary regression (#23c)
 │   ├── expand-pr.json          # BOF/Mid/EOF gaps + file_contents (context expand e2e)
+│   ├── comments-cr-pr.json     # CRLF / bare CR in comment bodies (sanitizer regression)
 │   └── gen_large_fixture.go    # //go:build ignore
 └── e2e/
     ├── helpers/launch.mjs      # launchReva / paneText / countSelectedRows

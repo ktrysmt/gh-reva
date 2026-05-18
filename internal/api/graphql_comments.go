@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ktrysmt/gh-reva/internal/model"
@@ -228,6 +229,22 @@ func (c *ghClient) listThreadComments(ctx context.Context, threadID, startCursor
 	return out, nil
 }
 
+// sanitizeCommentBody normalizes a comment body received from GitHub
+// before it reaches model.ReviewComment.Body. CRLF line endings are
+// folded to LF and bare CRs are stripped. The Comments column is joined
+// horizontally with Files and Diff during render, so a literal `\r` in
+// the body bytes resets the terminal cursor to column 0 of the current
+// physical row and the next bytes overwrite the Files content to the
+// left, producing the "Files column appears corrupt when comments are
+// visible" symptom. Sanitizing at the API ingest covers every
+// downstream consumer (renderer, clipboard yank, edit composer).
+func sanitizeCommentBody(s string) string {
+	if !strings.ContainsRune(s, '\r') {
+		return s
+	}
+	return strings.NewReplacer("\r\n", "\n", "\r", "").Replace(s)
+}
+
 // convertGQLComment merges thread-level anchor info (path / line /
 // diffSide) with the per-comment payload to produce a fully-populated
 // model.ReviewComment. Threads expose the line/side; comments
@@ -249,7 +266,7 @@ func convertGQLComment(gc gqlReviewComment, thread gqlReviewThread) *model.Revie
 		DiffHunk:          gc.DiffHunk,
 		User:              gc.Author.Login,
 		CreatedAt:         gc.CreatedAt,
-		Body:              gc.Body,
+		Body:              sanitizeCommentBody(gc.Body),
 		Outdated:          thread.IsOutdated,
 		Resolved:          thread.IsResolved,
 		Pending:           gc.PullRequestReview.State == "PENDING",

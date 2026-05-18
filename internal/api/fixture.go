@@ -55,6 +55,15 @@ func NewFixtureClient(path string) (Client, error) {
 		return nil, fmt.Errorf("fixture missing pr field")
 	}
 	backfillThreadIDs(d.Comments)
+	// Mirror the GraphQL ingestion path (convertGQLComment): scrub `\r`
+	// from every body so a fixture authored with CRLF / bare CR never
+	// reproduces the "Files column shifts when Comments is open" bug
+	// in regression tests. Keeping the two paths consistent prevents a
+	// regression fixture from passing while the production code path
+	// regresses (or vice versa).
+	for _, c := range d.Comments {
+		c.Body = sanitizeCommentBody(c.Body)
+	}
 	return &fixtureClient{d: &d}, nil
 }
 
