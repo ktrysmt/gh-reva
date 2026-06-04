@@ -114,7 +114,29 @@ func (m Model) commitsView() string {
 		msg := m.searchHighlight(c.Message, model.PaneCommits)
 		rows = append(rows, fmt.Sprintf("%s%s%s %s", cursor, annotation, sha, msg))
 	}
-	return title + "\n" + strings.Join(rows, "\n")
+	top := m.commitsViewTop(len(rows))
+	return title + "\n" + strings.Join(rows[top:], "\n")
+}
+
+// commitsViewTop computes the Commits viewport's top display-row from the
+// current cursor and stores it on AppState so the next render and any mouse
+// hit-test (which maps a visible row back to an absolute index) agree on
+// the offset. m is a value receiver but m.state is a shared pointer, so the
+// write persists across Bubbletea's value-copied Update/View cycle.
+func (m Model) commitsViewTop(total int) int {
+	top := listViewportTop(m.state.CommitsTop, m.state.CommitsCursor, m.commitsViewportHeight(), total)
+	m.state.CommitsTop = top
+	return top
+}
+
+// commitsViewportHeight returns the Commits pane's body-row budget, or 0
+// when the layout hasn't been measured yet (stacked fallback / tests that
+// don't pin paneHeightCommits) — listViewportTop treats 0 as "no scroll".
+func (m Model) commitsViewportHeight() int {
+	if m.paneHeightCommits > 0 {
+		return m.paneHeightCommits
+	}
+	return 0
 }
 
 // allCommitsRow renders the synthetic row at index 0. Label form:

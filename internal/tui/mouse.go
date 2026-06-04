@@ -198,6 +198,11 @@ func (m *Model) mouseClickFiles(row int) {
 	if m.state.PR == nil {
 		return
 	}
+	// hit.ContentRow is relative to the visible top of the pane; the pane
+	// may be scrolled (FilesTop > 0), so add the offset to recover the
+	// absolute row index. FilesTop reflects the last render — exactly the
+	// frame the user clicked on.
+	row += m.state.FilesTop
 	if m.state.FilesTreeMode {
 		rows := m.filesTreeRows()
 		if row < 0 || row >= len(rows) {
@@ -225,6 +230,10 @@ func (m *Model) mouseClickFiles(row int) {
 }
 
 func (m *Model) mouseClickCommits(row int) {
+	// Add the viewport offset so a click on a scrolled Commits column
+	// resolves to the absolute row (mirrors mouseClickFiles / the
+	// Comments-pane CommentsTop offset).
+	row += m.state.CommitsTop
 	commits := m.visibleCommits()
 	if row < 0 || row > len(commits) {
 		return

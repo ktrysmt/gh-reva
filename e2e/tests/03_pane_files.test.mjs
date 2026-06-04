@@ -3,7 +3,12 @@
 import { test, describe, before } from 'node:test'
 import assert from 'node:assert/strict'
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { launchReva, waitReady, quit, paneText, activePaneLabel } from '../helpers/launch.mjs'
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 // D1 + D2 share the same initial-render assertions.
 describe('D1+D2: Files pane initial render (flat list)', () => {
@@ -155,6 +160,25 @@ test('D6: Enter on a file row commits the selection and shifts focus to Diff', a
   screen = await s.text()
   assert.match(screen, /▶ Diff/, 'Enter on a file row must shift focus to Diff')
   assert.match(screen, /Diff: src\/greeting_test\.go/, 'Enter must commit the cursor file (Diff header follows)')
+  await quit(s)
+})
+
+test('D9: Files pane scrolls so the cursor stays visible (120-file fixture)', async () => {
+  // large-pr has 120 files; the flat list overflows the pane height and
+  // must scroll as the cursor walks to the bottom.
+  const fixture = path.join(REPO_ROOT, 'testdata', 'large-pr.json')
+  const s = await launchReva({ fixture })
+  await waitReady(s, { allView: true }) // focus stays on Files, cursor on [*] All
+  let files = paneText(await s.text(), 'Files')
+  assert.ok(!files.includes('file_119.go'), 'last file must be off-screen before scrolling')
+  await s.type('G')
+  files = paneText(await s.text(), 'Files')
+  assert.match(files, /^>[^\n]*file_119\.go/m, 'after G the cursor row (last file) must be visible')
+  await s.type('g')
+  await s.type('g')
+  files = paneText(await s.text(), 'Files')
+  assert.match(files, /^>[^\n]*\[\*\] All/m, 'gg must scroll back to the [*] All row')
+  assert.ok(!files.includes('file_119.go'), 'last file must scroll off after gg')
   await quit(s)
 })
 

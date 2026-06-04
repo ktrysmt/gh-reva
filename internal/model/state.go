@@ -18,8 +18,18 @@ type AppState struct {
 	SelectedRange CommitRange
 	DiffViewMode  DiffViewMode
 
-	FilesCursor    int
-	CommitsCursor  int
+	FilesCursor   int
+	CommitsCursor int
+	// FilesTop / CommitsTop are the display-row offsets of the Files and
+	// Commits pane viewports. Both panes are pure cursor-driven lists
+	// (one buffer row per display row, no wrapping); renderPaneBox clips
+	// at the bottom, so without an offset a cursor moved past the visible
+	// edge (j/k, gg/G, wheel) would advance the logical cursor while the
+	// visible window stayed put. The pane renderers recompute these from
+	// the cursor each frame (listViewportTop) so the viewport follows the
+	// cursor, scrolling only when the cursor would otherwise leave it.
+	FilesTop       int
+	CommitsTop     int
 	DiffCursor     DiffCursor
 	DiffViewport   DiffViewport
 	CommentsCursor int

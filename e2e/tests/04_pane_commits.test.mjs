@@ -2,8 +2,12 @@
 
 import { test, describe, before } from 'node:test'
 import assert from 'node:assert/strict'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { launchReva, waitReady, quit, paneText } from '../helpers/launch.mjs'
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 // E1 + E1b + E2 share the initial-render state for greeting.go.
 describe('E1+E1b+E2: Commits pane initial render (greeting.go selected)', () => {
@@ -159,6 +163,32 @@ test('E12: shift+J resets Commits cursor to the All commits row', async () => {
   const commits = paneText(screen, 'Commits')
   assert.match(commits, /^>[^\n]*All commits/m, 'shift+J must place cursor back on All commits')
   assert.doesNotMatch(screen, /Diff:[^\n]*@\s*[a-f0-9]+/, 'Diff must show whole-PR slice for the new file')
+  await quit(s)
+})
+
+test('E13: Commits pane scrolls so the cursor stays visible (60-commit fixture)', async () => {
+  // large-pr has 60 commits; under the default All view they are all
+  // visible to the Commits filter, so the list overflows the pane height
+  // and must scroll as the cursor walks past the bottom edge.
+  const fixture = path.join(REPO_ROOT, 'testdata', 'large-pr.json')
+  const s = await launchReva({ fixture })
+  // allView keeps SelectedFile=AllFilesPath so the Commits pane is
+  // unfiltered (all 60 commits) and overflows the pane height.
+  await waitReady(s, { allView: true })
+  await s.press('tab') // focus Commits, cursor on the All commits row
+  // The last commit is off-screen at the top of the list.
+  let commits = paneText(await s.text(), 'Commits')
+  assert.ok(!commits.includes('commit 59:'), 'last commit must be off-screen before scrolling')
+  // G jumps the cursor to the last row; the viewport must follow.
+  await s.type('G')
+  commits = paneText(await s.text(), 'Commits')
+  assert.match(commits, /^>[^\n]*commit 59:/m, 'after G the cursor row (commit 59) must be visible')
+  // gg returns to the top — the All commits row reappears.
+  await s.type('g')
+  await s.type('g')
+  commits = paneText(await s.text(), 'Commits')
+  assert.match(commits, /^>[^\n]*All commits/m, 'gg must scroll back to the All commits row')
+  assert.ok(!commits.includes('commit 59:'), 'commit 59 must scroll off after gg')
   await quit(s)
 })
 

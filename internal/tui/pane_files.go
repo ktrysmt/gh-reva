@@ -250,7 +250,27 @@ func (m Model) filesView() string {
 		path := m.searchHighlight(f.Path, model.PaneFiles)
 		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, path, count))
 	}
-	return title + "\n" + strings.Join(rows, "\n")
+	top := m.filesViewTop(len(rows))
+	return title + "\n" + strings.Join(rows[top:], "\n")
+}
+
+// filesViewTop computes the Files viewport's top display-row from the
+// current cursor and stores it on AppState (shared pointer) so the next
+// render and the mouse hit-test agree on the offset. Shared between flat
+// and tree mode — both map FilesCursor 1:1 onto a body row index.
+func (m Model) filesViewTop(total int) int {
+	top := listViewportTop(m.state.FilesTop, m.state.FilesCursor, m.filesViewportHeight(), total)
+	m.state.FilesTop = top
+	return top
+}
+
+// filesViewportHeight returns the Files pane's body-row budget, or 0 when
+// the layout hasn't been measured (listViewportTop treats 0 as "no scroll").
+func (m Model) filesViewportHeight() int {
+	if m.paneHeightFiles > 0 {
+		return m.paneHeightFiles
+	}
+	return 0
 }
 
 // allFilesRow renders the synthetic Files row at cursor index 0. It is
@@ -309,7 +329,8 @@ func (m Model) filesTreeRender() string {
 			out = append(out, fmt.Sprintf("%s%s %s %s%s", cursor, ind, status, name, count))
 		}
 	}
-	return strings.Join(out, "\n")
+	top := m.filesViewTop(len(out))
+	return strings.Join(out[top:], "\n")
 }
 
 func baseName(path string) string {

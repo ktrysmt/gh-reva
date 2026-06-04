@@ -481,6 +481,39 @@ func atLeast(n, floor int) int {
 	return n
 }
 
+// listViewportTop returns the viewport's new top display-row for a pure
+// cursor-driven list (Files / Commits — one buffer row per display row, no
+// wrapping). It keeps `cursor` inside [top, top+height) while moving the
+// viewport as little as possible: it scrolls only when the cursor would
+// otherwise fall off an edge. `prevTop` is the last frame's offset; passing
+// it back in is what makes the cursor stay put mid-viewport instead of
+// snapping to an edge on every move.
+//
+// Returns 0 when the content fits (total <= height) or the height is
+// unknown (<= 0), so panes whose budgets aren't measured yet render the
+// full list exactly as before — renderPaneBox still clips the overflow.
+func listViewportTop(prevTop, cursor, height, total int) int {
+	if height <= 0 || total <= height {
+		return 0
+	}
+	top := prevTop
+	if top < 0 {
+		top = 0
+	}
+	if cursor < top {
+		top = cursor
+	} else if cursor >= top+height {
+		top = cursor - height + 1
+	}
+	if maxTop := total - height; top > maxTop {
+		top = maxTop
+	}
+	if top < 0 {
+		top = 0
+	}
+	return top
+}
+
 // boxFromPaneView lifts a pane renderer's "title\nbody" output into a
 // bordered box with a horizontal divider under the title row. width and
 // height are outer dimensions.
