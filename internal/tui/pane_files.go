@@ -9,63 +9,13 @@ import (
 	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
+// handleKeyFiles dispatches Files-pane keys. The Files pane is tree-only
+// (the flat full-path list was retired); every row is a FilesRow — the
+// synthetic All row, a directory, or a file.
 func (m Model) handleKeyFiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.state.PR == nil {
 		return m, nil
 	}
-	if m.state.FilesTreeMode {
-		return m.handleKeyFilesTree(msg)
-	}
-	return m.handleKeyFilesFlat(msg)
-}
-
-func (m Model) handleKeyFilesFlat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Cursor space is [0, len(files)] inclusive — index 0 is the
-	// synthetic "All (N files)" row; indices 1..N map to files[i-1].
-	// Mirrors the Commits pane's "All commits" virtual row.
-	total := len(m.state.PR.Files)
-	key := msg.String()
-	if handled := m.handlePendingG(key, func() {
-		m.state.FilesCursor = 0
-	}); handled {
-		return m, nil
-	}
-	switch key {
-	case "j", "down":
-		if m.state.FilesCursor < total {
-			m.state.FilesCursor++
-		}
-	case "k", "up":
-		if m.state.FilesCursor > 0 {
-			m.state.FilesCursor--
-		}
-	case "G":
-		m.state.FilesCursor = total
-	case "enter":
-		// Commit the cursor file: select it and shift focus to Diff.
-		// j/k/gg/G no longer auto-select (the per-keystroke Diff
-		// re-render felt sluggish); Enter is the deliberate gesture
-		// that updates SelectedFile.
-		if m.state.FilesCursor < 0 || m.state.FilesCursor > total {
-			return m, nil
-		}
-		if m.state.FilesCursor == 0 {
-			m.selectAllFiles()
-		} else {
-			m.selectFile(m.state.PR.Files[m.state.FilesCursor-1].Path)
-		}
-		m.state.FocusedPane = model.PaneDiff
-	case " ":
-		m.toggleModal(model.PaneFiles)
-	case "t":
-		prev := m.state.FilesTreeMode
-		m.state.FilesTreeMode = !prev
-		m.remapCursorOnTreeToggle(prev)
-	}
-	return m, nil
-}
-
-func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rows := m.filesTreeRows()
 	key := msg.String()
 	if handled := m.handlePendingG(key, func() {
@@ -88,10 +38,6 @@ func (m Model) handleKeyFilesTree(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case " ":
 		m.toggleModal(model.PaneFiles)
-	case "t":
-		prev := m.state.FilesTreeMode
-		m.state.FilesTreeMode = !prev
-		m.remapCursorOnTreeToggle(prev)
 	case "enter":
 		// File rows commit the cursor file (peer to flat-mode Enter):
 		// selectFile + focus Diff. The synthetic All row commits the
@@ -156,25 +102,7 @@ func (m *Model) selectAllFiles() {
 	}
 }
 
-// autoSelectFlat keeps SelectedFile aligned with the Files cursor in flat mode.
-// Visual mode is excluded so multi-row yank does not mutate the working file.
-// Cursor 0 maps to the synthetic All row (selectAllFiles); cursor 1..N maps
-// to PR.Files[i-1] (selectFile).
-func (m *Model) autoSelectFlat() {
-	if m.state.Visual != nil || m.state.PR == nil {
-		return
-	}
-	if m.state.FilesCursor < 0 || m.state.FilesCursor > len(m.state.PR.Files) {
-		return
-	}
-	if m.state.FilesCursor == 0 {
-		m.selectAllFiles()
-		return
-	}
-	m.selectFile(m.state.PR.Files[m.state.FilesCursor-1].Path)
-}
-
-// autoSelectTree mirrors autoSelectFlat for tree mode. Dir rows leave the
+// autoSelectTree keeps SelectedFile aligned with the Files cursor. Dir rows leave the
 // current selection intact so users can fold/unfold without disturbing Diff.
 // FilesRowAll commits the cross-file view.
 func (m *Model) autoSelectTree(rows []model.FilesRow) {
@@ -195,9 +123,9 @@ func (m *Model) autoSelectTree(rows []model.FilesRow) {
 
 // advanceFile moves to the next/prev file in the Files pane while leaving
 // FocusedPane unchanged. Used by Shift+J/K outside the Files pane so users
-// can scrub through file diffs without losing context. Tree-mode walks
-// skip dir rows so callers always land on a file. The synthetic All row
-// is deliberately skipped — Shift+J/K is the "next file diff" gesture, so
+// can scrub through file diffs without losing context. The walk skips dir
+// rows so callers always land on a file. The synthetic All row is
+// deliberately skipped — Shift+J/K is the "next file diff" gesture, so
 // the All view (which isn't a real file) does not fit the contract. The
 // user reaches All by Tab to Files + k / gg.
 func (m *Model) advanceFile(forward bool) {
@@ -207,15 +135,6 @@ func (m *Model) advanceFile(forward bool) {
 	step := 1
 	if !forward {
 		step = -1
-	}
-	if !m.state.FilesTreeMode {
-		idx := m.state.FilesCursor + step
-		if idx < 1 || idx > len(m.state.PR.Files) {
-			return
-		}
-		m.state.FilesCursor = idx
-		m.selectFile(m.state.PR.Files[idx-1].Path)
-		return
 	}
 	rows := m.filesTreeRows()
 	if len(rows) == 0 {
@@ -235,29 +154,13 @@ func (m Model) filesView() string {
 	if m.state.PR == nil {
 		return title
 	}
-	if m.state.FilesTreeMode {
-		return title + "\n" + m.filesTreeRender()
-	}
-	var rows []string
-	rows = append(rows, m.allFilesRow())
-	for i, f := range m.state.PR.Files {
-		cursor := m.styledCursor(model.PaneFiles, i+1, m.state.FilesCursor)
-		count := ""
-		if f.CommentCount > 0 {
-			count = fg(fmt.Sprintf(" (%d)", f.CommentCount), m.theme.CommitSHA)
-		}
-		status := "[" + m.styledStatus(f.Status) + "]"
-		path := m.searchHighlight(f.Path, model.PaneFiles)
-		rows = append(rows, fmt.Sprintf("%s %s %s%s", cursor, status, path, count))
-	}
-	top := m.filesViewTop(len(rows))
-	return title + "\n" + strings.Join(rows[top:], "\n")
+	return title + "\n" + m.filesTreeRender()
 }
 
 // filesViewTop computes the Files viewport's top display-row from the
 // current cursor and stores it on AppState (shared pointer) so the next
-// render and the mouse hit-test agree on the offset. Shared between flat
-// and tree mode — both map FilesCursor 1:1 onto a body row index.
+// render and the mouse hit-test agree on the offset. FilesCursor maps
+// 1:1 onto a tree body-row index.
 func (m Model) filesViewTop(total int) int {
 	top := listViewportTop(m.state.FilesTop, m.state.FilesCursor, m.filesViewportHeight(), total)
 	m.state.FilesTop = top
@@ -271,18 +174,6 @@ func (m Model) filesViewportHeight() int {
 		return m.paneHeightFiles
 	}
 	return 0
-}
-
-// allFilesRow renders the synthetic Files row at cursor index 0. It is
-// the symmetric counterpart of the Commits pane's "All commits" row.
-// Selecting it (Enter or click) sets SelectedFile=AllFilesPath and the
-// Diff column switches to a cross-file concatenated view; from there
-// the Commits column lets the user walk the entire PR history without
-// re-selecting individual files.
-func (m Model) allFilesRow() string {
-	cursor := m.styledCursor(model.PaneFiles, 0, m.state.FilesCursor)
-	label := fmt.Sprintf("All (%d files)", len(m.state.PR.Files))
-	return cursor + " " + m.allRowMarker() + " " + fgBold(label, "")
 }
 
 // allRowMarker returns the synthetic "[*]" annotation used by the All row

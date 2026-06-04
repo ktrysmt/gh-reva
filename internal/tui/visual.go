@@ -98,33 +98,16 @@ func (m Model) yankString() string {
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
-		if m.state.FilesTreeMode {
-			treeRows := m.filesTreeRows()
-			lo, hi := m.linewiseSelectionRange(model.PaneFiles, m.state.FilesCursor, len(treeRows))
-			var rows []string
-			for i := lo; i <= hi && i < len(treeRows); i++ {
-				// Skip the synthetic All row (cursor index 0 in tree
-				// mode) — it has no real path. Mirrors the Commits
-				// pane's All-commits row skip.
-				if treeRows[i].Kind == model.FilesRowAll {
-					continue
-				}
-				rows = append(rows, treeRows[i].Path)
-			}
-			return strings.Join(rows, "\n")
-		}
-		// Cursor space is len(files)+1 to host the All row at index 0.
-		// The virtual row contributes nothing to the clipboard (no real
-		// path) so the loop skips it; real files live at i in [1, N]
-		// mapping to PR.Files[i-1].
-		total := len(m.state.PR.Files) + 1
-		lo, hi := m.linewiseSelectionRange(model.PaneFiles, m.state.FilesCursor, total)
+		treeRows := m.filesTreeRows()
+		lo, hi := m.linewiseSelectionRange(model.PaneFiles, m.state.FilesCursor, len(treeRows))
 		var rows []string
-		for i := lo; i <= hi && i < total; i++ {
-			if i == 0 {
+		for i := lo; i <= hi && i < len(treeRows); i++ {
+			// Skip the synthetic All row (cursor index 0) — it has no
+			// real path. Mirrors the Commits pane's All-commits row skip.
+			if treeRows[i].Kind == model.FilesRowAll {
 				continue
 			}
-			rows = append(rows, m.state.PR.Files[i-1].Path)
+			rows = append(rows, treeRows[i].Path)
 		}
 		return strings.Join(rows, "\n")
 	case model.PaneCommits:

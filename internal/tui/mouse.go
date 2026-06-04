@@ -203,30 +203,24 @@ func (m *Model) mouseClickFiles(row int) {
 	// absolute row index. FilesTop reflects the last render — exactly the
 	// frame the user clicked on.
 	row += m.state.FilesTop
-	if m.state.FilesTreeMode {
-		rows := m.filesTreeRows()
-		if row < 0 || row >= len(rows) {
-			return
-		}
-		m.state.FilesCursor = row
-		r := rows[row]
-		switch r.Kind {
-		case model.FilesRowFile:
-			m.selectFile(r.Path)
-		case model.FilesRowDir:
-			if m.state.FoldedDirs[r.Path] {
-				delete(m.state.FoldedDirs, r.Path)
-			} else {
-				m.state.FoldedDirs[r.Path] = true
-			}
-		}
-		return
-	}
-	if row < 0 || row >= len(m.state.PR.Files) {
+	rows := m.filesTreeRows()
+	if row < 0 || row >= len(rows) {
 		return
 	}
 	m.state.FilesCursor = row
-	m.selectFile(m.state.PR.Files[row].Path)
+	r := rows[row]
+	switch r.Kind {
+	case model.FilesRowAll:
+		m.selectAllFiles()
+	case model.FilesRowFile:
+		m.selectFile(r.Path)
+	case model.FilesRowDir:
+		if m.state.FoldedDirs[r.Path] {
+			delete(m.state.FoldedDirs, r.Path)
+		} else {
+			m.state.FoldedDirs[r.Path] = true
+		}
+	}
 }
 
 func (m *Model) mouseClickCommits(row int) {
@@ -332,17 +326,9 @@ func (m *Model) mouseWheelFiles(dir int) {
 	if m.state.PR == nil {
 		return
 	}
-	if m.state.FilesTreeMode {
-		rows := m.filesTreeRows()
-		next := m.state.FilesCursor + dir
-		if next < 0 || next >= len(rows) {
-			return
-		}
-		m.state.FilesCursor = next
-		return
-	}
+	rows := m.filesTreeRows()
 	next := m.state.FilesCursor + dir
-	if next < 0 || next >= len(m.state.PR.Files) {
+	if next < 0 || next >= len(rows) {
 		return
 	}
 	m.state.FilesCursor = next

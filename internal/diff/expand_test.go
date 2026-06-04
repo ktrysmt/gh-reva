@@ -59,10 +59,11 @@ func itoa(n int) string {
 }
 
 func TestExpand_NoFileLines_NoSyntheticEmitted(t *testing.T) {
-	// Without FileLines, Expand returns the raw patch unchanged — no
-	// synthetic injection so existing test fixtures that don't exercise
-	// expansion keep their buffer indices stable. Production prefetches
-	// FileLines on file selection so the synthetic always shows live.
+	// Without FileLines AND without Placeholders, Expand returns the raw
+	// patch unchanged — no synthetic injection so unit-test fixtures that
+	// call Expand directly keep their buffer indices stable. Production
+	// passes Placeholders:true (see TestExpand_Placeholders_*) so the
+	// `···` rows surface from the first frame without a file fetch.
 	res := Expand(ExpandInputs{Patch: twoHunkPatch})
 	for _, l := range res.Lines {
 		if l == SyntheticLine {
@@ -71,6 +72,61 @@ func TestExpand_NoFileLines_NoSyntheticEmitted(t *testing.T) {
 	}
 	if len(res.Gaps) != 0 {
 		t.Fatalf("gaps map non-empty without FileLines: %+v", res.Gaps)
+	}
+}
+
+func TestExpand_Placeholders_BOFAndMidWithoutFileLines(t *testing.T) {
+	// Placeholders:true emits the BOF and Mid `···` rows from the patch's
+	// hunk-header arithmetic alone — no FileLines required. This is what
+	// keeps the Diff layout stable from the first frame (no jitter when a
+	// later prefetch lands): the synthetic rows are present immediately,
+	// so loading file contents only fills in the EOF row (which needs the
+	// file length) and the revealed context, never shifting BOF/Mid.
+	res := Expand(ExpandInputs{Patch: twoHunkPatch, Placeholders: true})
+
+	var kinds []GapKind
+	synthCount := 0
+	for _, l := range res.Lines {
+		if l == SyntheticLine {
+			synthCount++
+		}
+	}
+	var bof, mid *GapInfo
+	for idx := range res.Gaps {
+		g := res.Gaps[idx]
+		kinds = append(kinds, g.ID.Kind)
+		switch g.ID.Kind {
+		case GapKindBOF:
+			gg := g
+			bof = &gg
+		case GapKindMid:
+			gg := g
+			mid = &gg
+		case GapKindEOF:
+			t.Fatalf("EOF synthetic emitted without FileLines (file length unknown): %+v", g)
+		}
+	}
+	if synthCount != 2 {
+		t.Fatalf("want 2 synthetic rows (BOF + Mid), got %d: %q", synthCount, res.Lines)
+	}
+	if bof == nil {
+		t.Fatalf("BOF gap not emitted under Placeholders: kinds=%v", kinds)
+	}
+	if bof.HiddenCount != 2 {
+		t.Fatalf("BOF HiddenCount: want 2, got %d", bof.HiddenCount)
+	}
+	if mid == nil {
+		t.Fatalf("Mid gap not emitted under Placeholders: kinds=%v", kinds)
+	}
+	if mid.HiddenCount != 8 {
+		t.Fatalf("Mid HiddenCount: want 8, got %d", mid.HiddenCount)
+	}
+	// No FileLines → no revealed context rows, only the synthetic markers
+	// interleaved with the raw hunk bodies.
+	for _, l := range res.Lines {
+		if strings.HasPrefix(l, " L") {
+			t.Fatalf("revealed context emitted without FileLines: %q", l)
+		}
 	}
 }
 

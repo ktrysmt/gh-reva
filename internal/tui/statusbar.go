@@ -23,8 +23,7 @@ const statusBarRows = 2
 // definition. Format: `key:label` separated by single spaces; multiple
 // alternatives in one slot use `/` (e.g. `j/k`, `H/M/L`).
 const (
-	hintFilesFlat     = "j/k:move /:search space:zoom t:tree"
-	hintFilesTree     = "j/k:move /:search enter:fold t:tree"
+	hintFilesTree     = "j/k:move /:search enter:open space:zoom"
 	hintCommits       = "j/k:move /:search space:zoom"
 	// hintDiff carries an `[A]`/`[B]` Side indicator at the head — the
 	// per-column UX (h/l switch, per-side ◆) makes "which lane am I
@@ -158,10 +157,7 @@ func (m Model) statusBarContent() (string, string) {
 	}
 	switch m.state.FocusedPane {
 	case model.PaneFiles:
-		if m.state.FilesTreeMode {
-			return hintFilesTree, statusCommonSuffix
-		}
-		return hintFilesFlat, statusCommonSuffix
+		return hintFilesTree, statusCommonSuffix
 	case model.PaneCommits:
 		return hintCommits, statusCommonSuffix
 	case model.PaneDiff:

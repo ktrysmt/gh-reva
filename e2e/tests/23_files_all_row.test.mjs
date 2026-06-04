@@ -28,9 +28,10 @@ describe('AR1: All row renders at the top of the Files pane', () => {
     assert.match(files, /\[\*\]\s+All \(\d+ files\)/, 'Files pane must include the All row with the [*] marker')
     const lines = files.split('\n')
     const allIdx = lines.findIndex(l => /All \(\d+ files\)/.test(l))
-    const firstFileIdx = lines.findIndex(l => /src\/greeting\.go/.test(l))
+    // Tree-only: files render by basename, so match greeting.go's leaf.
+    const firstFileIdx = lines.findIndex(l => /\bgreeting\.go/.test(l))
     assert.ok(allIdx >= 0 && firstFileIdx > allIdx,
-      `All row must precede the first file row; allIdx=${allIdx} firstFileIdx=${firstFileIdx}`)
+      `All row must precede the greeting.go row; allIdx=${allIdx} firstFileIdx=${firstFileIdx}`)
   })
 
   test('AR1b: initial cursor lands on the [*] All row, not the first file', () => {
@@ -58,17 +59,19 @@ describe('AR2: navigating to the All row', () => {
     await quit(s)
   })
 
-  test('AR2a: j from the [*] row lands on the first file; k back to [*]', async () => {
+  test('AR2a: j from the [*] row lands on the first tree row; k back to [*]', async () => {
+    // The Files pane is tree-only, so the row directly below the All row
+    // is the first directory header (docs/), not a file. j moves one row.
     await s.press('j')
     let files = paneText(await s.text(), 'Files')
     let cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
-    assert.ok(/src\/greeting\.go/.test(cursorRow),
-      `j from cursor 0 should land on the first file; got "${cursorRow}"`)
+    assert.ok(/v\s+docs\//.test(cursorRow),
+      `j from cursor 0 should land on the first tree row (docs/); got "${cursorRow}"`)
     await s.press('k')
     files = paneText(await s.text(), 'Files')
     cursorRow = files.split('\n').find(l => l.startsWith('> ')) || ''
     assert.ok(/\[\*\]\s+All \(\d+ files\)/.test(cursorRow),
-      `k from first file should return to the [*] All row; got "${cursorRow}"`)
+      `k should return to the [*] All row; got "${cursorRow}"`)
   })
 
   test('AR2b: Enter on the All row keeps the All view and focuses Diff', async () => {

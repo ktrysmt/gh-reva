@@ -95,9 +95,22 @@ export async function launchReva ({
  */
 export async function waitReady (session, { timeout = 10000, allView = false } = {}) {
   await session.waitForText('Files', { timeout })
-  if (!allView) {
-    await session.press('J')
+  if (allView) {
+    return
   }
+  // The Files pane is tree-only. Shift+J (advanceFile) walks to the next
+  // FILE row, skipping directory rows, and clamps at the last file. Two
+  // steps reach the canonical working file across every bare-waitReady
+  // fixture, width-independently:
+  //   - default sample-pr (multi-dir): All → docs/api.md → src/greeting.go.
+  //     The tree sorts docs/ before src/, so the second J skips past
+  //     api.md onto greeting.go — the historical baseline the suite is
+  //     built around.
+  //   - single-file fixtures (wrap-pr, expand-pr → file.txt, …): All →
+  //     the only file → clamp (second J is a no-op), so the cursor stays
+  //     on that file.
+  await session.press('J')
+  await session.press('J')
 }
 
 /**

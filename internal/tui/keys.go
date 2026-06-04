@@ -252,36 +252,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state.Modal != nil {
 			switch m.state.Modal.Pane {
 			case model.PaneFiles:
-				// Tree mode + dir row: fall through to the per-pane
-				// handler so the directory fold/unfold gesture stays
-				// available. fileIndexFromTreeCursor returns -1 when
-				// the cursor is on a directory row.
-				if m.state.FilesTreeMode && m.fileIndexFromTreeCursor() < 0 {
+				// Commit the cursor row before leaving the modal — j/k no
+				// longer auto-select, so without this the user would close
+				// the modal and find Diff still parked on the previous
+				// SelectedFile. Directory rows are the exception: `break`
+				// leaves the Modal.Pane switch so the per-pane handler
+				// (handleKeyFiles below) folds/unfolds and the modal stays
+				// open.
+				rows := m.filesTreeRows()
+				if m.state.FilesCursor < 0 || m.state.FilesCursor >= len(rows) {
 					break
 				}
-				// Commit the cursor file before leaving the modal.
-				// j/k no longer auto-select, so without this the user
-				// would close the modal and find Diff still parked on
-				// the previous SelectedFile. Cursor 0 (flat) and the
-				// FilesRowAll row (tree) commit the synthetic All view.
-				if !m.state.FilesTreeMode {
-					switch {
-					case m.state.FilesCursor == 0:
-						m.selectAllFiles()
-					case m.state.FilesCursor >= 1 && m.state.FilesCursor <= len(m.state.PR.Files):
-						m.selectFile(m.state.PR.Files[m.state.FilesCursor-1].Path)
-					}
+				r := rows[m.state.FilesCursor]
+				if r.Kind == model.FilesRowDir {
+					break
+				}
+				if r.Kind == model.FilesRowAll {
+					m.selectAllFiles()
 				} else {
-					rows := m.filesTreeRows()
-					if m.state.FilesCursor >= 0 && m.state.FilesCursor < len(rows) {
-						r := rows[m.state.FilesCursor]
-						switch r.Kind {
-						case model.FilesRowAll:
-							m.selectAllFiles()
-						case model.FilesRowFile:
-							m.selectFile(r.Path)
-						}
-					}
+					m.selectFile(r.Path)
 				}
 				m.state.Modal = nil
 				m.state.FocusedPane = model.PaneDiff

@@ -317,11 +317,16 @@ test('F10b: Shift+K at first file and Shift+J at last file are clamped', async (
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
-  // At greeting.go (first file). Shift+K must be a no-op for SelectedFile.
-  await s.type('K')
+  // Tree file order: docs/api.md, src/greeting.go, src/greeting_test.go,
+  // src/main.go, go.mod. waitReady parks on greeting.go; walk up to the
+  // first file (api.md) and verify Shift+K clamps there.
+  await s.type('K') // greeting.go → api.md (first file)
   let screen = await s.text()
-  assert.match(screen, /Diff: src\/greeting\.go/, 'Shift+K at first file does not wrap')
-  // Walk to the last file (5 files in fixture: 0..4 → 4 forward steps).
+  assert.match(screen, /Diff: docs\/api\.md/, 'Shift+K reaches the first file api.md')
+  await s.type('K') // clamp
+  screen = await s.text()
+  assert.match(screen, /Diff: docs\/api\.md/, 'Shift+K at first file does not wrap')
+  // Walk to the last file (5 files: 0..4 → 4 forward steps from the first).
   await s.type('J'); await s.type('J'); await s.type('J'); await s.type('J')
   screen = await s.text()
   assert.match(screen, /Diff: go\.mod/, 'reached last file (go.mod)')

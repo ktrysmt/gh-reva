@@ -984,8 +984,10 @@ func (m Model) patchInfo() *patchInfo {
 	}
 
 	// File-content ref: HEAD for the WholePR view, the commit SHA for a
-	// single-commit drill. The fetch is lazy — Diff renders without
-	// EOF synthetic until the user's first expand triggers GetFileContents.
+	// single-commit drill. The fetch is lazy: BOF / Mid `···` markers show
+	// immediately via Placeholders (below); the EOF marker and any revealed
+	// context wait until FileContents is cached (prefetch on file selection,
+	// or the user's first expand triggers GetFileContents).
 	ref := ""
 	if m.state.PR != nil {
 		ref = m.state.PR.HeadSHA
@@ -1001,6 +1003,11 @@ func (m Model) patchInfo() *patchInfo {
 	res := diff.Expand(diff.ExpandInputs{
 		Patch:     patch,
 		FileLines: fileLines,
+		// Placeholders draws the `···` BOF / Mid markers from hunk-header
+		// arithmetic on the very first frame — before (or even without) a
+		// FileContents fetch — so the Diff layout never shifts when the
+		// prefetch lands. EOF still waits on FileLines (file length).
+		Placeholders: true,
 		Expand: diff.ExpandState{
 			BOFBelow:   es.BOFBelow,
 			EOFAbove:   es.EOFAbove,

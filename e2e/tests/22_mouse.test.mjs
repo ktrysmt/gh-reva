@@ -95,10 +95,12 @@ test('M6: clicking a Files file row updates the Diff column', async () => {
   let screen = await s.text()
   assert.ok(/Diff: src\/greeting\.go/.test(screen),
     'pre: Diff title should show src/greeting.go on load')
-  // Files content row 1 (y=4) is `src/greeting_test.go`. Click and assert
-  // Diff retitled — the click must commit the file (selectFile) on top
-  // of the cursor move, otherwise Diff stays parked on the prior file.
-  await s.clickAt(5, 4)
+  // Tree rows (content y starts at 3): y=3 All, y=4 v docs/, y=5 api.md,
+  // y=6 v src/, y=7 greeting.go, y=8 greeting_test.go. Click the
+  // greeting_test.go row and assert Diff retitled — the click must commit
+  // the file (selectFile) on top of the cursor move, otherwise Diff stays
+  // parked on the prior file.
+  await s.clickAt(5, 8)
   screen = await s.text()
   assert.ok(/Diff: src\/greeting_test\.go/.test(screen),
     `Diff title should follow Files click; saw:\n${screen.split('\n').slice(0, 4).join('\n')}`)

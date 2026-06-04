@@ -44,9 +44,9 @@ type AppState struct {
 	// (focus handoff from Diff, file / commit selection, refresh).
 	CommentsTop    int
 
-	FilesTreeMode   bool
-	FoldedDirs      map[string]bool
-	FilesViewIndex  []FilesRow
+	// The Files pane is tree-only (the flat full-path list was retired).
+	// FoldedDirs records which directory rows are collapsed.
+	FoldedDirs map[string]bool
 
 	// CommentsHidden hides the right (Comments) pane and lets the Diff
 	// column take its width. Toggled by Ctrl+E. Hiding while focus is on

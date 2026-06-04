@@ -66,10 +66,21 @@ type ExpandState struct {
 // gaps are silently suppressed (Expand cannot know the file length) and
 // expanded-context emission for any gap is skipped because the source
 // content isn't available.
+//
+// Placeholders decouples the `···` synthetic ROW emission from the
+// presence of FileLines. When true, BOF and Mid gap synthetics are
+// emitted purely from the patch's hunk-header arithmetic — no file
+// fetch required. This is what production passes so the Diff layout is
+// stable from the first frame: the markers are present immediately and a
+// later file-content prefetch only fills in the EOF row (which needs the
+// file length) and any revealed context, never shifting the BOF/Mid rows
+// the user is already looking at. EOF still requires FileLines because
+// the file length is unknowable from the patch alone.
 type ExpandInputs struct {
-	Patch     string
-	FileLines []string
-	Expand    ExpandState
+	Patch        string
+	FileLines    []string
+	Expand       ExpandState
+	Placeholders bool
 }
 
 // ExpandResult is the augmented patch buffer (synthetic + expanded
@@ -117,7 +128,15 @@ func Expand(in ExpandInputs) ExpandResult {
 	if in.Patch == "" {
 		return out
 	}
-	emit := in.FileLines != nil
+	// showGaps gates the BOF / Mid synthetic ROW emission. It is driven by
+	// either having FileLines (legacy / direct-call path) OR the caller
+	// opting into Placeholders (production), so the `···` markers can be
+	// drawn from hunk-header arithmetic before any file fetch lands. The
+	// revealed-context loops inside the emit* helpers stay bounds-guarded
+	// on FileLines, so a nil FileLines simply yields markers with no
+	// expanded body. EOF emission is handled separately below because it
+	// needs the file length and therefore always requires FileLines.
+	showGaps := in.FileLines != nil || in.Placeholders
 	rawLines := strings.Split(strings.TrimRight(in.Patch, "\n"), "\n")
 
 	// Locate file headers (---/+++ before the first @@) and the hunks.
@@ -155,7 +174,7 @@ func Expand(in ExpandInputs) ExpandResult {
 	// BOF gap: any hidden region between file line 1 and the first hunk's
 	// OldStart. The new and old starts always agree at the first hunk
 	// (delta = 0 before any change), so we read the count from OldStart.
-	if emit && len(hunks) > 0 && hunks[0].OldStart > 1 {
+	if showGaps && len(hunks) > 0 && hunks[0].OldStart > 1 {
 		hidden := hunks[0].OldStart - 1
 		emitBOFGap(&out, hidden, hunks[0].NewStart, in.Expand.BOFBelow, in.FileLines)
 	}
@@ -163,7 +182,7 @@ func Expand(in ExpandInputs) ExpandResult {
 	// Hunk bodies interleaved with inter-hunk gaps.
 	for i := range hunks {
 		out.Lines = append(out.Lines, rawLines[hunks[i].HeaderIdx:hunks[i].BodyEnd]...)
-		if !emit || i+1 >= len(hunks) {
+		if !showGaps || i+1 >= len(hunks) {
 			continue
 		}
 		gapOldStart := hunks[i].OldStart + hunks[i].OldCount
@@ -177,8 +196,12 @@ func Expand(in ExpandInputs) ExpandResult {
 	}
 
 	// EOF gap: any hidden region between the last hunk's end and the file
-	// end. Requires file lines (we can't know the file length otherwise).
-	if emit && len(hunks) > 0 && len(in.FileLines) > 0 {
+	// end. Always requires file lines — unlike BOF / Mid this gap's size
+	// is unknowable from the patch (we can't know the file length), so
+	// Placeholders does not apply here. It surfaces once the prefetch
+	// lands, appended below all hunk bodies so it never shifts on-screen
+	// content the user is viewing at the top of a freshly-selected file.
+	if len(hunks) > 0 && len(in.FileLines) > 0 {
 		last := hunks[len(hunks)-1]
 		nextOld := last.OldStart + last.OldCount
 		nextNew := last.NewStart + last.NewCount

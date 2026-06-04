@@ -147,7 +147,7 @@ test('N11: modal lists every pane section + Global / Visual via unique binding d
     'Toggle help',          // Global ?
     'Next pane',            // Global Tab
     'Jump to Files',        // Global 1-4 (description copy)
-    'Toggle tree mode',     // Files t
+    'Open file / fold dir', // Files Enter
     'Toggle zoom modal',    // Files / Commits / Comments Space
     'Half page down',       // Diff Ctrl+D
     'Toggle split',         // Diff Space

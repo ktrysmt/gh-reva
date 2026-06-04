@@ -156,11 +156,7 @@ func (m *Model) applySearchCursor(s *model.SearchState) {
 	switch s.TargetPane {
 	case model.PaneFiles:
 		m.state.FilesCursor = idx
-		if m.state.FilesTreeMode {
-			m.autoSelectTree(m.filesTreeRows())
-		} else {
-			m.autoSelectFlat()
-		}
+		m.autoSelectTree(m.filesTreeRows())
 	case model.PaneCommits:
 		m.state.CommitsCursor = idx
 		m.autoSelectCommit(m.visibleCommits())
@@ -225,24 +221,14 @@ func substr(haystack, needle string, foldCase bool) bool {
 
 func (m Model) collectFileMatches(q string, fold bool) []model.SearchMatch {
 	var out []model.SearchMatch
-	if m.state.FilesTreeMode {
-		for i, r := range m.filesTreeRows() {
-			if r.Kind == model.FilesRowAll {
-				// The synthetic "All (N files)" row is not a search
-				// target — its literal text never carries user content.
-				continue
-			}
-			if substr(r.Path, q, fold) {
-				out = append(out, model.SearchMatch{Index: i})
-			}
+	for i, r := range m.filesTreeRows() {
+		if r.Kind == model.FilesRowAll {
+			// The synthetic "All (N files)" row is not a search target —
+			// its literal text never carries user content.
+			continue
 		}
-		return out
-	}
-	// Cursor index 0 is the synthetic "All (N files)" row, so real
-	// files live at cursor idx i+1.
-	for i, f := range m.state.PR.Files {
-		if substr(f.Path, q, fold) {
-			out = append(out, model.SearchMatch{Index: i + 1})
+		if substr(r.Path, q, fold) {
+			out = append(out, model.SearchMatch{Index: i})
 		}
 	}
 	return out

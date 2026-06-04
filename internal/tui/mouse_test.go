@@ -165,7 +165,8 @@ func TestMouse_ClickFilesContent_FocusesAndCommitsFile(t *testing.T) {
 	m := mouseModelFixture(t)
 	m.state.FocusedPane = model.PaneDiff
 	m.state.FilesCursor = 0
-	res, _ := m.handleMouse(leftClick(5, 5)) // Files content row 2 → src/baz.go
+	// Tree rows: 0 All, 1 src/, 2 src/bar.go, 3 src/baz.go, 4 src/foo.go.
+	res, _ := m.handleMouse(leftClick(5, 5)) // Files content row 2 → src/bar.go
 	m = res.(Model)
 	if m.state.FocusedPane != model.PaneFiles {
 		t.Errorf("FocusedPane=%v, want Files", m.state.FocusedPane)
@@ -175,14 +176,13 @@ func TestMouse_ClickFilesContent_FocusesAndCommitsFile(t *testing.T) {
 	}
 	// A click is a deliberate one-shot gesture (unlike j/k repeat — #19),
 	// so the Diff column must follow: SelectedFile updates to the row.
-	if m.state.SelectedFile != "src/baz.go" {
-		t.Errorf("SelectedFile=%q, want src/baz.go (click commits)", m.state.SelectedFile)
+	if m.state.SelectedFile != "src/bar.go" {
+		t.Errorf("SelectedFile=%q, want src/bar.go (click commits)", m.state.SelectedFile)
 	}
 }
 
 func TestMouse_ClickFilesTreeDirRow_FoldsToggle(t *testing.T) {
 	m := mouseModelFixture(t)
-	m.state.FilesTreeMode = true
 	rows := m.filesTreeRows()
 	// Find the first directory row.
 	var dirIdx = -1

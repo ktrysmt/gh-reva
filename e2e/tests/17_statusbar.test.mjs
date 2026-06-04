@@ -39,13 +39,15 @@ function statusBarRow (screen) {
   return ''
 }
 
-test('S1: Files (flat) status bar shows context + common suffix + PR URL', async () => {
+test('S1: Files status bar shows context + common suffix + PR URL', async () => {
   const s = await launchReva()
   await waitReady(s)
   const row = statusBarRow(await s.text())
   assert.match(row, /j\/k:move/)
   assert.match(row, /space:zoom/)
-  assert.match(row, /t:tree/)
+  assert.match(row, /enter:open/)
+  // The Files pane is tree-only; the retired flat/tree toggle hint is gone.
+  assert.ok(!/t:tree/.test(row), `t:tree hint should be retired (tree-only); got: ${row}`)
   // Common suffix
   assert.match(row, /tab\/shift\+tab:pane/)
   assert.match(row, /1-4:jump/)
@@ -59,13 +61,15 @@ test('S1: Files (flat) status bar shows context + common suffix + PR URL', async
   await quit(s)
 })
 
-test('S2: Files (tree) adds enter:fold to the context hint', async () => {
+test('S2: Files (tree-only) hint exposes the open/fold gesture', async () => {
+  // The Files pane is tree-only — there is no flat/tree toggle. The hint
+  // surfaces the Enter gesture (open file / fold dir) and never mentions
+  // a `t:tree` toggle.
   const s = await launchReva()
   await waitReady(s)
-  await s.type('t')
   const row = statusBarRow(await s.text())
-  assert.match(row, /enter:fold/)
-  assert.match(row, /t:tree/)
+  assert.match(row, /enter:open/)
+  assert.ok(!/t:tree/.test(row), `t:tree hint should be retired; got: ${row}`)
   await quit(s)
 })
 

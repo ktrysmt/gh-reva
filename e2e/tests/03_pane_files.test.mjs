@@ -10,8 +10,10 @@ import { launchReva, waitReady, quit, paneText, activePaneLabel } from '../helpe
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// D1 + D2 share the same initial-render assertions.
-describe('D1+D2: Files pane initial render (flat list)', () => {
+// D1 + D2 share the same initial-render assertions. The Files pane is
+// tree-only: directory rows render `v <name>/` and files render their
+// basename + bracketed status.
+describe('D1+D2: Files pane initial render (tree)', () => {
   let screen
   before(async () => {
     const s = await launchReva()
@@ -20,19 +22,23 @@ describe('D1+D2: Files pane initial render (flat list)', () => {
     await quit(s)
   })
 
-  test('D1: changed files are listed', () => {
+  test('D1: directories and file basenames are listed', () => {
     const files = paneText(screen, 'Files')
-    for (const path of ['src/greeting.go', 'src/greeting_test.go', 'src/main.go', 'docs/api.md', 'go.mod']) {
-      assert.ok(files.includes(path), `file "${path}" missing in Files pane:\n${files}`)
+    // Expanded directory headers.
+    assert.match(files, /v\s+docs\//, 'tree shows expanded docs/ header')
+    assert.match(files, /v\s+src\//, 'tree shows expanded src/ header')
+    // File basenames (tree shows the leaf, not the full path).
+    for (const name of ['greeting.go', 'greeting_test.go', 'main.go', 'api.md', 'go.mod']) {
+      assert.match(files, new RegExp(`\\s${name.replace('.', '\\.')}(?:\\s|$)`), `basename "${name}" missing in Files pane:\n${files}`)
     }
   })
 
   test('D2: each file shows status ([A]/[M]/[D]/[R]) and comment count when > 0', () => {
     const files = paneText(screen, 'Files')
-    assert.match(files, /\[M\]\s+src\/greeting\.go\s+\(3\)/, 'expected [M] + (3) for greeting.go (carol root + alice reply + bob resolved)')
-    assert.match(files, /\[A\]\s+src\/greeting_test\.go\s+\(2\)/, 'expected [A] + (2) for greeting_test.go')
-    assert.match(files, /\[M\]\s+src\/main\.go(?!\s*\()/, 'main.go has no comments → no count')
-    assert.match(files, /\[A\]\s+docs\/api\.md(?!\s*\()/, 'api.md has no comments → no count')
+    assert.match(files, /\[M\]\s+greeting\.go\s+\(3\)/, 'expected [M] + (3) for greeting.go (carol root + alice reply + bob resolved)')
+    assert.match(files, /\[A\]\s+greeting_test\.go\s+\(2\)/, 'expected [A] + (2) for greeting_test.go')
+    assert.match(files, /\[M\]\s+main\.go(?!\s*\()/, 'main.go has no comments → no count')
+    assert.match(files, /\[A\]\s+api\.md(?!\s*\()/, 'api.md has no comments → no count')
     assert.match(files, /\[M\]\s+go\.mod(?!\s*\()/, 'go.mod has no comments → no count')
   })
 
@@ -42,36 +48,29 @@ describe('D1+D2: Files pane initial render (flat list)', () => {
   })
 })
 
-test('D1b: t toggles directory tree rendering', async () => {
+test('D1b: the Files pane renders as a tree by default (no flat mode)', async () => {
   const s = await launchReva()
   await waitReady(s)
-  let screen = await s.text()
-  // Default flat: full paths visible.
-  assert.ok(screen.includes('src/greeting.go'), 'flat mode shows full path')
-  await s.type('t')
-  screen = await s.text()
-  // Tree: directory headers + basenames.
-  assert.match(screen, /v\s+src\//, 'tree mode shows expanded src/ header')
-  assert.match(screen, /v\s+docs\//, 'tree mode shows expanded docs/ header')
-  assert.match(screen, /\sgreeting\.go(?:\s|$)/, 'tree mode shows basename greeting.go')
-  // Toggle back to flat.
-  await s.type('t')
-  screen = await s.text()
-  assert.ok(screen.includes('src/greeting.go'), 'flat mode restored')
+  const files = paneText(await s.text(), 'Files')
+  // Directory headers + basenames, never full paths.
+  assert.match(files, /v\s+src\//, 'tree mode shows expanded src/ header')
+  assert.match(files, /v\s+docs\//, 'tree mode shows expanded docs/ header')
+  assert.match(files, /\sgreeting\.go(?:\s|$)/, 'tree mode shows basename greeting.go')
+  assert.ok(!files.includes('src/greeting.go'), 'Files pane must not show full paths (tree-only)')
   await quit(s)
 })
 
 test('D3: j/k moves the Files cursor', async () => {
   const s = await launchReva()
-  await waitReady(s)
+  await waitReady(s) // cursor lands on greeting.go
   let files = paneText(await s.text(), 'Files')
-  assert.match(files, /^>[^\n]*src\/greeting\.go/m, 'cursor should start on first file')
+  assert.match(files, /^>[^\n]*greeting\.go/m, 'cursor should start on greeting.go')
   await s.type('j')
   files = paneText(await s.text(), 'Files')
-  assert.match(files, /^>[^\n]*src\/greeting_test\.go/m, 'after j → cursor on second file')
+  assert.match(files, /^>[^\n]*greeting_test\.go/m, 'after j → cursor on greeting_test.go')
   await s.type('k')
   files = paneText(await s.text(), 'Files')
-  assert.match(files, /^>[^\n]*src\/greeting\.go/m, 'after k → cursor back on first file')
+  assert.match(files, /^>[^\n]*greeting\.go/m, 'after k → cursor back on greeting.go')
   await quit(s)
 })
 
@@ -87,13 +86,13 @@ test('D3b: j/k in Files moves the cursor but does NOT change SelectedFile', asyn
 
   await s.type('j')
   screen = await s.text()
-  assert.match(paneText(screen, 'Files'), /^>[^\n]*src\/greeting_test\.go/m, 'Files cursor advances to greeting_test.go')
+  assert.match(paneText(screen, 'Files'), /^>[^\n]*greeting_test\.go/m, 'Files cursor advances to greeting_test.go')
   assert.match(screen, /Diff: src\/greeting\.go/, 'Diff must stay on greeting.go (no auto-select)')
   assert.match(screen, /▶ Files/, 'focus stays on Files after j')
 
   await s.type('k')
   screen = await s.text()
-  assert.match(paneText(screen, 'Files'), /^>[^\n]*src\/greeting\.go/m, 'k moves cursor back to first file')
+  assert.match(paneText(screen, 'Files'), /^>[^\n]*greeting\.go/m, 'k moves cursor back to greeting.go')
   assert.match(screen, /Diff: src\/greeting\.go/, 'Diff still on greeting.go after k')
   await quit(s)
 })
@@ -125,8 +124,7 @@ test('D4: h/l is not bound in Files', async () => {
 
 test('D5: Enter on a directory toggles expand/collapse', async () => {
   const s = await launchReva()
-  await waitReady(s)
-  await s.type('t')   // tree mode; cursor lands on src/greeting.go
+  await waitReady(s) // cursor lands on src/greeting.go
   // Move up to the src/ directory header (one row above greeting.go).
   await s.type('k')
   let files = paneText(await s.text(), 'Files')
@@ -164,21 +162,23 @@ test('D6: Enter on a file row commits the selection and shifts focus to Diff', a
 })
 
 test('D9: Files pane scrolls so the cursor stays visible (120-file fixture)', async () => {
-  // large-pr has 120 files; the flat list overflows the pane height and
-  // must scroll as the cursor walks to the bottom.
+  // large-pr has 120 files nested under api/sub*/ … ui/sub*/; the tree
+  // overflows the pane height and must scroll as the cursor walks to the
+  // bottom. Tree order is alphabetical by path, so the last row is not a
+  // numeric "last file" — assert on the cursor/All-row visibility instead.
   const fixture = path.join(REPO_ROOT, 'testdata', 'large-pr.json')
   const s = await launchReva({ fixture })
   await waitReady(s, { allView: true }) // focus stays on Files, cursor on [*] All
   let files = paneText(await s.text(), 'Files')
-  assert.ok(!files.includes('file_119.go'), 'last file must be off-screen before scrolling')
+  assert.match(files, /\[\*\] All/, 'All row visible at the top before scrolling')
   await s.type('G')
   files = paneText(await s.text(), 'Files')
-  assert.match(files, /^>[^\n]*file_119\.go/m, 'after G the cursor row (last file) must be visible')
+  assert.match(files, /^>[^\n]*\.go/m, 'after G the cursor row (last file) must be visible')
+  assert.ok(!files.includes('[*] All'), 'All row must scroll off when the cursor reaches the bottom')
   await s.type('g')
   await s.type('g')
   files = paneText(await s.text(), 'Files')
   assert.match(files, /^>[^\n]*\[\*\] All/m, 'gg must scroll back to the [*] All row')
-  assert.ok(!files.includes('file_119.go'), 'last file must scroll off after gg')
   await quit(s)
 })
 

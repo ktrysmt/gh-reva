@@ -236,12 +236,13 @@ func TestFiles_ggGCursorOnly(t *testing.T) {
 	m.state.SelectedFile = "src/foo.go"
 	m.state.FilesCursor = 1 // src/foo.go under the All-row shifted indexing
 
-	// G — bottom (cursor space is [0, len(files)] now; G lands on len(files))
+	// G — bottom. The Files pane is tree-only, so the cursor space spans
+	// the rendered tree rows ([0, len(rows)-1]); G lands on the last row.
 	res, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	m = res.(Model)
-	last := len(m.state.PR.Files)
+	last := len(m.filesTreeRows()) - 1
 	if m.state.FilesCursor != last {
-		t.Errorf("G must move cursor to last file row (%d); got %d", last, m.state.FilesCursor)
+		t.Errorf("G must move cursor to last tree row (%d); got %d", last, m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != "src/foo.go" {
 		t.Errorf("G must NOT change SelectedFile; got %q", m.state.SelectedFile)
@@ -294,7 +295,6 @@ func TestFiles_EnterTreeDirStillFolds(t *testing.T) {
 		{Path: "src/bar.go", Status: model.ChangeAdded},
 	}
 	m.state.FocusedPane = model.PaneFiles
-	m.state.FilesTreeMode = true
 	m.state.FoldedDirs = map[string]bool{}
 	m.state.FilesCursor = 1 // dir row "src/" (idx 0 is the synthetic All row)
 

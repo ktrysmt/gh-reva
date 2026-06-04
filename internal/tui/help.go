@@ -41,10 +41,9 @@ var helpSections = []helpSection{
 	{
 		title: "Files",
 		entries: []helpEntry{
-			{"j / k", "Move cursor (auto-selects file)"},
-			{"t", "Toggle tree mode"},
+			{"j / k", "Move cursor"},
+			{"Enter", "Open file / fold dir"},
 			{"Space", "Toggle zoom modal"},
-			{"Enter", "Fold / unfold dir (tree only)"},
 		},
 	},
 	{

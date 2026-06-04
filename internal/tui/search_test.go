@@ -114,12 +114,11 @@ func TestFiles_GGotoBottom(t *testing.T) {
 	prevSelected := m.state.SelectedFile
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	m = mm.(Model)
-	// Cursor space is [0, len(files)] inclusive — cursor 0 is the All
-	// row, indices 1..N are PR.Files[i-1]. G lands on the last file
-	// row, which is cursor index len(files).
-	last := len(m.state.PR.Files)
+	// The Files pane is tree-only — cursor 0 is the All row and the rest
+	// are tree rows (dirs + files). G lands on the last rendered row.
+	last := len(m.filesTreeRows()) - 1
 	if m.state.FilesCursor != last {
-		t.Fatalf("G should jump Files cursor to last (%d); got %d", last, m.state.FilesCursor)
+		t.Fatalf("G should jump Files cursor to last tree row (%d); got %d", last, m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != prevSelected {
 		t.Fatalf("G in Files must NOT change SelectedFile (cursor-only nav); got %q want %q",
@@ -222,14 +221,14 @@ func TestSearch_IncrementalJumpsCursor_Files(t *testing.T) {
 	m.state.FilesCursor = 0
 	mm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = mm.(Model)
-	// Type "gamma" — files[2]=src/gamma_test.go lives at cursor 3
-	// under the All-row shifted indexing.
+	// Type "gamma" — src/gamma_test.go lives at tree row 6 (All, internal/,
+	// internal/util.go, src/, src/alpha.go, src/beta.go, src/gamma_test.go).
 	for _, r := range "gamma" {
 		mm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = mm.(Model)
 	}
-	if m.state.FilesCursor != 3 {
-		t.Fatalf("incremental search 'gamma' should land on cursor 3 (files[2]=src/gamma_test.go); got %d", m.state.FilesCursor)
+	if m.state.FilesCursor != 6 {
+		t.Fatalf("incremental search 'gamma' should land on tree row 6 (src/gamma_test.go); got %d", m.state.FilesCursor)
 	}
 	if m.state.SelectedFile != "src/gamma_test.go" {
 		t.Fatalf("Files search should auto-select; SelectedFile=%q", m.state.SelectedFile)

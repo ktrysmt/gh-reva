@@ -140,12 +140,13 @@ test('C8: Shift+J/K navigates files from any pane (focus preserved)', async () =
   screen = await s.text()
   assert.match(screen, /Diff: src\/main\.go/, 'J from Commits advances')
   assert.match(screen, /▶ Commits/, 'focus stays on Commits')
-  // Diff: J → docs/api.md (also covered by F10 — kept here for cross-pane sanity)
+  // Diff: J → go.mod (tree order: …→ main.go → go.mod is last). Also
+  // covered by F10 — kept here for cross-pane sanity.
   await s.press('tab')
   assert.equal(await activePaneLabel(s), 'Diff')
   await s.type('J')
   screen = await s.text()
-  assert.match(screen, /Diff: docs\/api\.md/, 'J from Diff advances')
+  assert.match(screen, /Diff: go\.mod/, 'J from Diff advances')
   assert.match(screen, /▶ Diff/, 'focus stays on Diff')
   // Comments: K → main.go (back)
   await s.press('tab')

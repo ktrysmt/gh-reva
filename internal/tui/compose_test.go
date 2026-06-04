@@ -91,7 +91,7 @@ const composePatch = `--- a/foo.go
 
 func TestBuildComposeInline_Addition(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 5 // "+added"
+	m.state.DiffCursor.Line = 6 // "+added"
 	if !m.buildComposeInline() {
 		t.Fatalf("buildComposeInline returned false")
 	}
@@ -116,7 +116,7 @@ func TestBuildComposeInline_ContextLineFollowsCursorSide(t *testing.T) {
 	// number and which Side string the compose payload carries.
 	t.Run("RIGHT", func(t *testing.T) {
 		m := newComposeModel(t, composePatch, nil)
-		m.state.DiffCursor.Line = 3
+		m.state.DiffCursor.Line = 4
 		m.state.DiffCursor.Side = model.DiffSideRight
 		if !m.buildComposeInline() {
 			t.Fatalf("buildComposeInline returned false")
@@ -128,7 +128,7 @@ func TestBuildComposeInline_ContextLineFollowsCursorSide(t *testing.T) {
 	})
 	t.Run("LEFT", func(t *testing.T) {
 		m := newComposeModel(t, composePatch, nil)
-		m.state.DiffCursor.Line = 3
+		m.state.DiffCursor.Line = 4
 		m.state.DiffCursor.Side = model.DiffSideLeft
 		if !m.buildComposeInline() {
 			t.Fatalf("buildComposeInline returned false")
@@ -146,7 +146,7 @@ func TestBuildComposeInline_PlusLineIgnoresLeftCursor(t *testing.T) {
 	// test pins the safety contract), the compose anchor must still
 	// resolve to RIGHT because that is where the line lives.
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.DiffCursor.Side = model.DiffSideLeft
 	if !m.buildComposeInline() {
 		t.Fatalf("buildComposeInline returned false")
@@ -159,7 +159,7 @@ func TestBuildComposeInline_PlusLineIgnoresLeftCursor(t *testing.T) {
 
 func TestBuildComposeInline_RejectsHunkHeader(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 2 // "@@" hunk
+	m.state.DiffCursor.Line = 3 // "@@" hunk
 	if m.buildComposeInline() {
 		t.Fatalf("buildComposeInline should reject hunk header")
 	}
@@ -174,8 +174,8 @@ func TestBuildComposeInline_RejectsHunkHeader(t *testing.T) {
 // confirmComposeStart fires (i.e. the user pressed `y`).
 func TestBuildComposeInline_VisualRange(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 6
-	m.state.Visual = &model.VisualState{OriginPane: model.PaneDiff, AnchorLine: 5}
+	m.state.DiffCursor.Line = 7
+	m.state.Visual = &model.VisualState{OriginPane: model.PaneDiff, AnchorLine: 6}
 	if !m.buildComposeInline() {
 		t.Fatalf("range buildComposeInline returned false")
 	}
@@ -195,7 +195,7 @@ func TestBuildComposeReply_FindsThreadID(t *testing.T) {
 	root := &model.ReviewComment{ID: 100, ThreadID: "PRT_abc", Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0)}
 	reply := &model.ReviewComment{ID: 101, ThreadID: "PRT_abc", Path: "foo.go", Line: 21, Side: "RIGHT", InReplyTo: 100, CreatedAt: time.Unix(2, 0)}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{root, reply})
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 1 // reply row
 	if !m.buildComposeReply() {
 		t.Fatalf("buildComposeReply returned false")
@@ -214,7 +214,7 @@ func TestBuildComposeReply_NoCursorThread(t *testing.T) {
 
 func TestApplyComposeBody_EmptyBodyCancels(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	cmd := m.applyComposeBody(composeBodyMsg{body: "  \n\n"})
 	if cmd != nil {
@@ -231,7 +231,7 @@ func TestApplyComposeBody_QueuesPendingPOST(t *testing.T) {
 	}}
 	m := newComposeModel(t, composePatch, nil)
 	m.client = stub
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	cmd := m.applyComposeBody(composeBodyMsg{body: "ok"})
 	if cmd == nil {
@@ -263,7 +263,7 @@ func TestApplyComposeBody_ReplyRoutesByThreadID(t *testing.T) {
 	root := &model.ReviewComment{ID: 100, ThreadID: "PRT_abc", Path: "foo.go", Line: 21, Side: "RIGHT", CreatedAt: time.Unix(1, 0)}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	m.client = stub
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	m.buildComposeReply()
 	cmd := m.applyComposeBody(composeBodyMsg{body: "+1"})
@@ -285,7 +285,7 @@ func TestApplyComposeSubmitted_AppendsAndClears(t *testing.T) {
 	}}
 	m := newComposeModel(t, composePatch, nil)
 	m.client = stub
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	rc := &model.ReviewComment{ID: 9, Path: "foo.go", Body: "x", Pending: true}
 	cmd := m.applyComposeSubmitted(composeSubmittedMsg{comment: rc})
@@ -308,7 +308,7 @@ func TestApplyComposeSubmitted_AppendsAndClears(t *testing.T) {
 
 func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	m.state.Compose.Body = "draft"
 	m.state.Compose.Status = model.ComposeSubmitting
@@ -336,7 +336,7 @@ func TestApplyComposeSubmitted_FailureKeepsState(t *testing.T) {
 func TestApplyComposeSubmitted_RevealsHiddenCommentsOnSuccess(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
 	m.state.CommentsHidden = true
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	rc := &model.ReviewComment{
 		ID: 99, Body: "draft", Path: "foo.go", Line: 21,
@@ -354,7 +354,7 @@ func TestApplyComposeSubmitted_RevealsHiddenCommentsOnSuccess(t *testing.T) {
 func TestApplyComposeSubmitted_KeepsHiddenOnFailure(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
 	m.state.CommentsHidden = true
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	m.state.Compose.Body = "draft"
 	m.applyComposeSubmitted(composeSubmittedMsg{err: errors.New("HTTP 500")})
@@ -423,7 +423,7 @@ func TestBuildComposeEdit_RejectsForeignAuthor(t *testing.T) {
 	}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{foreign})
 	m.state.ViewerLogin = "you"
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	if m.buildComposeEdit() {
 		t.Fatalf("buildComposeEdit must refuse foreign authors")
@@ -443,7 +443,7 @@ func TestBuildComposeEdit_OwnAuthorPreloadsBody(t *testing.T) {
 	}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
 	m.state.ViewerLogin = "you"
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	if !m.buildComposeEdit() {
 		t.Fatalf("buildComposeEdit returned false on own comment")
@@ -473,7 +473,7 @@ func TestApplyComposeBody_EditRoutesByNodeID(t *testing.T) {
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
 	m.client = stub
 	m.state.ViewerLogin = "you"
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	if !m.buildComposeEdit() {
 		t.Fatalf("buildComposeEdit returned false")
@@ -563,7 +563,7 @@ func TestHandleKeyDiff_EnterOnCommentedRowFocusesComments(t *testing.T) {
 	}
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5 // anchored to line 21 in composePatch
+	mv.state.DiffCursor.Line = 6 // anchored to line 21 in composePatch
 	mv.paneHeightDiff = 10       // viewport height for cursor clamp
 	updated, _ := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(Model)
@@ -594,7 +594,7 @@ func TestHandleKeyDiff_EnterOnCommentedRowAutoRevealsHiddenColumn(t *testing.T) 
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	mv.state.ViewerLogin = "you"
 	mv.state.CommentsHidden = true
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	updated, _ := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(Model)
@@ -616,7 +616,7 @@ func TestHandleKeyDiff_EnterOnCommentedRowAutoRevealsHiddenColumn(t *testing.T) 
 func TestHandleKeyDiff_EnterOnUncommentedRowQueuesConfirm(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	_, cmd := mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
@@ -647,7 +647,7 @@ func TestHandleKeyComments_EnterOnForeignSetsNotice(t *testing.T) {
 	}
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{foreign})
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.state.CommentsCursor = 0
 	updated, cmd := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
@@ -672,7 +672,7 @@ func TestHandleKeyComments_RQueuesReplyConfirm(t *testing.T) {
 	}
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.state.CommentsCursor = 0
 	updated, cmd := mv.handleKeyComments(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	if cmd != nil {
@@ -700,7 +700,7 @@ func TestStartComposeReply_QueuesPendingConfirm(t *testing.T) {
 	}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	m.state.ViewerLogin = "you"
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	if cmd := m.startComposeReply(); cmd != nil {
 		t.Fatalf("startComposeReply must NOT return an editor cmd before confirm")
@@ -721,7 +721,7 @@ func TestStartComposeEdit_QueuesPendingConfirm(t *testing.T) {
 	}
 	m := newComposeModel(t, composePatch, []*model.ReviewComment{own})
 	m.state.ViewerLogin = "you"
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.state.CommentsCursor = 0
 	if cmd := m.startComposeEdit(); cmd != nil {
 		t.Fatalf("startComposeEdit must NOT return an editor cmd before confirm")
@@ -743,7 +743,7 @@ func TestHandleKey_PendingConfirmYStartsEditing(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	if _, _ = mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter}); mv.state.PendingConfirm == nil {
 		t.Fatalf("precondition: PendingConfirm must be set after Diff Enter")
@@ -769,7 +769,7 @@ func TestHandleKey_PendingConfirmEnterStartsEditing(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	if _, _ = mv.handleKeyDiff(tea.KeyMsg{Type: tea.KeyEnter}); mv.state.PendingConfirm == nil {
 		t.Fatalf("precondition: PendingConfirm must be set after Diff Enter")
@@ -791,8 +791,8 @@ func TestHandleKey_PendingConfirmYClearsVisualOnInlineRange(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 6
-	mv.state.Visual = &model.VisualState{OriginPane: model.PaneDiff, AnchorLine: 5}
+	mv.state.DiffCursor.Line = 7
+	mv.state.Visual = &model.VisualState{OriginPane: model.PaneDiff, AnchorLine: 6}
 	mv.paneHeightDiff = 10
 	mv.startComposeInline()
 	if mv.state.Visual == nil {
@@ -810,7 +810,7 @@ func TestHandleKey_PendingConfirmYClearsVisualOnInlineRange(t *testing.T) {
 func TestHandleKey_PendingConfirmNCancels(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	mv.startComposeInline()
 	if mv.state.PendingConfirm == nil {
@@ -832,7 +832,7 @@ func TestHandleKey_PendingConfirmNCancels(t *testing.T) {
 func TestHandleKey_PendingConfirmEscCancels(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	mv.startComposeInline()
 	updated, _ := mv.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
@@ -848,7 +848,7 @@ func TestHandleKey_PendingConfirmEscCancels(t *testing.T) {
 func TestHandleKey_PendingConfirmQCancelsWithoutQuitting(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.paneHeightDiff = 10
 	mv.startComposeInline()
 	updated, cmd := mv.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
@@ -867,7 +867,7 @@ func TestHandleKey_PendingConfirmQCancelsWithoutQuitting(t *testing.T) {
 func TestHandleKey_PendingConfirmAbsorbsOtherKeys(t *testing.T) {
 	mv := newComposeModel(t, composePatch, nil)
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.state.FocusedPane = model.PaneDiff
 	mv.paneHeightDiff = 10
 	mv.startComposeInline()
@@ -879,7 +879,7 @@ func TestHandleKey_PendingConfirmAbsorbsOtherKeys(t *testing.T) {
 	if got.state.PendingConfirm == nil {
 		t.Fatalf("j must NOT cancel the confirm prompt")
 	}
-	if got.state.DiffCursor.Line != 5 {
+	if got.state.DiffCursor.Line != 6 {
 		t.Fatalf("DiffCursor must not move while confirm prompt is up, got %d", got.state.DiffCursor.Line)
 	}
 	if got.state.FocusedPane != model.PaneDiff {
@@ -922,7 +922,7 @@ func TestOverlayConfirm_RendersTitleSubjectAndKeymap(t *testing.T) {
 	mv.width = 80
 	mv.height = 24
 	mv.paneHeightDiff = 10
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.startComposeInline()
 	if mv.state.PendingConfirm == nil {
 		t.Fatalf("precondition: PendingConfirm set")
@@ -947,7 +947,7 @@ func TestOverlayConfirm_ReplySubjectFromRoot(t *testing.T) {
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	mv.width = 80
 	mv.height = 24
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.state.CommentsCursor = 0
 	mv.startComposeReply()
 	if mv.state.PendingConfirm == nil {
@@ -974,7 +974,7 @@ func TestOverlayConfirm_EditSubjectFromCursor(t *testing.T) {
 	mv.width = 80
 	mv.height = 24
 	mv.state.ViewerLogin = "you"
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.state.CommentsCursor = 0
 	mv.startComposeEdit()
 	if mv.state.PendingConfirm == nil {
@@ -1015,7 +1015,7 @@ func TestSpaceClose_StaysOnCommentsWhenOpenedFromComments(t *testing.T) {
 	}
 	mv := newComposeModel(t, composePatch, []*model.ReviewComment{root})
 	mv.state.FocusedPane = model.PaneComments
-	mv.state.DiffCursor.Line = 5
+	mv.state.DiffCursor.Line = 6
 	mv.toggleModal(model.PaneComments)
 	if mv.state.Modal == nil || mv.state.FocusedPane != model.PaneComments {
 		t.Fatalf("precondition: Comments modal open, focus on Comments")
@@ -1071,7 +1071,7 @@ func TestEscClose_RestoresFocusToOrigin(t *testing.T) {
 
 func TestRetryComposeSubmit_RequiresFailedState(t *testing.T) {
 	m := newComposeModel(t, composePatch, nil)
-	m.state.DiffCursor.Line = 5
+	m.state.DiffCursor.Line = 6
 	m.buildComposeInline()
 	if cmd := m.retryComposeSubmit(); cmd != nil {
 		t.Fatalf("retry should be a no-op outside Failed state")

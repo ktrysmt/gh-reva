@@ -69,7 +69,6 @@ func TestFilesView_FileRowsUseBracketedStatus(t *testing.T) {
 // Tree-mode file rows also carry [A]/[M]/[D]/[R] brackets.
 func TestFilesTreeRender_FileRowsUseBracketedStatus(t *testing.T) {
 	m := makeFilesModel(t, sampleFiles(), nil)
-	m.state.FilesTreeMode = true
 	out := m.filesTreeRender()
 	for _, k := range []string{"[M]", "[A]", "[D]"} {
 		if !strings.Contains(out, k) {
