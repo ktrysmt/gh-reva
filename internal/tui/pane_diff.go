@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -353,9 +354,10 @@ func (m Model) renderUnifiedBufferLine(line string, idx, cursorLine int, marker 
 	// (DiffMinusBg) so both kinds receive bg + syntax. Header / hunk /
 	// context kinds ignore this flag.
 	isRight := kind == '+'
+	lexer := m.lexerForLine(idx)
 	out := make([]string, 0, len(cells))
 	for j, cell := range cells {
-		colored := m.colorDiffCell(cell, kind, isRight, matched)
+		colored := m.colorDiffCell(cell, kind, isRight, matched, lexer)
 		var prefix string
 		if j == 0 {
 			cursor := m.cursorMarker(model.PaneDiff, idx, cursorLine)
@@ -428,6 +430,7 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 	}
 	blank := strings.Repeat(" ", halfW)
 	sep := fg("│", m.theme.DiffSeparator)
+	lexer := m.lexerForLine(idx)
 	out := make([]string, 0, n)
 	cursorActive := isCursor || inVisual
 	for j := 0; j < n; j++ {
@@ -439,8 +442,8 @@ func (m Model) renderSplitBufferLine(line string, spec diffLineSpec, halfW, idx,
 		if j < len(rightCells) {
 			right = rightCells[j]
 		}
-		left = m.colorDiffCell(left, spec.Kind, false, matched)
-		right = m.colorDiffCell(right, spec.Kind, true, matched)
+		left = m.colorDiffCell(left, spec.Kind, false, matched, lexer)
+		right = m.colorDiffCell(right, spec.Kind, true, matched, lexer)
 
 		var lCursor, lGutter, rCursor, rGutter, oldLn, newLn string
 		if j == 0 {
@@ -558,7 +561,7 @@ func diffLineKind(line string) byte {
 // re-apply after internal \e[0m resets, so most of the row's bg was
 // silently stripped; baking the bg into each chroma token via
 // styledDiffCell sidesteps that.
-func (m Model) colorDiffCell(cell string, kind byte, isRight, matched bool) string {
+func (m Model) colorDiffCell(cell string, kind byte, isRight, matched bool, lexer chroma.Lexer) string {
 	matchBg := lipgloss.Color("")
 	if matched {
 		matchBg = m.theme.SearchMatchBg
@@ -580,7 +583,7 @@ func (m Model) colorDiffCell(cell string, kind byte, isRight, matched bool) stri
 			if matched {
 				bg = matchBg
 			}
-			return m.styledDiffCell(cell, bg)
+			return m.styledDiffCell(cell, bg, lexer)
 		}
 		return cell
 	case '-':
@@ -589,11 +592,11 @@ func (m Model) colorDiffCell(cell string, kind byte, isRight, matched bool) stri
 			if matched {
 				bg = matchBg
 			}
-			return m.styledDiffCell(cell, bg)
+			return m.styledDiffCell(cell, bg, lexer)
 		}
 		return cell
 	default:
-		return m.styledDiffCell(cell, matchBg)
+		return m.styledDiffCell(cell, matchBg, lexer)
 	}
 }
 

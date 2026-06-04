@@ -882,6 +882,11 @@ type patchInfo struct {
 	// changes — so this single counter covers all invalidation triggers.
 	markers    *sideMarkers
 	markersGen uint64
+	// filePaths maps each buffer-line index to the source file it belongs
+	// to. Populated only for the Files "All" view (concatenated cross-file
+	// diff) so the Diff renderer can pick a per-file chroma lexer; nil for
+	// the single-file view (every line is SelectedFile).
+	filePaths []string
 }
 
 // diffRowCache memoizes the per-buffer-line render output for the Diff
@@ -1019,6 +1024,11 @@ func (m Model) patchInfo() *patchInfo {
 		lines: res.Lines,
 		specs: convertAugSpecs(diff.ParseSpecsAug(res.Lines, res.Gaps)),
 		gaps:  res.Gaps,
+	}
+	// In the All view the buffer concatenates many files; record each
+	// line's owning file so the Diff renderer can lex per-file (#syntax).
+	if m.state.SelectedFile == model.AllFilesPath {
+		info.filePaths = filePathsForLines(res.Lines)
 	}
 	if m.patchLinesC.cache != nil {
 		m.patchLinesC.cache[key] = info

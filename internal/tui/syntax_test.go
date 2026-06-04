@@ -99,8 +99,8 @@ func TestContextCellRoutesThroughStyledDiffCell(t *testing.T) {
 	m := NewModel(nil, nil)
 	m.state.SelectedFile = "test.go"
 	cell := " func main() { return }"
-	got := m.colorDiffCell(cell, ' ', false, false)
-	want := m.styledDiffCell(cell, "")
+	got := m.colorDiffCell(cell, ' ', false, false, m.currentLexer())
+	want := m.styledDiffCell(cell, "", m.currentLexer())
 	if got != want {
 		t.Errorf("context cell should be syntax-highlighted:\n got  = %q\n want = %q", got, want)
 	}
@@ -120,7 +120,7 @@ func TestDiffMarkerHasAccentFgAndBold(t *testing.T) {
 	m.state.SelectedFile = "test.go"
 
 	// DiffPlus = #3fb950 -> SGR foreground "38;2;63;185;80"; bold = "1".
-	plusOut := m.styledDiffCell("+x", m.theme.DiffPlusBg)
+	plusOut := m.styledDiffCell("+x", m.theme.DiffPlusBg, m.currentLexer())
 	if !strings.Contains(plusOut, "38;2;63;185;80") {
 		t.Errorf("'+' marker missing DiffPlus fg SGR (38;2;63;185;80): %q", plusOut)
 	}
@@ -129,7 +129,7 @@ func TestDiffMarkerHasAccentFgAndBold(t *testing.T) {
 	}
 
 	// DiffMinus = #f85149 -> SGR foreground "38;2;248;81;73".
-	minusOut := m.styledDiffCell("-x", m.theme.DiffMinusBg)
+	minusOut := m.styledDiffCell("-x", m.theme.DiffMinusBg, m.currentLexer())
 	if !strings.Contains(minusOut, "38;2;248;81;73") {
 		t.Errorf("'-' marker missing DiffMinus fg SGR (38;2;248;81;73): %q", minusOut)
 	}
@@ -139,7 +139,7 @@ func TestDiffMarkerHasAccentFgAndBold(t *testing.T) {
 
 	// Context cells (leading space) must NOT pick up a bold marker — the
 	// space inherits the surrounding bg/fg with no extra weight.
-	ctxOut := m.styledDiffCell(" x", "")
+	ctxOut := m.styledDiffCell(" x", "", m.currentLexer())
 	if strings.Contains(ctxOut, "38;2;63;185;80") || strings.Contains(ctxOut, "38;2;248;81;73") {
 		t.Errorf("context cell unexpectedly picked up +/- marker color: %q", ctxOut)
 	}
@@ -178,7 +178,7 @@ func TestStyledDiffCellNeverEmitsNewline(t *testing.T) {
 	m := NewModel(nil, nil)
 	for _, tc := range cases {
 		m.state.SelectedFile = tc.file
-		got := m.styledDiffCell(tc.cell, m.theme.DiffPlusBg)
+		got := m.styledDiffCell(tc.cell, m.theme.DiffPlusBg, m.currentLexer())
 		stripped := stripSGR(got)
 		if strings.ContainsAny(stripped, "\n\r") {
 			t.Errorf("%s: styledDiffCell output contained newline; stripped=%q",

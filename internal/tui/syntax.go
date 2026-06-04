@@ -8,6 +8,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ktrysmt/gh-reva/internal/model"
 )
 
 // syntaxCache memoizes styledDiffCell results so the chroma tokenizer runs
@@ -40,6 +42,81 @@ func (m Model) currentLexer() chroma.Lexer {
 		return lex
 	}
 	return lexers.Fallback
+}
+
+// lexerForLine picks the chroma lexer for a specific Diff buffer line.
+// In the normal single-file view every line belongs to SelectedFile, so
+// this just returns currentLexer(). In the Files "All" view the Diff is a
+// cross-file concatenation (diffKey("", AllFilesPath)); SelectedFile is the
+// AllFilesPath sentinel which matches no extension, so a single currentLexer
+// would degrade the whole buffer to plaintext. Instead we resolve the lexer
+// from the file section each line belongs to — tracked from the per-file
+// `+++ b/<path>` headers in patchInfo.filePaths.
+func (m Model) lexerForLine(idx int) chroma.Lexer {
+	if m.state == nil || m.state.SelectedFile != model.AllFilesPath {
+		return m.currentLexer()
+	}
+	info := m.patchInfo()
+	if info == nil || idx < 0 || idx >= len(info.filePaths) {
+		return lexers.Fallback
+	}
+	return m.lexerForPath(info.filePaths[idx])
+}
+
+// lexerForPath resolves a chroma lexer for a concrete file path, applying
+// the same override → extension-match → fallback ladder as currentLexer.
+func (m Model) lexerForPath(path string) chroma.Lexer {
+	if path == "" {
+		return lexers.Fallback
+	}
+	if lex := m.lexerFromOverride(path); lex != nil {
+		return lex
+	}
+	if lex := lexers.Match(path); lex != nil {
+		return lex
+	}
+	return lexers.Fallback
+}
+
+// filePathsForLines maps each buffer line of a concatenated diff to the
+// file it belongs to, derived from the per-file `--- a/<path>` / `+++ b/<path>`
+// headers that prefix every file slice. The non-/dev/null side wins so
+// additions (`--- /dev/null`) and deletions (`+++ /dev/null`) still resolve
+// to the real path. Lines before the first header map to "".
+func filePathsForLines(lines []string) []string {
+	paths := make([]string, len(lines))
+	cur := ""
+	for i, ln := range lines {
+		switch {
+		case strings.HasPrefix(ln, "--- "):
+			if p := diffHeaderPath(ln[4:]); p != "" {
+				cur = p
+			}
+		case strings.HasPrefix(ln, "+++ "):
+			if p := diffHeaderPath(ln[4:]); p != "" {
+				cur = p
+			}
+		}
+		paths[i] = cur
+	}
+	return paths
+}
+
+// diffHeaderPath extracts the file path from a `--- ` / `+++ ` header body,
+// stripping the `a/` / `b/` prefix and any trailing tab-delimited metadata.
+// Returns "" for `/dev/null` (added / deleted side).
+func diffHeaderPath(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\t'); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if s == "/dev/null" || s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "a/") || strings.HasPrefix(s, "b/") {
+		s = s[2:]
+	}
+	return s
 }
 
 // lexerFromOverride consults the SetSyntaxExtensions map. The key with
@@ -80,11 +157,10 @@ func (m Model) lexerFromOverride(filename string) chroma.Lexer {
 // When bg is the zero value the marker keeps the terminal default
 // background and the rest is syntax-highlighted on the default bg
 // (used by context lines).
-func (m Model) styledDiffCell(cell string, bg lipgloss.Color) string {
+func (m Model) styledDiffCell(cell string, bg lipgloss.Color, lexer chroma.Lexer) string {
 	if cell == "" {
 		return cell
 	}
-	lexer := m.currentLexer()
 	style := m.theme.SyntaxStyle
 	styleName := ""
 	if style != nil {
