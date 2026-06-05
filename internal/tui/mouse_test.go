@@ -301,17 +301,20 @@ func TestMouse_ClickDiffRightCell_SetsRightSide(t *testing.T) {
 
 // TestMouse_ClickDiffContent_NoWrap_OneToOne pins the simpler case: when
 // the column is wide enough that no buffer line wraps, content-row N
-// resolves directly to buffer line viewport.Top+N.
+// resolves to buffer line viewport.Top + (N - stickyRows). The pinned
+// sticky header (#diffStickyHeader) occupies content row 0, so the
+// scrollable diff starts one row lower.
 func TestMouse_ClickDiffContent_NoWrap_OneToOne(t *testing.T) {
 	m := mouseModelFixture(t)
 	m.state.DiffViewport.Top = 0
 	// Force unified mode and a wide pane so no wrapping kicks in.
 	m.state.DiffViewMode = model.DiffViewUnified
 	m.paneWidthDiff = 200
-	res, _ := m.handleMouse(leftClick(60, 6)) // content row 3
+	res, _ := m.handleMouse(leftClick(60, 6)) // content row 3 → scrollable row 2
 	m = res.(Model)
-	if m.state.DiffCursor.Line != 3 {
-		t.Errorf("no-wrap mapping: DiffCursor.Line=%d, want 3", m.state.DiffCursor.Line)
+	want := 3 - m.diffStickyRows()
+	if m.state.DiffCursor.Line != want {
+		t.Errorf("no-wrap mapping: DiffCursor.Line=%d, want %d", m.state.DiffCursor.Line, want)
 	}
 }
 

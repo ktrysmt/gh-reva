@@ -217,8 +217,9 @@ test('F7: Enter on a commented diff line shifts focus to the Comments pane', asy
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
   // Fixture comment 1001 (greeting.go) is anchored at new-file line 3 →
-  // buffer index 5.
-  for (let i = 0; i < 5; i++) await s.type('j')
+  // buffer index 5. The folded `+++` row (buffer 1) is skipped by
+  // auto-skip, so four j presses (not five) reach buffer 5.
+  for (let i = 0; i < 4; i++) await s.type('j')
   await s.press('enter')
   await s.waitForText('▶ Comments', { timeout: 5000 })
   const screen = await s.text()
@@ -356,8 +357,9 @@ test('F13: cursor `>` appears only on the first display row of a wrapped line', 
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // focus Diff
-  // Move cursor to the long-wrapping buffer line 5.
-  for (let i = 0; i < 5; i++) await s.type('j')
+  // Move cursor to the long-wrapping buffer line 5. The folded `+++` row
+  // (buffer 1) is skipped by auto-skip, so four j presses reach buffer 5.
+  for (let i = 0; i < 4; i++) await s.type('j')
   const diff = paneText(await s.text(), 'Diff')
   const lines = diff.split('\n')
   const headRow = lines.findIndex(l => l.includes('Hello returns'))
@@ -478,9 +480,10 @@ test('F18: multi-line range comment surfaces ◆ only at end anchor + R5-R10 in 
   // Walk to file line 10's buffer row so the Comments column surfaces
   // the range comment. The patch starts with three non-content rows
   // (`--- /dev/null`, `+++ b/<path>`, `@@ -0,0 +1,50 @@`) before file
-  // line 1 lands at buffer 3, so file line 10 sits at buffer 12. j/k
-  // never auto-skip header / hunk rows (see CLAUDE.md §4 #14c).
-  for (let i = 0; i < 12; i++) await s.press('j')
+  // line 1 lands at buffer 3, so file line 10 sits at buffer 12. The
+  // folded `+++` row (buffer 1) is skipped by auto-skip, so eleven j
+  // presses (not twelve) reach buffer 12.
+  for (let i = 0; i < 11; i++) await s.press('j')
   const cms = paneText(await s.text(), 'Comments')
   assert.match(cms, /dave:/, `dave header should appear at range end anchor; Comments:\n${cms}`)
   assert.match(cms, /R5-R10/, `range tag R5-R10 must appear in dave's header; Comments:\n${cms}`)
@@ -517,11 +520,10 @@ test('F20: j on RIGHT skips a `-` row (auto-skip per side)', async () => {
   assert.match(screen, /Diff: src\/main\.go/, 'expected main.go to be selected')
   // Walk down to the `package main` context row (buffer index 3 from top).
   await s.type('g'); await s.type('g')         // gg → top of side
-  // After gg in RIGHT mode the cursor lands on the first RIGHT-existing
-  // row (the file header `--- a/src/main.go` is still considered
-  // header / both-sides per lineExistsOnSide). Step down to context.
-  await s.type('j')                             // 0 → 1
-  await s.type('j')                             // 1 → 2 (@@)
+  // After gg in RIGHT mode the cursor lands on buffer 0 — the collapsed
+  // `--- ` file-header bar (navigable on both sides). The paired `+++`
+  // row (buffer 1) is folded into the bar and skipped by auto-skip.
+  await s.type('j')                             // 0 → SKIP `+++` (1), land on @@ (2)
   await s.type('j')                             // 2 → 3 (` package main`)
   await s.type('j')                             // 3 → SKIP `-import "fmt"`, land on `+import (`
   const diff = paneText(await s.text(), 'Diff')

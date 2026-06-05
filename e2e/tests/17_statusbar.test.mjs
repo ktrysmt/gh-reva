@@ -152,7 +152,7 @@ test('S11: Comments modal status bar adds enter:edit r:reply before close', asyn
   // Space is now a no-op when the cursor row carries no thread.
   await s.press('tab')            // Files → Commits
   await s.press('tab')            // Commits → Diff
-  for (let i = 0; i < 5; i++) await s.press('j')
+  for (let i = 0; i < 4; i++) await s.press('j')
   await s.press('tab')            // Diff → Comments
   await s.press('space')          // open Comments modal
   const row = statusBarRow(await s.text())

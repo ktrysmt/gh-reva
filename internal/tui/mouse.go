@@ -237,6 +237,13 @@ func (m *Model) mouseClickCommits(row int) {
 }
 
 func (m *Model) mouseClickDiff(row, col int) {
+	// Content row 0 is the pinned sticky header (#diffStickyHeader), not a
+	// scrollable diff row — shift the click down into the scrollable area
+	// and ignore clicks on the sticky row itself.
+	row -= m.diffStickyRows()
+	if row < 0 {
+		return
+	}
 	idx := m.bufferLineAtDiffDisplayRow(row)
 	if idx < 0 {
 		return

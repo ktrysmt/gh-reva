@@ -70,7 +70,7 @@ test('RES2: Comments header carries a leading [resolved] tag', async () => {
   // Walk to buffer index 9 (bob's resolved anchor row). From the
   // initial cursor at 0, 9 j-presses lands on `+\t}` since header /
   // hunk / context / + rows all exist on the RIGHT side that j tracks.
-  await pressN(s, 'j', 9)
+  await pressN(s, 'j', 8)
   const cms = paneText(await s.text(), 'Comments')
   // The leading tag sits at the line head, before the author name.
   assert.match(
@@ -88,7 +88,7 @@ test('RES3: unresolved threads have no [resolved] tag in Comments', async () => 
   const s = await launchReva()
   await waitReady(s)
   await s.press('tab'); await s.press('tab')     // focus Diff
-  await pressN(s, 'j', 5)                        // carol/alice anchor (buffer 5)
+  await pressN(s, 'j', 4)                        // carol/alice anchor (buffer 5)
   const cms = paneText(await s.text(), 'Comments')
   assert.match(cms, /carol:/, `carol header should appear at the anchor row; slice:\n${cms}`)
   assert.ok(!cms.includes('[resolved]'),

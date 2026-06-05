@@ -183,11 +183,11 @@ func TestRenderSynthRow_ContainsHiddenCountAndHint(t *testing.T) {
 		t.Fatalf("synthetic row missing `···` glyph: %q", out)
 	}
 	wantCount := fmtInt(hidden)
-	if !strings.Contains(out, wantCount+" lines hidden") {
-		t.Fatalf("synthetic row missing hidden count %q: %q", wantCount, out)
+	if !strings.Contains(out, wantCount+" lines folded") {
+		t.Fatalf("synthetic row missing folded count %q: %q", wantCount, out)
 	}
-	if !strings.Contains(out, "enter") {
-		t.Fatalf("synthetic row missing enter hint: %q", out)
+	if !strings.Contains(out, "Enter") {
+		t.Fatalf("synthetic row missing Enter hint: %q", out)
 	}
 }
 

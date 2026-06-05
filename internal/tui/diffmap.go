@@ -204,8 +204,15 @@ func lineExistsOnSide(line string, side model.DiffSide) bool {
 	switch {
 	case line == diff.SyntheticLine:
 		return true
-	case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
+	case strings.HasPrefix(line, "---"):
+		// The `---` row hosts the collapsed file-header bar and stays a
+		// valid cursor target on both columns.
 		return true
+	case strings.HasPrefix(line, "+++"):
+		// The `+++` row is folded into the `---` bar and renders no row
+		// (#fileHeaderLabel), so it must be non-navigable — j/k auto-skip
+		// would otherwise strand the cursor on an invisible line.
+		return false
 	case strings.HasPrefix(line, "+"):
 		return side == model.DiffSideRight
 	case strings.HasPrefix(line, "-"):

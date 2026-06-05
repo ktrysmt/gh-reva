@@ -29,7 +29,7 @@ test('G12: CJK glued behind ASCII does not strand the ASCII fragment alone', asy
   })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')   // Files → Diff
-  await pressN(s, 'j', 5)                      // 5x j → ◆ row (greeting.go new line 3)
+  await pressN(s, 'j', 4)                      // 4x j → ◆ row (greeting.go new line 3)
   const cms = paneText(await s.text(), 'Comments')
   const slackRow = cms.split('\n').find(l => l.includes('slack'))
   assert.ok(slackRow, `comment body containing "slack" should be visible in Comments:\n${cms}`)

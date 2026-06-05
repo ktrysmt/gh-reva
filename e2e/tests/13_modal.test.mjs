@@ -125,7 +125,7 @@ test('F-modal-5: Space in Comments opens the Comments modal (only when threads v
   // requires before Space opens the modal.
   await s.press('tab')            // Commits
   await s.press('tab')            // Diff
-  for (let i = 0; i < 5; i++) await s.press('j')
+  for (let i = 0; i < 4; i++) await s.press('j')
   await s.press('tab')            // Comments
   let screen = await s.text()
   assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')
@@ -205,7 +205,7 @@ test('F-modal-9: Diff Enter on commented row shifts focus to Comments (no modal)
   await waitReady(s)
   await s.press('tab') // Files → Commits
   await s.press('tab') // Commits → Diff
-  for (let i = 0; i < 5; i++) await s.press('j')
+  for (let i = 0; i < 4; i++) await s.press('j')
   let screen = await s.text()
   assert.ok(/▶ Diff/.test(screen), 'precondition: Diff active')
 
@@ -227,7 +227,7 @@ test('F-modal-10: Comments space → space stays on Comments', async () => {
   await waitReady(s)
   await s.press('tab') // Commits
   await s.press('tab') // Diff
-  for (let i = 0; i < 5; i++) await s.press('j')
+  for (let i = 0; i < 4; i++) await s.press('j')
   await s.press('tab') // Diff → Comments
   let screen = await s.text()
   assert.ok(/▶ Comments/.test(screen), 'precondition: Comments active')

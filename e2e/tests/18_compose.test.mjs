@@ -42,11 +42,14 @@ async function makeStubEditor (name, body) {
 }
 
 // navigateToDiffLine assumes Files focus + greeting.go selected; tabs twice
-// into Diff and presses j `n` times so the cursor lands on buffer index `n`.
+// into Diff and walks the cursor so it lands on buffer index `n`. The folded
+// `+++` header row (buffer 1) is non-navigable (skipped by j/k auto-skip),
+// so reaching buffer index n (n>=2) takes n-1 presses.
 async function navigateToDiffLine (s, n) {
   await s.press('tab')
   await s.press('tab')
-  for (let i = 0; i < n; i++) {
+  const presses = n >= 2 ? n - 1 : n
+  for (let i = 0; i < presses; i++) {
     await s.press('j')
   }
 }

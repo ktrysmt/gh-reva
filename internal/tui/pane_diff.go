@@ -212,10 +212,6 @@ func (m Model) diffView() string {
 	if top > len(lines) {
 		top = len(lines)
 	}
-	end := top + height
-	if end > len(lines) {
-		end = len(lines)
-	}
 	markers := m.commentLineMarkers()
 	matched := m.searchMatchLines()
 	isSplit, halfW := m.splitLayout()
@@ -227,13 +223,26 @@ func (m Model) diffView() string {
 	cursorSide := m.state.DiffCursor.Side
 	gaps := m.patchGaps()
 	var out []string
-	for i := top; i < end && len(out) < height; i++ {
+	// The buffer-range upper bound `end` assumes ~1 display row per line;
+	// wrapping (1:N) and the collapsed `+++` rows (1:0) break that, so the
+	// loop walks to the buffer end and stops on the row budget instead.
+	for i := top; i < len(lines) && len(out) < height; i++ {
 		var rows []string
-		if lines[i] == diff.SyntheticLine {
+		switch {
+		case lines[i] == diff.SyntheticLine:
 			rows = m.renderSynthBufferLine(i, cursorLine, gaps[i])
-		} else if isSplit {
+		case strings.HasPrefix(lines[i], "+++"):
+			// Folded into the preceding `---` bar (#fileHeaderLabel) —
+			// renders no row.
+			continue
+		case strings.HasPrefix(lines[i], "---"):
+			label, st := fileHeaderLabel(lines[i], plusPartner(lines, i))
+			rows = m.renderFileBar(label, st, i, cursorLine)
+		case strings.HasPrefix(lines[i], "@@"):
+			rows = m.renderHunkRule(i, cursorLine)
+		case isSplit:
 			rows = m.renderSplitBufferLine(lines[i], specs[i], halfW, i, cursorLine, cursorSide, markers.Left[i], markers.Right[i], matched[i])
-		} else {
+		default:
 			// Unified mode collapses both columns into one cell, so the
 			// per-side ◆ split is meaningless — fold the two maps and
 			// pass whichever rank-wins. markerRank's precedence runs
@@ -248,7 +257,20 @@ func (m Model) diffView() string {
 			out = append(out, r)
 		}
 	}
-	return title + "\n" + strings.Join(out, "\n")
+	body := strings.Join(out, "\n")
+	if m.diffStickyRows() > 0 {
+		body = m.diffStickyHeader(top, lines) + "\n" + body
+	}
+	return title + "\n" + body
+}
+
+// plusPartner returns the `+++` header row that pairs with the `---` row
+// at idx (the very next buffer line), or "" when it is absent.
+func plusPartner(lines []string, idx int) string {
+	if idx+1 < len(lines) && strings.HasPrefix(lines[idx+1], "+++") {
+		return lines[idx+1]
+	}
+	return ""
 }
 
 // renderSynthBufferLine paints the `··· N lines hidden  (enter: expand)`
@@ -273,7 +295,7 @@ func (m Model) renderSynthBufferLine(idx, cursorLine int, gap diff.GapInfo) []st
 		if cursorActive {
 			cursor = fgBold("> ", m.theme.CursorRow)
 		}
-		label := fmt.Sprintf("··· %d lines hidden  (enter: expand)", gap.HiddenCount)
+		label := fmt.Sprintf("··· %d lines folded · Enter to expand", gap.HiddenCount)
 		body := fg(label, m.theme.DiffHunkHeader)
 		return []string{padTrunc(cursor+body, m.paneWidthDiff)}
 	}
@@ -303,10 +325,10 @@ func (m Model) renderSynthBufferLine(idx, cursorLine int, gap diff.GapInfo) []st
 // engage threshold) shows the marker.
 func synthLabel(hidden, cellW int) string {
 	candidates := []string{
-		fmt.Sprintf("··· %d lines hidden  (enter: expand)", hidden),
-		fmt.Sprintf("··· %d lines hidden (enter)", hidden),
-		fmt.Sprintf("··· %d lines hidden", hidden),
-		fmt.Sprintf("··· %d hidden", hidden),
+		fmt.Sprintf("··· %d lines folded · Enter to expand", hidden),
+		fmt.Sprintf("··· %d lines folded (Enter)", hidden),
+		fmt.Sprintf("··· %d lines folded", hidden),
+		fmt.Sprintf("··· %d folded", hidden),
 		"···",
 	}
 	for _, s := range candidates {
@@ -315,6 +337,185 @@ func synthLabel(hidden, cellW int) string {
 		}
 	}
 	return "···"
+}
+
+// fileHeaderLabel collapses a `--- a/X` / `+++ b/Y` header pair into a
+// single display label plus a status byte ('A' added, 'D' deleted, 'R'
+// renamed, 'M' modified). A plain modification duplicates the same path
+// across both rows (the `a/` vs `b/` redundancy the user flagged), so it
+// collapses to one path; added / deleted / renamed keep the shape that
+// makes them distinguishable (the surviving path, or `old → new`).
+func fileHeaderLabel(oldLine, newLine string) (string, byte) {
+	oldRaw := strings.TrimSpace(strings.TrimPrefix(oldLine, "---"))
+	newRaw := strings.TrimSpace(strings.TrimPrefix(newLine, "+++"))
+	oldPath := diffHeaderPath(oldRaw)
+	newPath := diffHeaderPath(newRaw)
+	switch {
+	case oldRaw == "/dev/null":
+		return newPath, 'A'
+	case newRaw == "/dev/null":
+		return oldPath, 'D'
+	case oldPath != "" && newPath != "" && oldPath != newPath:
+		return oldPath + " → " + newPath, 'R'
+	default:
+		if newPath != "" {
+			return newPath, 'M'
+		}
+		return oldPath, 'M'
+	}
+}
+
+// hunkSignature extracts the trailing context (function / type signature)
+// from a `@@ -a,b +c,d @@ <sig>` hunk header. The numeric range is dropped
+// — it duplicates the gutter line numbers — leaving only the signature
+// that makes a hunk identifiable at a glance. Returns "" when the header
+// carries no trailing context.
+func hunkSignature(line string) string {
+	rest := line
+	if i := strings.Index(rest, "@@"); i >= 0 {
+		rest = rest[i+2:]
+	} else {
+		return ""
+	}
+	if i := strings.Index(rest, "@@"); i >= 0 {
+		rest = rest[i+2:]
+	} else {
+		return ""
+	}
+	return strings.TrimSpace(rest)
+}
+
+// nearestHunkSignature walks backward from the viewport-top buffer index
+// to the enclosing hunk header so the sticky header can show which hunk
+// is currently on screen. Stops at a file boundary (`---`): a position
+// above the first hunk of a file has no enclosing hunk yet.
+func nearestHunkSignature(lines []string, top int) string {
+	if top >= len(lines) {
+		top = len(lines) - 1
+	}
+	for i := top; i >= 0; i-- {
+		switch {
+		case strings.HasPrefix(lines[i], "@@"):
+			return hunkSignature(lines[i])
+		case strings.HasPrefix(lines[i], "---"):
+			return ""
+		}
+	}
+	return ""
+}
+
+// fileBarBody renders the collapsed one-line file separator core (no
+// cursor column, no SGR). Shape: `─── <label>  [X] ` then the bar glyph
+// fills the remaining width. The label is truncated when the row is too
+// narrow to hold it.
+func fileBarBody(label string, status byte, width int) string {
+	if width < 1 {
+		width = 1
+	}
+	core := "─── " + label + "  [" + string(status) + "] "
+	cw := lipgloss.Width(core)
+	if cw >= width {
+		return ansi.Truncate(core, width, "")
+	}
+	return core + strings.Repeat("─", width-cw)
+}
+
+// renderFileBar renders a `---` file-header buffer line as the collapsed
+// separator bar. The companion `+++` row renders nothing (folded in via
+// the diffView loop). The bar hosts the Diff cursor like any other row.
+func (m Model) renderFileBar(label string, status byte, idx, cursorLine int) []string {
+	cursor := "  "
+	if m.cursorMarker(model.PaneDiff, idx, cursorLine) == "> " {
+		cursor = fgBold("> ", m.theme.CursorRow)
+	}
+	body := fg(fileBarBody(label, status, atLeast(m.paneWidthDiff-2, 1)), m.theme.DiffFileHeader)
+	return []string{padTrunc(cursor+body, m.paneWidthDiff)}
+}
+
+// renderHunkRule renders a `@@` hunk-header buffer line as a thin
+// full-width rule. The hunk's signature lives in the sticky header
+// (#diffStickyHeader); the inline row only marks the hunk boundary so
+// the body stays uncluttered and the numeric range no longer duplicates
+// the gutter line numbers.
+func (m Model) renderHunkRule(idx, cursorLine int) []string {
+	cursor := "  "
+	if m.cursorMarker(model.PaneDiff, idx, cursorLine) == "> " {
+		cursor = fgBold("> ", m.theme.CursorRow)
+	}
+	rule := fg(strings.Repeat("─", atLeast(m.paneWidthDiff-2, 1)), m.theme.DiffSeparator)
+	return []string{padTrunc(cursor+rule, m.paneWidthDiff)}
+}
+
+// diffStickyRows reports how many rows the pinned Diff header consumes.
+// One row when the pane is tall enough to spare it, else zero (degenerate
+// short panes keep every row for content).
+func (m Model) diffStickyRows() int {
+	if m.paneHeightDiff > 3 {
+		return 1
+	}
+	return 0
+}
+
+// diffStickyHeader renders the pinned top-of-viewport header: the file
+// the top visible line belongs to plus the enclosing hunk's signature.
+// In the Files "All" view the file follows the scroll position so the
+// user always knows which file they are reading. Returns "" when there
+// is no room or no file context.
+func (m Model) diffStickyHeader(top int, lines []string) string {
+	width := m.paneWidthDiff
+	if width <= 1 {
+		return ""
+	}
+	file := m.diffStickyFile(top, lines)
+	if file == "" {
+		return padTrunc(fgBold("▌", m.theme.DiffFileHeader), width)
+	}
+	sig := nearestHunkSignature(lines, top)
+	out := fgBold("▌", m.theme.DiffFileHeader)
+	avail := width - 1
+	if lipgloss.Width(file) >= avail {
+		out += fg(padTrunc(file, avail), m.theme.DiffFileHeader)
+		return out
+	}
+	out += fg(file, m.theme.DiffFileHeader)
+	used := lipgloss.Width(file)
+	const link = "  ·  "
+	if sig != "" && avail-used > lipgloss.Width(link)+1 {
+		out += fg(link, m.theme.DiffSeparator)
+		out += fg(sig, m.theme.DiffHunkHeader)
+	}
+	return padTrunc(out, width)
+}
+
+// diffStickyFile resolves the file path owning buffer line `top`. The All
+// view's concatenated buffer carries a per-line file map (patchInfo
+// .filePaths); the single-file view is simply SelectedFile. Falls back to
+// a backward header scan when neither is available.
+func (m Model) diffStickyFile(top int, lines []string) string {
+	if pi := m.patchInfo(); pi != nil && pi.filePaths != nil {
+		if top >= 0 && top < len(pi.filePaths) && pi.filePaths[top] != "" {
+			return pi.filePaths[top]
+		}
+	}
+	if m.state.SelectedFile != "" && m.state.SelectedFile != model.AllFilesPath {
+		return m.state.SelectedFile
+	}
+	if top >= len(lines) {
+		top = len(lines) - 1
+	}
+	for i := top; i >= 0; i-- {
+		if strings.HasPrefix(lines[i], "--- ") {
+			if p := diffHeaderPath(strings.TrimSpace(lines[i][4:])); p != "" {
+				return p
+			}
+		}
+		if strings.HasPrefix(lines[i], "+++ ") {
+			if p := diffHeaderPath(strings.TrimSpace(lines[i][4:])); p != "" {
+				return p
+			}
+		}
+	}
+	return ""
 }
 
 // renderUnifiedBufferLine returns the display rows for one buffer line in
@@ -794,15 +995,26 @@ func lnFmt(n int, has bool) string {
 // bar (outside this viewport), so paneHeightDiff is the full content budget.
 func (m Model) diffViewportHeight() int {
 	if h := m.state.DiffViewport.Height; h > 0 {
+		// Explicit pin (e2e --diff-height): the sticky header layers on
+		// top, it does not steal from the pinned scrollable budget.
 		return h
 	}
-	if m.paneHeightDiff > 0 {
-		return m.paneHeightDiff
+	base := 5
+	switch {
+	case m.paneHeightDiff > 0:
+		base = m.paneHeightDiff
+	case m.height > 18:
+		base = m.height - 16
 	}
-	if m.height > 18 {
-		return m.height - 16
+	// The pinned sticky header (#diffStickyHeader) consumes one content
+	// row, so the scrollable viewport — used by both the render fill loop
+	// and the scroll math — is one shorter. Keeping a single source of
+	// truth here avoids an off-by-one between render and scroll.
+	base -= m.diffStickyRows()
+	if base < 1 {
+		base = 1
 	}
-	return 5
+	return base
 }
 
 // scrollDiffIntoView clamps DiffViewport.Top so the cursor's first display
@@ -927,7 +1139,14 @@ func (m Model) displayRowsBetween(lo, hi int) int {
 // display row — they never wrap because the renderer truncates the
 // hint label to the pane width.
 func displayRowsForLine(line string, isSplit bool, halfW, contentW int) int {
-	if line == diff.SyntheticLine {
+	switch {
+	case line == diff.SyntheticLine:
+		return 1
+	case strings.HasPrefix(line, "+++"):
+		// Folded into the `---` bar (#fileHeaderLabel) — zero display rows.
+		return 0
+	case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "@@"):
+		// Collapsed to a single full-width bar / rule.
 		return 1
 	}
 	expanded := expandTabs(line, 4)

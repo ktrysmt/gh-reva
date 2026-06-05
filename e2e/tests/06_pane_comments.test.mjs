@@ -32,7 +32,7 @@ async function pressN (s, key, n) {
 async function focusDiffOnCarolAnchor (s) {
   await s.press('tab')              // Files → Commits
   await s.press('tab')              // Commits → Diff
-  await pressN(s, 'j', 5)           // 5x j → buffer line 5 (◆ row)
+  await pressN(s, 'j', 4)           // 4x j → buffer line 5 (◆ row)
 }
 
 // G1+G2+G3+G4 share the Comments state with the Diff cursor parked on the
@@ -168,7 +168,7 @@ test('G9: r on Comments opens the reply compose modal (after y confirm)', async 
   const s = await launchReva({ env: { EDITOR: '', VISUAL: '' } })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')                          // focus Diff
-  for (let i = 0; i < 5; i++) await s.type('j')                       // anchor row
+  for (let i = 0; i < 4; i++) await s.type('j')                       // anchor row
   await s.press('tab')                                                // → Comments
   await s.type('r')
   await s.waitForText('Post reply?', { timeout: 3000 })
@@ -211,7 +211,7 @@ test('G11: long comment body wraps within the Comments column', async () => {
   })
   await waitReady(s)
   await s.press('tab'); await s.press('tab')           // Files → Diff
-  await pressN(s, 'j', 5)                              // 5x j → ◆ row
+  await pressN(s, 'j', 4)                              // 4x j → ◆ row
   const cms = paneText(await s.text(), 'Comments')
   const cmsLines = cms.split('\n')
   const headerRowIdx = cmsLines.findIndex(l => l.includes('carol:'))
